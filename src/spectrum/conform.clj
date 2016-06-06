@@ -233,7 +233,6 @@
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
 
-
 (defrecord PredSpec [pred form]
   Spect
   (conform* [spec x]
@@ -282,7 +281,7 @@
                 (:forms x)
                 [(:forms x)])
         preds (mapv parse-spec forms)]
-    (map->RegexSeq {:ks (:ks x) :ps preds :forms forms})))
+    (map->RegexSeq {:ks (:ks x) :ps preds :forms forms :ret []})))
 
 (defmethod parse-regex :clojure.spec/rep [x]
   (parse-seq x))
@@ -320,7 +319,6 @@
 (defmethod parse-spec* 'clojure.spec/and [x]
   (map->AndSpec {:forms (mapv (fn [f]
                                 (parse-spec f)) (rest x))}))
-
 
 (defn or-conform-literal [or-s x]
   (some (fn [[k f]]
