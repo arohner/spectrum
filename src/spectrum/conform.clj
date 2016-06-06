@@ -141,13 +141,14 @@
 
 (defn new-regex-seq [ps ret splice forms]
   (println "new-regex-seq:" ps)
-  (if (regex-accept? (first ps))
-    (map->RegexSeq {:ps (rest ps)
-                    :forms forms
-                    :ret ((fnil conj []) ret (:ret (first ps)))})
-    (map->RegexSeq {:ps ps
-                    :forms forms
-                    :ret ret})))
+  (when (every? #(not (regex-reject? %)) ps)
+    (if (regex-accept? (first ps))
+      (map->RegexSeq {:ps (rest ps)
+                      :forms forms
+                      :ret ((fnil conj []) ret (:ret (first ps)))})
+      (map->RegexSeq {:ps ps
+                      :forms forms
+                      :ret ret}))))
 
 (defrecord RegexSeq [ps ks forms splice ret]
   Regex
@@ -271,10 +272,13 @@
   (parse-spec* (first x)))
 
 (defmethod parse-regex :clojure.spec/pcat [x]
-  (map->RegexCat {:ks (:ks x) :ps (mapv (fn [[form pred]]
+  (map->RegexCat {:ks (:ks x)
+                  :ps (mapv (fn [[form pred]]
                                           (if (:clojure.spec/op pred)
                                             (parse-regex pred)
-                                            (parse-spec form))) (map vector (:forms x) (:ps x))) :forms (:forms x)}))
+                                            (parse-spec form))) (map vector (:forms x) (:ps x)))
+                  :forms (:forms x)
+                  :ret {}}))
 
 (defn parse-seq [x]
   (let [forms (if (coll? (:forms x))
