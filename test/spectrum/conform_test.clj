@@ -63,7 +63,7 @@
          ))
 
   (testing "should fail"
-    (are [spec val] (nil? (c/conform spec val))
+    (are [spec val] (= ::c/invalid (c/conform spec val))
          'integer? "foo"
          (s/spec #(< % 10)) 12
          'integer? 'keyword?
