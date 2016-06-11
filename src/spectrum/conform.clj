@@ -231,31 +231,44 @@
       [(seq (map first pks)) (when ks (seq (map second pks))) (when forms (seq (map #(nth % 2) pks)))])
     [(seq (filter f ps)) ks forms]))
 
+(defn new-regex-alt [ps ks forms]
+  (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(not (regex-reject? %)))]
+    (when ps
+      (let [ret (map->RegexAlt {:ps ps :ks ks :forms forms})]
+        (if (nil? pr)
+          (if k1
+            (if (regex-accept? p1)
+              (do
+                (accept [k1 (:ret p1)]))
+              ret)
+            p1)
+          ret)))))
+
 (defrecord RegexAlt [ps ks forms ret]
   Regex
   (derivative [this x]
-    (let [[ps ks forms] (filter-alt (map #(derivative % x) ps) ks forms #(not= % regex-reject))]
-      (if (regex-accept? (first ps))
-        (map->RegexAccept {:ret [(first ks) (:ret (first ps))]})
-        (map->RegexAlt {:ps ps
-                        :ks ks
-                        :forms forms
-                        :ret ret}))))
+    (println "RegexAlt derivative" this x)
+    (new-regex-alt (map #(derivative % x) ps) ks forms))
+
   (empty-regex [this]
     (map->RegexAlt {:ps (map empty-regex ps)
                     :ks ks
-                    :forms forms
-                    :ret ret}))
+                    :forms forms}))
   (accept-nil? [this]
     (some accept-nil? ps))
   (return [this]
     (let [[[p0] [k0]] (filter-alt ps ks forms accept-nil?)
           r (if (nil? p0)
-              ::nil
+              nil
               (return p0))]
       (if k0
         [k0 r]
-        r))))
+        r)))
+  (add-return [this r k]
+    (let [ret (return this)]
+      (if (= ret ::nil)
+        r
+        (conj r (if {k ret} ret))))))
 
 (declare new-regex-plus)
 
@@ -274,6 +287,7 @@
     (s/regex? x) :spec-regex
     (symbol? x) :fn-sym
     (var? x) :var
+    (= :clojure.spec/nil x) :clojure.spec/nil
     (fn-literal? x) :fn-literal
     (literal? x) :literal
     (vector? x) :coll
@@ -295,6 +309,7 @@
     (s/spec? x) (parse-spec* x)
     (s/regex? x) (parse-spec* x)
     (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
+    (= :clojure.spec/nil x) (parse-spec* x)
     (keyword? x) (parse-spec* (#'s/the-spec x))
     (#'s/named? x) (parse-spec* (s/spec x))
     (fn-literal? x) (parse-spec* x)
@@ -386,6 +401,9 @@
                     :forms forms
                     :ps ps})))
 
+(defmethod parse-spec* :clojure.spec/nil [x]
+  (accept ::nil))
+
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
                   ((:pred f) x)) (:forms and-s))
@@ -470,5 +488,9 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
   `(let [parsed# (parse-spec ~spec)
          args# (parse-spec ~args)]
      (if-let [val# (conform* parsed# args#)]
-       val#
+       (if (= ::nil val#)
+         nil
+         val#)
        ::invalid)))
+
+(s/instrument-ns *ns*)
