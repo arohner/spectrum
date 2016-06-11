@@ -102,7 +102,7 @@
     (if (or (nil? data) (coll? data))
       (let [[x & xs] data]
         (if (empty? data)
-          (if (inspect (accept-nil? spec))
+          (if (accept-nil? spec)
             (return spec)
             ::invalid)
           (if-let [dp (derivative spec x)]
