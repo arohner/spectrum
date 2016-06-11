@@ -494,3 +494,6 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
        ::invalid)))
 
 (s/instrument-ns 'spectrum.conform)
+
+(defn valid? [spec x]
+  (not= ::invalid (conform spec x)))
