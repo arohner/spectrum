@@ -1,0 +1,1 @@
+(ns checker.good.empty)
