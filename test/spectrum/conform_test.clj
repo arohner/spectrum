@@ -22,7 +22,8 @@
          (s/+ integer?)
          (s/? integer?)
          (s/alt :x integer? :y keyword?)
-         (s/cat :x integer? :y keyword?)))
+         (s/cat :x integer? :y keyword?)
+         (s/* (s/alt :int integer? :str string?))))
   (testing "literals"
     (is (= 3 (c/parse-spec 3)))
     (is (every? #(satisfies? c/Spect %) (c/parse-spec '[integer? integer?])))))
@@ -53,10 +54,16 @@
          (s/+ integer?) [1] [1]
          (s/+ integer?) [1 2] [1 2]
 
-         ;; (s/* (s/alt :int integer? :str string?)) ["foo" 3] [[:str "foo"] [:int 3]]
+         ;; (s/? integer?) [] []
+         ;; (s/? integer?) [1] [1]
 
-         ;; (s/cat :x (s/* integer?) :y (s/+ string?)) ["foo"] {:y ["foo"]}
-         ;; (s/cat :x (s/* integer?) :y (s/+ string?)) [1 "foo"] {:x 1 :y ["foo"]}
+         (s/+ integer?) '[integer? integer?] (c/parse-spec '[integer? integer?])
+
+         (s/* (s/alt :int integer? :str string?)) ["foo" 3] [[:str "foo"] [:int 3]]
+
+         (s/cat :x (s/* integer?) :y (s/+ string?)) ["foo"] {:y ["foo"]}
+         (s/cat :x (s/* integer?) :y (s/+ string?)) [1 "foo"] {:x [1] :y ["foo"]}
+         (s/cat :x (s/* integer?) :y (s/+ string?)) [1 2 "foo" "bar"] {:x [1 2] :y ["foo" "bar"]}
          ;; (s/cat :x (s/? integer?)) [] []
 
          ;; (s/& (s/+ integer?) #(even? (count %))) [1 2] [1 2]
@@ -74,9 +81,11 @@
          (s/* integer?) ["foo"]
          (s/+ integer?) []
          (s/+ integer?) [1 2 "foo"]
-         ;; (s/cat :x integer?) [:foo]
-         ;; (s/cat :x integer? :y keyword?) [3]
-         ;; (s/cat :x integer? :y keyword?) 3
-         ;; (s/alt :int integer? :str string?) ["foo" 3]
+         ;; (s/? integer?) ["foo"]
+         ;; (s/? integer?) [1 2]
+         (s/cat :x integer?) [:foo]
+         (s/cat :x integer? :y keyword?) [3]
+         (s/cat :x integer? :y keyword?) 3
+         (s/alt :int integer? :str string?) ["foo" 3]
          ;; (s/& (s/+ integer?) #(even? (count %))) [1]
          )))

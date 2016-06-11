@@ -98,26 +98,60 @@
 
 (extend-protocol Spect
   spectrum.conform.Regex
-  (conform* [spec [x & xs :as data]]
-    (if (empty? data)
-      (if (accept-nil? spec)
-        (return spec)
-        ::invalid)
-      (if-let [dp (derivative spec x)]
-        (recur dp xs)
-        ::invalid))))
+  (conform* [spec data]
+    (if (or (nil? data) (coll? data))
+      (let [[x & xs] data]
+        (if (empty? data)
+          (if (inspect (accept-nil? spec))
+            (return spec)
+            ::invalid)
+          (if-let [dp (derivative spec x)]
+            (recur dp xs)
+            ::invalid)))
+      ::invalid)))
+
+(extend-protocol Regex
+  nil
+  (derivative [spec x]
+    regex-reject)
+  (empty-regex [spec]
+    regex-reject)
+  (accept-nil? [this]
+    false)
+  (return [this]
+    nil)
+  (add-return [this ret k]
+    nil))
+
+(extend-protocol Regex
+  Object
+  (derivative [spec x]
+    regex-reject)
+  (empty-regex [spec]
+    regex-reject)
+  (accept-nil? [this]
+    false)
+  (return [this]
+    this)
+  (add-return [this ret k]
+    this))
 
 (defn maybe-alt-
   "If both regexes are valid, returns Alt r1 r2, else first non-reject one"
   [r1 r2]
-  (if (and r1 r2 (not regex-reject? r1) (not regex-reject? r2))
+  {:post [(do (println "maybe-alt" r1 r2 "=>" %) true )]}
+  (if (and r1 r2 (not (regex-reject? r1)) (not (regex-reject? r2)))
     (map->RegexAlt {:ps [r1 r2]})
     (first (remove regex-reject? [r1 r2]))))
 
 (declare map->RegexCat)
 
+(s/fdef new-regex-cat :args (s/cat :ps (s/nilable coll?) :ks (s/nilable coll?) :fs (s/nilable coll?) :ret coll?) :ret regex?)
+
 (defn new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
-  (when (every? #(not (regex-reject? %)) ps)
+  {:pre [(do (println "new-regex-cat:" [ps ks forms ret]) true )]
+   :post [(do (println "new-regex-cat:" [ps ks forms ret] "=>" %) true )]}
+  (if (every? #(not (regex-reject? %)) ps)
     (if (regex-accept? p0)
       (let [ret (conj ret (if k0 {k0 (:ret p0)} (:ret p0)))]
         (if pr
@@ -142,7 +176,7 @@
               (maybe-alt-
                (new-regex-cat (cons (derivative p0 x) pr) ks forms ret)
                (if (accept-nil? p0)
-                 (derivative (new-regex-cat pr kr fr ret) x)
+                 (derivative (new-regex-cat pr kr fr (add-return p0 ret k0)) x)
                  regex-reject)))]
       (println "cat derivative" this x "=>" v)
       v
@@ -150,14 +184,19 @@
   (accept-nil? [this]
     (every? accept-nil? ps))
   (return [this]
-    (return (add-return (first ps) ret (first ks)))))
+    (return (add-return (first ps) ret (first ks))))
+  (add-return [this r k]
+    (let [ret (return this)]
+      (if (empty? ret)
+        r
+        (conj r (if k {k ret} ret))))))
 
 (declare map->RegexSeq)
 
 (defn new-regex-seq [ps ret splice forms]
   {:pre [(do (println "new-regex-seq:" ps) true )]
    :post [(do (println "new-regex-seq:" ps "=>" %) true )]}
-  (when (every? #(not (regex-reject? %)) ps)
+  (if (every? #(not (regex-reject? %)) ps)
     (if (regex-accept? (first ps))
       (map->RegexSeq {:ps (rest ps)
                       :forms forms
@@ -166,12 +205,12 @@
       (map->RegexSeq {:ps ps
                       :forms forms
                       :ret ret
-                      :splice splice}))))
+                      :splice splice}))
+    regex-reject))
 
 (defrecord RegexSeq [ps ks forms splice ret]
   Regex
   (derivative [this x]
-    (println "derivative seq" this x)
     (new-regex-seq [(derivative (first ps) x) (first ps)] ret splice forms))
   (accept-nil? [this]
     true)
@@ -210,12 +249,22 @@
   (accept-nil? [this]
     (some accept-nil? ps))
   (return [this]
-    ret))
+    (let [[[p0] [k0]] (filter-alt ps ks forms accept-nil?)
+          r (if (nil? p0)
+              ::nil
+              (return p0))]
+      (if k0
+        [k0 r]
+        r))))
 
 (declare new-regex-plus)
 
 (defn parse-regex-dispatch [x]
-  (:clojure.spec/op x))
+  ;; could be evaled or form, so check both
+
+  (cond
+    (map? x) (:clojure.spec/op x)
+    (seq? x) (first x)))
 
 (defmulti parse-regex #'parse-regex-dispatch)
 
@@ -229,7 +278,7 @@
     (literal? x) :literal
     (vector? x) :coll
     (seq? x) (first x)
-    :else (throw (Exception. (format "parse-spec unknown: %s" x)))))
+    :else (do (println "unknown:" x (class x)) (throw (Exception. (format "parse-spec unknown: %s" x))))))
 
 (defmulti parse-spec* #'parse-spec-dispatch)
 
@@ -239,7 +288,7 @@
 (defmethod parse-spec* :literal [x]
   x)
 
-(def regex-vars #{'clojure.spec/*})
+(def regex-vars '#{clojure.spec/* clojure.spec/alt})
 
 (defn parse-spec [x]
   (cond
@@ -252,7 +301,8 @@
     (literal? x) x
     (vector? x) (parse-spec* x)
     (and (seq? x) (contains? regex-vars (first x))) (parse-regex x)
-    :else (throw (Exception. (format "unknown spec: %s" x)))))
+    :else (do (println "unknown:" x (class x))
+              (throw (Exception. (format "unknown spec: %s" x))))))
 
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
@@ -304,7 +354,7 @@
                   :ret (:ret x)}))
 
 (defn parse-seq [x]
-  (let [forms (if (coll? (:forms x))
+  (let [forms (if (vector? (:forms x))
                 (:forms x)
                 [(:forms x)])
         preds (mapv parse-spec forms)]
@@ -321,9 +371,20 @@
   (parse-seq x))
 
 (defmethod parse-regex :clojure.spec/alt [x]
+  ;; evaled alt
   (map->RegexAlt {:ks (:ks x)
                   :forms (:forms x)
                   :ps (map parse-spec (:forms x))}))
+
+(defmethod parse-regex 'clojure.spec/alt [x]
+  ;; literal alt form
+  (let [pairs (partition 2 (rest x))
+        ks (map first pairs)
+        forms (map second pairs)
+        ps (map parse-spec forms)]
+    (map->RegexAlt {:ks ks
+                    :forms forms
+                    :ps ps})))
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
