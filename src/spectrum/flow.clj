@@ -2,9 +2,11 @@
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec :as s]
             [spectrum.analyzer-spec]
-            [spectrum.conform :as c]))
+            [spectrum.conform :as c]
+            [spectrum.data :as data]))
 
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
+
 (defn get-fn-spec [v]
   (let [s (s/fn-specs v)]
     (when (not= s empty-fn-spec)
@@ -18,6 +20,13 @@
 (defmulti flow
   "Given an analysis, walk and update-in the the analysis attaching ::specs and ::ret to values"
   #'flow-dispatch)
+
+(s/fdef flow-ns :args (s/cat :as ::ana.jvm/analyses) :ret ::ana.jvm/analyses)
+
+(defn flow-ns
+  "Given the result of analyze-ns, flow all forms"
+  [as]
+  (map flow as))
 
 (s/fdef maybe-assoc-var-name :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
 (defn maybe-assoc-var-name
@@ -36,6 +45,7 @@
   a)
 
 (defmethod flow :def [a]
+  (data/store-var-analysis a)
   (-> a
       (maybe-assoc-var-name)
       (update-in [:init] flow)))
