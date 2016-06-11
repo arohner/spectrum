@@ -7,4 +7,5 @@
                  [org.clojure/tools.analyzer.jvm "0.6.9"]
                  [org.clojure/test.check "0.9.0"]]
   :profiles
-  {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]]}})
+  {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]]
+         :repl-options {:init-ns spectrum.repl}}})
