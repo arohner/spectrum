@@ -32,22 +32,29 @@
   (accept-nil? [this]
     "True if it is valid for this pattern to match no data")
   (return [this]
-    "Given a completed regex parse, return the conform matching value"))
+    "Given a completed regex parse, return the conform matching value")
+  (add-return [this ret k]
+    "Add ret to the return data of this regex, with optional key k"))
 
-(declare accept-regex)
-(declare reject-regex)
+(defn regex? [x]
+  (satisfies? Regex x))
+
+(declare regex-accept)
+(declare regex-reject)
 
 (declare map->RegexAlt)
 
 (defrecord RegexAccept [ret]
   Regex
   (derivative [spec x]
-    reject-regex)
+    regex-reject)
   (empty-regex [spec]
-    accept-regex)
+    regex-accept)
   (accept-nil? [this]
     true)
   (return [this]
+    ret)
+  (add-return [this ret k]
     ret))
 
 (defn accept [x]
@@ -58,11 +65,13 @@
   (derivative [spec x]
     nil)
   (empty-regex [spec]
-    reject-regex)
+    regex-reject)
   (accept-nil? [this]
     false)
   (return [this]
-    ::invalid))
+    ::invalid)
+  (add-return [this ret k]
+    nil))
 
 (defn regex-accept? [x]
   (instance? RegexAccept x))
@@ -70,20 +79,22 @@
 (defn regex-reject? [x]
   (instance? RegexReject x))
 
-(def reject-regex (map->RegexReject {}))
+(def regex-reject (map->RegexReject {}))
 
 (extend-protocol Regex
   spectrum.conform.Spect
   (derivative [spec x]
     (if (conform* spec x)
       (map->RegexAccept {:ret x})
-      reject-regex))
+      regex-reject))
   (empty-regex [this]
-    reject-regex)
+    regex-reject)
   (accept-nil? [this]
     false)
   (return [this]
-    this))
+    this)
+  (add-return [this ret k]
+    nil))
 
 (extend-protocol Spect
   spectrum.conform.Regex
@@ -119,36 +130,43 @@
       (map->RegexCat {:ps ps
                       :ks ks
                       :forms forms
-                      :ret ret}))))
+                      :ret ret}))
+    regex-reject))
 
 (defrecord RegexCat [ps ks forms ret]
   Regex
   (derivative [this x]
-    (println "cat derivative:" this x)
-    (let [[p0 & pr] ps
-          [k0 & kr] ks
-          [f0 & fr] forms]
-      (maybe-alt-
-       (new-regex-cat (cons (derivative p0 x) pr) ks forms ret)
-       (when (accept-nil? p0)
-         (derivative (new-regex-cat pr kr fr ret) x)))))
+    (let [v (let [[p0 & pr] ps
+                  [k0 & kr] ks
+                  [f0 & fr] forms]
+              (maybe-alt-
+               (new-regex-cat (cons (derivative p0 x) pr) ks forms ret)
+               (if (accept-nil? p0)
+                 (derivative (new-regex-cat pr kr fr ret) x)
+                 regex-reject)))]
+      (println "cat derivative" this x "=>" v)
+      v
+      ))
   (accept-nil? [this]
     (every? accept-nil? ps))
   (return [this]
-    ret))
+    (return (add-return (first ps) ret (first ks)))))
 
 (declare map->RegexSeq)
 
 (defn new-regex-seq [ps ret splice forms]
-  (println "new-regex-seq:" ps)
+  {:pre [(do (println "new-regex-seq:" ps) true )]
+   :post [(do (println "new-regex-seq:" ps "=>" %) true )]}
   (when (every? #(not (regex-reject? %)) ps)
     (if (regex-accept? (first ps))
       (map->RegexSeq {:ps (rest ps)
                       :forms forms
-                      :ret ((fnil conj []) ret (:ret (first ps)))})
+                      :ret ((fnil conj []) ret (:ret (first ps)))
+                      :splice splice})
       (map->RegexSeq {:ps ps
                       :forms forms
-                      :ret ret}))))
+                      :ret ret
+                      :splice splice}))))
 
 (defrecord RegexSeq [ps ks forms splice ret]
   Regex
@@ -158,7 +176,12 @@
   (accept-nil? [this]
     true)
   (return [this]
-    ret))
+    ret)
+  (add-return [this r k]
+    (let [ret (return this)]
+      (if (empty? ret)
+        r
+        ((if splice into conj) r (if k {k ret} ret))))))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
@@ -172,7 +195,7 @@
 (defrecord RegexAlt [ps ks forms ret]
   Regex
   (derivative [this x]
-    (let [[ps ks forms] (filter-alt (map #(derivative % x) ps) ks forms #(not= % reject-regex))]
+    (let [[ps ks forms] (filter-alt (map #(derivative % x) ps) ks forms #(not= % regex-reject))]
       (if (regex-accept? (first ps))
         (map->RegexAccept {:ret [(first ks) (:ret (first ps))]})
         (map->RegexAlt {:ps ps
@@ -278,14 +301,18 @@
                                             (parse-regex pred)
                                             (parse-spec form))) (map vector (:forms x) (:ps x)))
                   :forms (:forms x)
-                  :ret {}}))
+                  :ret (:ret x)}))
 
 (defn parse-seq [x]
   (let [forms (if (coll? (:forms x))
                 (:forms x)
                 [(:forms x)])
         preds (mapv parse-spec forms)]
-    (map->RegexSeq {:ks (:ks x) :ps preds :forms forms :ret []})))
+    (map->RegexSeq {:ks (:ks x)
+                    :ps preds
+                    :forms forms
+                    :ret []
+                    :splice (:splice x)})))
 
 (defmethod parse-regex :clojure.spec/rep [x]
   (parse-seq x))

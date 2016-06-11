@@ -50,8 +50,8 @@
          (s/cat :x integer?) [5] {:x 5}
          (s/cat :x integer? :y keyword?) [5 :foo] {:x 5 :y :foo}
 
-         ;; (s/+ integer?) [1] [1]
-         ;; (s/+ integer?) [1 2] [1 2]
+         (s/+ integer?) [1] [1]
+         (s/+ integer?) [1 2] [1 2]
 
          ;; (s/* (s/alt :int integer? :str string?)) ["foo" 3] [[:str "foo"] [:int 3]]
 
@@ -73,7 +73,7 @@
          (s/and integer? even? #(> % 10)) (s/and integer? even?)
          (s/* integer?) ["foo"]
          (s/+ integer?) []
-         ;; (s/+ integer?) [1 2 "foo"]
+         (s/+ integer?) [1 2 "foo"]
          ;; (s/cat :x integer?) [:foo]
          ;; (s/cat :x integer? :y keyword?) [3]
          ;; (s/cat :x integer? :y keyword?) 3
