@@ -493,4 +493,4 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
          val#)
        ::invalid)))
 
-(s/instrument-ns *ns*)
+(s/instrument-ns 'spectrum.conform)
