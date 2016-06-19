@@ -6,7 +6,8 @@
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.data :as data]
-            [spectrum.flow :as flow]))
+            [spectrum.flow :as flow]
+            [spectrum.util :as util :refer (zip with-a unwrap-a)]))
 
 (defrecord CheckError [message file line column end-column])
 
@@ -102,22 +103,41 @@
 (defmethod analysis->arg* :const [x]
   (-> x :val))
 
+(defn find-binding
+  "recursively unwrap a, looking for a :binding for 'name"
+  [a name]
+  (or
+   (condp = (:op a)
+     :binding (->> a
+                   :bindings
+                   (filter (fn [b] (= name (:name b))))
+                   first)
+     :fn-method (->> a
+                     :params
+                     (filter (fn [b] (= name (:name b))))
+                     first)
+     nil)
+   (when-let [a* (unwrap-a a)]
+     (recur a* name))))
+
+(defmethod analysis->arg* :local [a]
+  (let [b (find-binding a (:name a))]
+    (assert b)
+    (or (::flow/spec b) ::unknown)))
+
 (s/fdef analysis->args :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::s/any []))
 
 (defn analysis->args
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
-  [a]
-  (mapv analysis->arg* a))
+  [args]
+  (mapv (fn [arg]
+          (analysis->arg* (with-a arg args))) args))
 
 (defn check-invoke-fn-spec
   [name s a]
   (println "check invoke-fn-spec")
-  (let [a-args (:args a)
-        _ (println "f:" name)
-        _ (println "a-args:" a-args)
+  (let [a-args (zip a :args)
         args (analysis->args a-args)
-        _ (println "s:" (:args s))
-        _ (println "args:" args)
         valid? (c/valid? (:args s) args)]
     (when-not valid?
       (new-error {:message (format "Function %s cannot be called with args %s. Expected %s" name (vec args) (-> s :args :forms))} a))))
@@ -157,24 +177,26 @@
 (defmethod check* :do [a]
   (->>
    (concat
-    (mapcat check* (:statements a))
-    [(check* (:ret a))])
+    (mapcat (fn [s]
+              (check* (with-a s a))) (:statements a))
+    [(check* (zip a :ret))])
    (filter identity)))
 
 (defmethod check* :with-meta [a]
-  (check* (:expr a)))
+  (check* (zip a :expr)))
 
 (defmethod check* :def [a]
-  (check* (:init a)))
+  (check* (zip a :init)))
 
 (defmethod check* :fn [a]
   (->>
-   (mapcat check* (:methods a))
+   (mapcat (fn [m]
+             (check* (with-a m a))) (:methods a))
    (filter identity)))
 
 (defmethod check* :fn-method [a]
   ;; (println "check fn method:" a)
-  (check* (:body a)))
+  (check* (zip a :body)))
 
 (defmethod check* :quote [a])
 
