@@ -3,7 +3,8 @@
             [clojure.spec :as s]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
-            [spectrum.data :as data]))
+            [spectrum.data :as data]
+            [spectrum.util :as util]))
 
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
 
@@ -46,33 +47,50 @@
 
 (defmethod flow :def [a]
   (data/store-var-analysis a)
-  (-> a
-      (maybe-assoc-var-name)
-      (update-in [:init] flow)))
+  (let [a (maybe-assoc-var-name a)]
+    (if (-> a :init)
+      (assoc a :init (flow (util/zip a :init)))
+      a)))
 
 (defmethod flow :with-meta [a]
   (update-in a [:expr] flow))
 
 (s/fdef maybe-assoc-fn-specs :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
 
-(defn maybe-assoc-fn-specs
-  "Given a :fn analysis that contains ::flow/var, assoc the parsed fn-specs"
-  [a]
-  (if-let [v (-> a ::var)]
-    (if-let [s (get-fn-spec v)]
-      (assoc a ::spec s)
-      a)
-    a))
-
 (defmethod flow :fn [a]
   (-> a
       (maybe-assoc-fn-specs)
       (update-in [:methods] (fn [methods]
-                              (mapv flow methods)))))
+                              (mapv (fn [m]
+                                      (flow (with-meta m {:a a}))) methods)))))
 
 (defmethod flow :do [a]
   (-> a
       (update-in [:statements] (fn [statements] (mapv flow statements)))
       (update-in [:ret] flow)))
 
-(s/instrument-ns 'spectrum.flow)
+(defn destructure-fn-params
+  "Given a spect and ana.jvm/fn-method params, update params to include spec"
+  [params spec]
+  (loop [ret []
+         params params
+         spec spec]
+    (if (seq params)
+      (let [param (first params)
+            s (c/first* spec)]
+        (assert s)
+        (if (:variadic? param)
+          (conj ret (assoc param ::spec (c/rest* spec)))
+          (recur (conj ret (assoc param ::spec s)) (rest params) (c/rest* spec))))
+      ret)))
+
+(defmethod flow :fn-method [a]
+  (let [v (-> a meta :a ::var)]
+    (assert v)
+    (if-let [s (get-fn-spec v)]
+      (update-in a [:params] destructure-fn-params (:args s))
+      (do
+        (println "warning: no spec for " v)
+        a))))
+
+;; (s/instrument-ns 'spectrum.flow)
