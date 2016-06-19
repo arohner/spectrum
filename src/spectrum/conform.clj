@@ -7,6 +7,9 @@
   (conform* [spec x]
     "True if value x conforms to spec."))
 
+(defn spect? [x]
+  (satisfies? Spect x))
+
 (defprotocol PredConform
   (pred-conform [this pred-s]
     "True if this spec conforms to the pred spec"))
@@ -27,6 +30,8 @@
   (derivative
     [spec x]
     "Given a parsed spec, return the derivative")
+  (first* [this])
+  (rest* [this])
   (empty-regex [this]
     "The empty pattern for this regex")
   (accept-nil? [this]
@@ -91,6 +96,10 @@
     regex-reject)
   (accept-nil? [this]
     false)
+  (first* [this]
+    this)
+  (rest* [this]
+    nil)
   (return [this]
     this)
   (add-return [this ret k]
@@ -139,7 +148,6 @@
 (defn maybe-alt-
   "If both regexes are valid, returns Alt r1 r2, else first non-reject one"
   [r1 r2]
-  {:post [(do (println "maybe-alt" r1 r2 "=>" %) true )]}
   (if (and r1 r2 (not (regex-reject? r1)) (not (regex-reject? r2)))
     (map->RegexAlt {:ps [r1 r2]})
     (first (remove regex-reject? [r1 r2]))))
@@ -149,8 +157,6 @@
 (s/fdef new-regex-cat :args (s/cat :ps (s/nilable coll?) :ks (s/nilable coll?) :fs (s/nilable coll?) :ret coll?) :ret regex?)
 
 (defn new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
-  {:pre [(do (println "new-regex-cat:" [ps ks forms ret]) true )]
-   :post [(do (println "new-regex-cat:" [ps ks forms ret] "=>" %) true )]}
   (if (every? #(not (regex-reject? %)) ps)
     (if (regex-accept? p0)
       (let [ret (conj ret (if k0 {k0 (:ret p0)} (:ret p0)))]
@@ -181,6 +187,13 @@
       (println "cat derivative" this x "=>" v)
       v
       ))
+  (first* [this]
+    (first ps))
+  (rest* [this]
+    (when (seq (rest ps))
+      (if (= 1 (count (rest ps)))
+        (first (rest ps))
+        (new-regex-cat (rest ps) (rest ks) (rest forms) []))))
   (accept-nil? [this]
     (every? accept-nil? ps))
   (return [this]
@@ -216,6 +229,10 @@
     true)
   (return [this]
     ret)
+  (first* [this]
+    (first ps))
+  (rest* [this]
+    (assoc this :splice false))
   (add-return [this r k]
     (let [ret (return this)]
       (if (empty? ret)
@@ -343,7 +360,7 @@
   (let [v (resolve x)]
     (assert v)
     (map->PredSpec {:pred v
-                    :form (symbol (str (.ns v)) (str (.sym v)))})))
+                    :form (symbol (str (.ns ^Var v)) (str (.sym ^Var v)))})))
 
 (defmethod parse-spec* :fn-literal [x]
   (map->PredSpec {:pred (eval x)
@@ -493,7 +510,9 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
          val#)
        ::invalid)))
 
-(s/instrument-ns 'spectrum.conform)
+
 
 (defn valid? [spec x]
   (not= ::invalid (conform spec x)))
+
+(s/instrument-ns 'spectrum.conform)
