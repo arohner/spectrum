@@ -1,4 +1,4 @@
-(ns checker.bad.arity)
+(ns spectrum.examples.bad.arity)
 
 (defn foo
   ([]

@@ -1,3 +1,3 @@
-(ns checker.good.def-fn)
+(ns spectrum.examples.good.def-fn)
 
 (def foo (fn [x] (inc x)))

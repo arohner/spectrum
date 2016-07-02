@@ -170,5 +170,3 @@
   (check* (zip a :body)))
 
 (defmethod check* :quote [a])
-
-;; (s/instrument-ns 'spectrum.check)

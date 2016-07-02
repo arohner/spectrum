@@ -1,3 +1,3 @@
-(ns checker.good.map-invoke)
+(ns spectrum.examples.good.map-invoke)
 
 ({:foo 1} :foo)

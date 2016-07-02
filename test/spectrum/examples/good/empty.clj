@@ -1,1 +1,1 @@
-(ns checker.good.empty)
+(ns spectrum.examples.good.empty)

@@ -1,4 +1,4 @@
-(ns checker.good.arg-static)
+(ns spectrum.examples.good.arg-static)
 
 (defn foo [x]
   (+ x x))

@@ -3,16 +3,16 @@
             [clojure.test :refer :all]
             [clojure.tools.namespace.find :as find]
             [clojure.spec :as s]
-            [spectrum.core :as st]))
+            [spectrum.check :as st]))
 
 (defn example-namespaces []
-  (find/find-namespaces-in-dir (io/file "test/examples")))
+  (find/find-namespaces-in-dir (io/file "test/spectrum/examples")))
 
 ;; (deftest clojure-core-no-errors []
 ;;   (is (= nil (st/check 'clojure.core))))
 
 (deftest in-ns-works
-  (st/load-clojure-data)
+  (st/maybe-load-clojure-builtins)
   (is (st/var-fn? #'clojure.core/in-ns)))
 
 (deftest test-examples-good
@@ -26,4 +26,5 @@
   (doseq [ns (->> (example-namespaces)
                   (filter (fn [sym]
                             (re-find #"^spectrum\.examples\.bad." (name sym)))))]
-    (is (seq (st/check ns)))))
+    (testing (str "testing" ns)
+      (is (seq (st/check ns))))))

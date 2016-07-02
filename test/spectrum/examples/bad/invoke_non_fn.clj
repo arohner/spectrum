@@ -1,4 +1,4 @@
-(ns checker.bad.invoke-non-fn)
+(ns spectrum.examples.bad.invoke-non-fn)
 
 (def foo 3)
 
