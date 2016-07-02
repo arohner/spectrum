@@ -55,14 +55,17 @@
 (defmethod flow :with-meta [a]
   (update-in a [:expr] flow))
 
-(s/fdef maybe-assoc-fn-specs :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
-
 (defmethod flow :fn [a]
-  (-> a
-      (maybe-assoc-fn-specs)
-      (update-in [:methods] (fn [methods]
-                              (mapv (fn [m]
-                                      (flow (with-meta m {:a a}))) methods)))))
+  (let [v (get a ::var)
+        spec (when v
+               (get-fn-spec v))
+        a (if spec
+            (assoc a ::spec spec)
+            a)]
+    (-> a
+        (update-in [:methods] (fn [methods]
+                                (mapv (fn [m]
+                                        (flow (with-meta m {:a a}))) methods))))))
 
 (defmethod flow :do [a]
   (-> a

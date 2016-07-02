@@ -5,18 +5,18 @@
             [spectrum.conform :as c]
             [spectrum.flow :as flow]))
 
-(s/fdef user/foo :args integer? :ret integer?)
+(s/fdef foo :args integer? :ret integer?)
 
 (deftest basic
   (is (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x))))))
 
 (deftest maybe-assoc-var-name-works
-  (is (-> (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x)))) :init :expr :spectrum.flow/var))
-  (is (-> (flow/flow (ana.jvm/analyze '(def foo (fn [x] (inc x))))) :init :spectrum.flow/var)))
+  (is (-> (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x)))) :init :expr ::flow/var))
+  (is (-> (flow/flow (ana.jvm/analyze '(def foo (fn [x] (inc x))))) :init ::flow/var)))
 
 (deftest maybe-assoc-fn-specs
-  (is (-> (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x)))) :init :expr :spectrum.flow/spec))
-  (is (-> (flow/flow (ana.jvm/analyze '(def foo (fn [x] (inc x))))) :init :spectrum.flow/spec)))
+  (is (-> (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x)))) :init :expr ::flow/spec))
+  (is (-> (flow/flow (ana.jvm/analyze '(def foo (fn [x] (inc x))))) :init ::flow/spec)))
 
 (deftest destructure-fn-params
   (are [spec params result] (= result (flow/destructure-fn-params params (c/parse-spec spec)))
