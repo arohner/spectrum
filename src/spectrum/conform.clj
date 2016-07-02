@@ -1,7 +1,8 @@
 (ns spectrum.conform
   (:require [clojure.spec :as s]
             [clojure.set :as set]
-            [spectrum.util :refer (fn-literal? literal?)]))
+            [spectrum.util :refer (fn-literal? literal?)])
+  (:import (clojure.lang Var)))
 
 (defprotocol Spect
   (conform* [spec x]
@@ -9,6 +10,9 @@
 
 (defn spect? [x]
   (satisfies? Spect x))
+
+(s/def ::spect spect?)
+
 
 (defprotocol PredConform
   (pred-conform [this pred-s]
@@ -184,7 +188,6 @@
                (if (accept-nil? p0)
                  (derivative (new-regex-cat pr kr fr (add-return p0 ret k0)) x)
                  regex-reject)))]
-      (println "cat derivative" this x "=>" v)
       v
       ))
   (first* [this]
@@ -207,8 +210,6 @@
 (declare map->RegexSeq)
 
 (defn new-regex-seq [ps ret splice forms]
-  {:pre [(do (println "new-regex-seq:" ps) true )]
-   :post [(do (println "new-regex-seq:" ps "=>" %) true )]}
   (if (every? #(not (regex-reject? %)) ps)
     (if (regex-accept? (first ps))
       (map->RegexSeq {:ps (rest ps)
@@ -264,7 +265,6 @@
 (defrecord RegexAlt [ps ks forms ret]
   Regex
   (derivative [this x]
-    (println "RegexAlt derivative" this x)
     (new-regex-alt (map #(derivative % x) ps) ks forms))
 
   (empty-regex [this]
@@ -321,6 +321,9 @@
 
 (def regex-vars '#{clojure.spec/* clojure.spec/alt})
 
+(defn var-name [^Var v]
+  (symbol (str (.ns v)) (str (.sym v))))
+
 (defn parse-spec [x]
   (cond
     (s/spec? x) (parse-spec* x)
@@ -330,6 +333,7 @@
     (keyword? x) (parse-spec* (#'s/the-spec x))
     (#'s/named? x) (parse-spec* (s/spec x))
     (fn-literal? x) (parse-spec* x)
+    (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
     (literal? x) x
     (vector? x) (parse-spec* x)
     (and (seq? x) (contains? regex-vars (first x))) (parse-regex x)

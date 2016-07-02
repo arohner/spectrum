@@ -9,6 +9,7 @@
   (testing "returns Spect"
     (are [spec] (satisfies? c/Spect (c/parse-spec spec))
          'integer?
+         #'integer?
          (s/spec integer?)
          (s/spec #(< % 10))
          ::even-int
