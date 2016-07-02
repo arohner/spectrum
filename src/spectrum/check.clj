@@ -17,7 +17,11 @@
 (defn check-error? [x]
   (instance? CheckError x))
 
-(s/fdef check* :args (s/cat :a ::ana.jvm/analysis) :ret (s/* check-error?))
+(s/def ::maybe-check-error (s/nilable check-error?))
+
+(s/def ::check-errors (s/* check-error?))
+
+(s/fdef check* :args (s/cat :a ::ana.jvm/analysis) :ret ::check-errors)
 
 (defmulti check* "Entrypoint into low level checking. Takes a tools.analyzer expression. Returns nil or an error" :op)
 
@@ -38,6 +42,8 @@
       (println "flow:" n "done")
       (swap! data/checked-nses conj n))))
 
+(s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
+
 (defn check [ns]
   (swap! data/checked-nses conj ns)
   (maybe-load-clojure-builtins)
@@ -49,6 +55,7 @@
    (filter identity)
    (doall)))
 
+(s/fdef get-var-arities :args (s/cat :v var?) :ret (s/nilable ::flow/analysis))
 (defn get-var-arities
   "Return the set of :arglists for this var. Must have been analyzed"
   [v]
@@ -56,13 +63,15 @@
            :init
            :expr))
 
+(s/fdef maybe-strip-meta :args ::flow/analysis :ret ::flow/analysis)
 (defn maybe-strip-meta
-  "If a is a with-meta, strip it and return the :expr, or a"
+  "If a is a :op :with-meta, strip it and return the :expr, or a"
   [a]
   (if (-> a :op (= :with-meta))
     (-> a :expr)
     a))
 
+(s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
 (defn var-fn?
   "True if this var holds a fn"
   [v]
@@ -71,6 +80,7 @@
       (println (format "Couldn't find var %s in analysis cache:" v)))
     (-> a :init maybe-strip-meta :op (= :fn))))
 
+(s/fdef get-var-analysis :args (s/cat :v var?) :ret ::flow/analysis?)
 (defn get-var-analysis
   "Return the fn analysis for a var"
   [v]
@@ -95,44 +105,6 @@
     (when-not valid?
       (wrong-number-args-error f a))))
 
-(defn analysis->arg*-dispatch [x]
-  (:op x))
-
-(defmulti analysis->arg* #'analysis->arg*-dispatch)
-
-(defmethod analysis->arg* :const [x]
-  (-> x :val))
-
-(defn find-binding
-  "recursively unwrap a, looking for a :binding for 'name"
-  [a name]
-  (or
-   (condp = (:op a)
-     :binding (->> a
-                   :bindings
-                   (filter (fn [b] (= name (:name b))))
-                   first)
-     :fn-method (->> a
-                     :params
-                     (filter (fn [b] (= name (:name b))))
-                     first)
-     nil)
-   (when-let [a* (unwrap-a a)]
-     (recur a* name))))
-
-(defmethod analysis->arg* :local [a]
-  (let [b (find-binding a (:name a))]
-    (assert b)
-    (or (::flow/spec b) ::unknown)))
-
-(s/fdef analysis->args :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::s/any []))
-
-(defn analysis->args
-  "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
-  [args]
-  (mapv (fn [arg]
-          (analysis->arg* (with-a arg args))) args))
-
 (defn check-invoke-fn-spec
   [name s a]
   (println "check invoke-fn-spec")
@@ -148,7 +120,7 @@
      [(when-not (var-fn? v)
         (new-error {:message (format "attempt to call non-fn var: %s" (:form a))} a))
       (check-invoke-fn-arity (get-var-analysis v) a)
-      (if-let [s (flow/get-fn-spec v)]
+      (if-let [s (flow/get-var-fn-spec v)]
         (check-invoke-fn-spec (str v) s a)
         (println "no spec for" v))]
      (filter identity))))
@@ -171,8 +143,7 @@
       :local (check-invoke-local a)
       (println "unknown invoke expr" a))))
 
-(def primitive-types #{'long 'double})
-(def primitive-map {'long Long})
+
 
 (defmethod check* :do [a]
   (->>
