@@ -37,9 +37,7 @@
     (println "loading clojure")
     (data/load-clojure-data)
     (doseq [n builtin-nses]
-      (println "flow:" n)
-      (doall (flow/flow-ns (ana.jvm/analyze-ns n)))
-      (println "flow:" n "done")
+      (data/analyze-cache-ns n)
       (swap! data/checked-nses conj n))))
 
 (s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
@@ -105,14 +103,22 @@
     (when-not valid?
       (wrong-number-args-error f a))))
 
+(defn spec->args-error-str
+  "Return a pretty-printed spect for an error message"
+  [s]
+  (cond
+    (seq (:ps s)) (str "[" (str/join ", " (map spec->args-error-str (:ps s))) "]")
+    (:pred s) (:form s)
+    :else s))
+
 (defn check-invoke-fn-spec
   [name s a]
   (println "check invoke-fn-spec")
   (let [a-args (zip a :args)
-        args (analysis->args a-args)
+        args (flow/analysis->args a-args)
         valid? (c/valid? (:args s) args)]
     (when-not valid?
-      (new-error {:message (format "Function %s cannot be called with args %s. Expected %s" name (vec args) (-> s :args :forms))} a))))
+      (new-error {:message (format "Function %s cannot be called with args %s. Expected %s" name (spec->args-error-str args) (spec->args-error-str (-> s :args)))} a))))
 
 (defn check-invoke-var [a]
   (let [v (-> a :fn :var)]

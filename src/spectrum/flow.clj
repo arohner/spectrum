@@ -23,14 +23,14 @@
 
 (s/def ::analysis? (s/nilable ::analysis))
 
-(s/def ::analyses (s/coll-of ::analysis []))
+(s/def ::analyses (s/coll-of ::analysis))
 
 (s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable ::c/spect))
 
 (defn get-var-fn-spec [v]
   (assert (var? v))
-  (let [s (s/fn-specs v)]
-    (when (not= s empty-fn-spec)
+  (let [s (s/get-spec v)]
+    (when s
       (c/parse-fn-spec s))))
 
 (s/fdef flow-dispatch :args (s/cat :a ::analysis) :ret keyword?)
@@ -60,10 +60,7 @@
                [:init])]
     (if (= :fn (:op (get-in a path)))
       (assoc-in a (conj path ::var) (:var a))
-      (do
-        (println "def not var")
-        a))))
-
+      a)))
 
 (defn print-once* [& args]
   (apply println args))
@@ -112,6 +109,7 @@
 (defmethod analysis->arg* :const [x]
   (-> x :val))
 
+(s/fdef find-binding :args (s/cat :a ::analysis :name symbol?) :ret (s/nilable ::analysis))
 (defn find-binding
   "recursively unwrap a, looking for a :binding for 'name"
   [a name]
@@ -125,22 +123,25 @@
                      :params
                      (filter (fn [b] (= name (:name b))))
                      first)
-     nil)
+     nil
+     ;; :local (print-once "TODO find-binding" :local)
+     )
+
    (when-let [a* (unwrap-a a)]
      (recur a* name))))
 
 (defmethod analysis->arg* :local [a]
   (let [b (find-binding a (:name a))]
-    (assert b)
-    (or (::spec b) ::unknown)))
+    (or (::spec b) (c/unknown (:name a)))))
 
-(s/fdef analysis->args :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::s/any []))
+(s/fdef analysis->args :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::c/spect))
 
 (defn analysis->args
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
   [args]
-  (mapv (fn [arg]
-          (analysis->arg* (with-a arg args))) args))
+  (c/map->RegexCat {:ps (mapv (fn [arg]
+                                (analysis->arg* (with-a arg args))) args)
+                    :ret []}))
 
 (def primitive->class {'long Long
                        'double Double})
@@ -150,9 +151,12 @@
 (defn primitive? [x]
   (contains? primitive->class x))
 
+(defn long? [x]
+  (instance? java.lang.Long))
+
 (def class->pred {Long #'long?
                   Double #'double?
-                  Integer #'integer?
+                  Integer #'int?
                   java.util.Date #'inst?
                   Number #'number?
                   Object #'object?})
@@ -168,7 +172,7 @@
 
 (s/def ::java-type (s/or :p primitive? :c class?))
 
-(s/def ::java-args (s/coll-of ::java-type []))
+(s/def ::java-args (s/coll-of ::java-type))
 
 (s/fdef spec->java-args :args (s/cat :arg-spec ::c/spect) :ret ::java-args)
 (defn spec->java-args
@@ -177,7 +181,7 @@
   {:post [(every? identity %)]}
   (assert (instance? spectrum.conform.RegexCat arg-spec))
   (mapv (fn [arg]
-          (get pred->class (:pred arg))) (:ps arg-spec)))
+          (spec->class arg)) (:ps arg-spec)))
 
 (s/fdef resolve-class :args (s/cat :str symbol?) :ret class?)
 (defn resolve-class
@@ -216,13 +220,13 @@
         :else (recur as bs))
       0)))
 
-(s/fdef most-specific :args (s/cat :vecs (s/coll-of ::java-args [])) :ret ::java-args)
+(s/fdef most-specific :args (s/cat :vecs (s/coll-of ::java-args)) :ret ::java-args)
 (defn most-specific
   "Given a seq of vectors of java args, return the most specific method"
   [arg-vecs]
   (-> (sort more-specific? arg-vecs) last))
 
-(s/fdef get-java-method :args (s/cat :cls class? :method symbol?) :ret map?)
+(s/fdef get-java-method :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret map?)
 (defn get-java-method [cls method arg-spec]
   (->> (reflect/reflect cls)
        :members
@@ -343,5 +347,3 @@
     (-> a
         (update-in [:body] (fn [body]
                              (flow (with-meta body {:a a})))))))
-
-;; (clojure.spec/instrument-ns 'spectrum.flow)

@@ -383,11 +383,20 @@
 (defmethod parse-regex :clojure.spec/pcat [x]
   (map->RegexCat {:ks (:ks x)
                   :ps (mapv (fn [[form pred]]
-                                          (if (:clojure.spec/op pred)
-                                            (parse-regex pred)
-                                            (parse-spec form))) (map vector (:forms x) (:ps x)))
+                              (if (:clojure.spec/op pred)
+                                (parse-regex pred)
+                                (parse-spec form))) (map vector (:forms x) (:ps x)))
                   :forms (:forms x)
                   :ret (:ret x)}))
+
+(defmethod parse-spec* 'clojure.spec/cat [x]
+  (let [pairs (->> x rest (partition 2))
+        ks (map first pairs)
+        ps (map second pairs)]
+    (map->RegexCat {:ks ks
+                    :ps (mapv parse-spec ps)
+                    :forms ps
+                    :ret {}})))
 
 (defn parse-seq [x]
   (let [forms (if (vector? (:forms x))
@@ -478,10 +487,9 @@
                                  (parse-spec f)) forms)})))
 
 (defn parse-fn-spec [s]
-  (-> s
-      (update-in [:args] parse-spec)
-      (update-in [:ret] parse-spec)
-      (update-in [:fn] parse-spec)))
+  {:args (-> s :args parse-spec)
+   :ret (-> s :ret parse-spec)
+   :fn (-> s :fn parse-spec)})
 
 (extend-protocol Spect
   clojure.spec.Spec

@@ -3,7 +3,10 @@
             [clojure.test :refer :all]
             [clojure.tools.namespace.find :as find]
             [clojure.spec :as s]
+            [clojure.spec.test :as spec-test]
             [spectrum.check :as st]))
+
+(spec-test/instrument)
 
 (defn example-namespaces []
   (find/find-namespaces-in-dir (io/file "test/spectrum/examples")))

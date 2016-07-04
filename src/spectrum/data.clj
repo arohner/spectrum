@@ -1,4 +1,5 @@
-(ns spectrum.data)
+(ns spectrum.data
+  (:require [clojure.tools.analyzer.jvm :as ana.jvm]))
 
 (defonce var-analysis
   ;; var => ana.jvm/analysis cache
@@ -20,3 +21,11 @@
                                                               :methods [{:variadic? false
                                                                          :fixed-arity 1}]}})
   nil)
+
+(defn analyze-cache-ns
+  "analyze and store in var cache, but don't flow or check. Useful for clojure.core and other hard to check nses. "
+  [ns]
+  (let [as (ana.jvm/analyze-ns ns)]
+    (doseq [a as]
+      (when (= :def (:op a))
+        (store-var-analysis a)))))
