@@ -10,14 +10,16 @@ It's like core.typed, but it relies on clojure.spec annotations.
 
 Kind-of. It finds errors at compile time, and predicates kind of look like types. So sure.
 
-https://pbs.twimg.com/media/CjcVSAVUYAIBY3Z.jpg
+![Proving contracts ahead of time](https://pbs.twimg.com/media/CjcVSAVUYAIBY3Z.jpg)
 
 
 ## Usage
 
+```clojure
 (require '[spectrum.check :as st])
 
 (st/check-ns 'foo.bar)
+```
 
 Returns a seq of Error defrecords.
 
@@ -36,12 +38,11 @@ Returns a seq of Error defrecords.
 
 ## Limitations
 
-It's still very early. It doesn't understand all clojure forms yet, nor all spec annotations. Contributions welcome.
+- It's still very early. It doesn't understand all clojure forms yet, nor all spec annotations. Contributions welcome.
 
+- It only proves things that your specs would have caught, not that the function has no type errors.
 
-It only proves things that your specs would have caught, not that the function has no type errors.
-
-It also proceeds from the assumption that your specs are correct (i.e. don't error at runtime). If you're not running clojure.test.spec or not running your unit tests with `instrument`, you're gonna have a bad time.
+- It also proceeds from the assumption that your specs are correct (i.e. no spec errors at runtime). If you're not running clojure.test.spec or not running your unit tests with `instrument`, you're gonna have a bad time.
 
 
 ## How It Works
@@ -68,11 +69,11 @@ Returns a defrecord, containing the parsed spec. This is basically a reimplement
 
 ### spectrum.flow
 
-Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes function parameters and let bindings, and updates the analyzer output with the appropriate specs, to make checking simpler.
+Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes function parameters and let bindings, and updates the analyzer output with the appropriate specs, to make checking simpler. The main thing it's responsible for is adding a :spectrum.flow/spec to every expression.
 
 ### spectrum.check
 
-Where the magic happens. It takes a flow, and performs checks.
+Where the magic happens. It takes a flow, and performs checks. Returns a seq of ParseError records.
 
 ## Todo
 
@@ -85,13 +86,16 @@ Where the magic happens. It takes a flow, and performs checks.
 ## Future work
 
 There are things core.typed can prove, that clojure.spec currently
-can't. Spectrum should be able to recognize some well-known
+can't. Spectrum should be able to recognize known
 higher order functions, like `clojure.core/map`. We know the type of
 `map` is `[[X -> Y] (Seq X) -> (Seq Y)]`. That is, map takes a `fn`
 that takes X and returns Y, and a seq of Xs, and returns a seq of
 Y. Currently, the best `clojure.spec` can do is say `:ret (seq-of
 ::s/any)`
 
+The current plan is to write spec-transformer functions. These are
+functions that take 1) a var, 2) its existing spec, 3) the spec of the
+arguments and returns an updated spec.
 
 ## License
 
