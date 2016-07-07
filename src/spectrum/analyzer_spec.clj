@@ -4,5 +4,5 @@
 
 (s/def ::ana.jvm/op keyword?)
 (s/def ::ana.jvm/form ::s/any)
-(s/def ::ana.jvm/analysis (s/keys :req-un [:analyzer/op :analyzer/form]))
+(s/def ::ana.jvm/analysis (s/keys :req-un [:ana.jvm/op :ana.jvm/form]))
 (s/def ::ana.jvm/analyses (s/coll-of ::ana.jvm/analysis :into []))

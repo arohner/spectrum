@@ -18,7 +18,7 @@
 (s/def ::spec (s/or ::c/spect ::fn-spec))
 (s/def ::var var?)
 
-(s/def ::analysis (s/keys :req-un [:analyzer/op :analyzer/form]
+(s/def ::analysis (s/keys :req-un [::ana.jvm/op ::ana.jvm/form]
                           :opt-un [::var ::spec]))
 
 (s/def ::analysis? (s/nilable ::analysis))

@@ -11,6 +11,9 @@
 
 (defrecord CheckError [message file line column end-column])
 
+(s/def ::message string?)
+
+(s/fdef new-error :args (s/cat :args (s/keys :req-un [::message])))
 (defn new-error [{:keys [message form data] :as args} a]
   (map->CheckError (merge args (select-keys (:env a) [:file :line :column]))))
 
@@ -21,7 +24,7 @@
 
 (s/def ::check-errors (s/* check-error?))
 
-(s/fdef check* :args (s/cat :a ::ana.jvm/analysis) :ret ::check-errors)
+(s/fdef check* :args (s/cat :a ::flow/analysis) :ret ::check-errors)
 
 (defmulti check* "Entrypoint into low level checking. Takes a tools.analyzer expression. Returns nil or an error" :op)
 
