@@ -154,16 +154,26 @@
 (defn long? [x]
   (instance? java.lang.Long))
 
-(def class->pred {Long #'long?
-                  Double #'double?
-                  Integer #'int?
-                  java.util.Date #'inst?
-                  Number #'number?
-                  Object #'object?})
+(def class->pred* {Long #'long?
+                   Double #'double?
+                   Integer #'int?
+                   java.util.Date #'inst?
+                   Number #'number?
+                   Object #'object?
+                   spectrum.conform.Unknown c/unknown?})
 
-(def pred->class (set/map-invert class->pred))
+(defn class->pred [cls]
+  {:post [(do (when-not % (println "class->pred not found:" cls)) true) %]}
+  (get class->pred* cls))
 
-(s/def ::predicate fn?)
+(def pred->class* (set/map-invert class->pred*))
+
+(s/fdef pred->class :args (s/cat :pred ::predicate) :ret (s/nilable Class))
+(defn pred->class [pred]
+  {:post [(do (when-not % (println "pred->class not found:" pred)) true)]}
+  (get pred->class* pred))
+
+(s/def ::predicate (s/fspec :args (s/cat :x ::s/any) :ret boolean?))
 
 (s/fdef primitive->pred :args (s/cat :p primitive?) :ret class?)
 
@@ -178,10 +188,10 @@
 (defn spec->java-args
   "Given args spec, convert to java"
   [arg-spec]
-  {:post [(every? identity %)]}
+  ;;{:post [(every? identity %)]}
   (assert (instance? spectrum.conform.RegexCat arg-spec))
   (mapv (fn [arg]
-          (spec->class arg)) (:ps arg-spec)))
+          (or (pred->class arg) (c/unknown arg))) (:ps arg-spec)))
 
 (s/fdef resolve-class :args (s/cat :str symbol?) :ret class?)
 (defn resolve-class

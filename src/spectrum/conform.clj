@@ -13,6 +13,16 @@
 
 (s/def ::spect spect?)
 
+(defrecord Unknown [form]
+  Spect
+  (conform* [this x]
+    false))
+
+(defn unknown [form]
+  (map->Unknown {:form form}))
+
+(defn unknown? [x]
+  (instance? Unknown x))
 
 (defprotocol PredConform
   (pred-conform [this pred-s]
