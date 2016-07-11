@@ -136,8 +136,10 @@
 (extend-protocol Spect
   spectrum.conform.Regex
   (conform* [spec data]
-    (if (or (nil? data) (coll? data))
-      (let [[x & xs] data]
+    (if (or (nil? data) (coll? data) (regex? data))
+      (let [[x & xs] (if (spect? data)
+                       (:ps data)
+                       data)]
         (if (empty? data)
           (if (accept-nil? spec)
             (return spec)
@@ -202,7 +204,6 @@
     regex-reject))
 
 (defn cat- [ps]
-  (println "cat- " ps)
   (new-regex-cat ps nil nil []))
 
 (defrecord RegexCat [ps ks forms ret]

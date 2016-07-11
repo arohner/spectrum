@@ -71,6 +71,8 @@
          (s/cat :x (s/* integer?) :y (s/+ string?)) [1 2 "foo" "bar"] {:x [1 2] :y ["foo" "bar"]}
          (s/cat :x (s/? integer?)) [] {}
 
+         (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
+
          (s/cat :x int?) [(c/class-spec Integer)] {:x (c/class-spec Integer)}))
 
   (testing "should fail"
