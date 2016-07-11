@@ -408,7 +408,8 @@
   (conform* [this v]
     (cond
       (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
-                             (subclass? cls v-class))
+                             (when (subclass? cls v-class)
+                               this))
       (class? v) (subclass? cls v)
       (j/primitive? v) (subclass? cls (j/primitive->class v))
       (literal? v) (when (subclass? cls (class v))

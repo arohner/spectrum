@@ -40,6 +40,7 @@
 
          #'int? (c/class-spec Integer) (c/parse-spec #'int?)
          (c/class-spec Long) 3 3
+         (c/class-spec String) (c/class-spec String) (c/class-spec String)
 
          (s/and integer? even?) 10 10
          (s/and integer? even?) (s/and integer? even?) (c/parse-spec (s/and integer? even?))
