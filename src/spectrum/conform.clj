@@ -13,6 +13,14 @@
 (defprotocol SpectPrettyString
   (pretty-str [spec]))
 
+(extend-protocol SpectPrettyString
+  nil
+  (pretty-str [x]
+    "nil")
+  Object
+  (pretty-str [x]
+    (str x)))
+
 (defn regex-pretty-str [re-name spec]
   (str "#" re-name "[" (str/join ", " (map pretty-str (:ps spec))) "]"))
 
