@@ -30,11 +30,14 @@ Returns a seq of Error defrecords.
 - readable code
 - fast
 - configurable strictness levels
+- incremental
 
 ## Non-goals
 
 - perfection
 - correctness
+
+In particular, spectrum aims to be fast and usable, and catching bugs. A tool that catches 80% of bugs that you use every day is better than a 100% tool that you don't use. Spectrum will trend towards 100%, but it will never guarantee 100% correctness.
 
 ## Limitations
 
@@ -51,7 +54,12 @@ This section is for the curious, and potential contributors. Shouldn't be necess
 
 ### spectrum.conform
 
-This contains a spec parser and a re-implementation of clojure.spec regexes, except they work on literals and symbols rather than normal clojure values.
+This contains a spec parser and a re-implementation of clojure.spec regexes, except they work on literals and specs rather than normal clojure values.
+
+```clojure
+(c/conform (s/cat :x integer?) [3])
+=> {:x 3}
+```
 
 ```clojure
 (require '[spectrum.conform :as c])
