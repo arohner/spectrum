@@ -37,6 +37,10 @@
          'integer? 'integer? (c/parse-spec 'integer?)
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
+
+         #'int? (c/class-spec Integer) (c/parse-spec #'int?)
+         (c/class-spec Long) 3 3
+
          (s/and integer? even?) 10 10
          (s/and integer? even?) (s/and integer? even?) (c/parse-spec (s/and integer? even?))
          (s/and integer? even?) (s/and integer? even? #(> % 10)) (c/parse-spec (s/and integer? even?))
@@ -67,8 +71,7 @@
          (s/cat :x (s/* integer?) :y (s/+ string?)) [1 2 "foo" "bar"] {:x [1 2] :y ["foo" "bar"]}
          (s/cat :x (s/? integer?)) [] {}
 
-         ;; (s/& (s/+ integer?) #(even? (count %))) [1 2] [1 2]
-         ))
+         (s/cat :x int?) [(c/class-spec Integer)] {:x (c/class-spec Integer)}))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
@@ -90,4 +93,6 @@
          (s/cat :x integer? :y keyword?) 3
          (s/alt :int integer? :str string?) ["foo" 3]
          ;; (s/& (s/+ integer?) #(even? (count %))) [1]
-         )))
+
+         (c/class-spec String) 3
+         (c/class-spec Integer) 3)))

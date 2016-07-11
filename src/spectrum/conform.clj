@@ -1,7 +1,8 @@
 (ns spectrum.conform
   (:require [clojure.spec :as s]
             [clojure.set :as set]
-            [spectrum.util :refer (fn-literal? literal?)])
+            [spectrum.util :refer (fn-literal? literal?)]
+            [spectrum.java :as j])
   (:import (clojure.lang Var)))
 
 (defprotocol Spect
@@ -13,6 +14,8 @@
 
 (s/def ::spect spect?)
 
+(s/fdef conform* :args (s/cat :spec spect? :x any?))
+
 (defrecord Unknown [form]
   Spect
   (conform* [this x]
@@ -23,6 +26,17 @@
 
 (defn unknown? [x]
   (instance? Unknown x))
+
+;; spec resulting from e.g. bad java interop calls, but we still need a ::spec
+(defrecord Invalid [form]
+  Spect
+  (conform* [this x]
+    false))
+
+(s/fdef spec->class :args (s/cat :s ::spect) :ret (s/nilable ::j/java-type))
+(defprotocol SpecToClass
+  (spec->class [s]
+    "If this spec checks for an instance of a class, return it, else nil"))
 
 (defprotocol PredConform
   (pred-conform [this pred-s]
@@ -186,6 +200,10 @@
                       :forms forms
                       :ret ret}))
     regex-reject))
+
+(defn cat- [ps]
+  (println "cat- " ps)
+  (new-regex-cat ps nil nil []))
 
 (defrecord RegexCat [ps ks forms ret]
   Regex
@@ -370,6 +388,40 @@
             (when (conform* f this)
               [k this])) (map vector (:ks or-s) (:forms or-s)))))
 
+(defn pred-spec? [x]
+  (instance? PredSpec x))
+
+(defn subclass?
+  "True if a is compatible with b"
+  [a b]
+  (or (= a b)
+      (contains? (ancestors b) a)))
+
+
+;; Spec representing a java class. Probably won't need to use this
+;; directly. Used in java interop, and other places where we don't
+;; have 'real' specs
+
+(defrecord ClassSpec [cls]
+  Spect
+  (conform* [this v]
+    (cond
+      (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
+                             (subclass? cls v-class))
+      (class? v) (subclass? cls v)
+      (j/primitive? v) (subclass? cls (j/primitive->class v))
+      (literal? v) (when (subclass? cls (class v))
+                     v)
+      :else false))
+  PredConform
+  (pred-conform [this pred-s]
+    (when-let [pred-class (spec->class pred-s)]
+      (when (subclass? cls pred-class)
+        pred-s))))
+
+(defn class-spec [c]
+  (map->ClassSpec {:cls c}))
+
 (defmethod parse-spec* :fn-sym [x]
   (let [v (resolve x)]
     (assert v)
@@ -514,6 +566,32 @@
   (pred-conform [spec x]
     (pred-conform (parse-spec spec) x)))
 
+(defn spec->class-seq [forms]
+  (->> forms
+       rest
+       (map (fn [f]
+              (j/shared-ancestors (spec->class (first forms)) (spec->class f))))
+       (filter identity)
+       (apply set/union)
+       (first)))
+
+(extend-protocol SpecToClass
+  spectrum.conform.PredSpec
+  (spec->class [s]
+    (j/pred->class (:pred s)))
+  spectrum.conform.OrSpec
+  (spec->class [s]
+    (spec->class-seq (:forms s)))
+  spectrum.conform.AndSpec
+  (spec->class [s]
+    (spec->class-seq (:forms s)))
+  spectrum.conform.ClassSpec
+  (spec->class [s]
+    (:cls s))
+  spectrum.conform.Unknown
+  (spec->class [s]
+    Object))
+
 (defmacro conform
   "Given a spec and args, return the conforming parse. Behaves the same way as s/conform, but args may be clojure literals, or specs, not variables that contain values.
 
@@ -524,9 +602,9 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
  "
   [spec args]
-  `(let [parsed# (parse-spec ~spec)
+  `(let [spec# (parse-spec ~spec)
          args# (parse-spec ~args)]
-     (if-let [val# (conform* parsed# args#)]
+     (if-let [val# (conform* spec# args#)]
        (if (= ::nil val#)
          nil
          val#)
