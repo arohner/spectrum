@@ -56,9 +56,6 @@
   (mapv flow as))
 
 (defn java-type->spec [t]
-  {:pre [(do (println "java-type->spec:" t) true)]
-   :post [(do (when-not %
-                (println "java-type->spec:" t "=>" %)) true)]}
   (c/class-spec
    (cond
      (j/primitive? t) (j/primitive->class t)
@@ -203,13 +200,20 @@
   [arg-vecs]
   (-> (sort more-specific-compare arg-vecs) last))
 
-(s/fdef get-java-method :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret (s/nilable map?))
-(defn get-java-method [cls method arg-spec]
+(s/fdef get-java-method :args (s/cat :cls class? :method symbol?) :ret (s/coll-of j/reflect-method?))
+(defn get-java-method
+  [cls method]
   (some->> (reflect/reflect cls)
            :members
            (filterv (fn [m]
                       (and (instance? clojure.reflect.Method m)
-                           (= method (:name m)))))
+                           (= method (:name m)))))))
+
+(s/fdef get-conforming-java-method :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret (s/nilable j/reflect-method?))
+(defn get-conforming-java-method
+  "Returns the java method that conforms to arg-spec "
+  [cls method arg-spec]
+  (some->> (get-java-method cls method)
            (filterv (fn [m]
                       (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
            (most-specific)))
@@ -218,7 +222,7 @@
 (defn get-java-method-spec
   "Return a fake spec for a java interop call"
   [cls method arg-spec]
-  (when-let [m (get-java-method cls method arg-spec)]
+  (when-let [m (get-conforming-java-method cls method arg-spec)]
     (let [java-args (->> (mapv java-type->spec (:parameter-types m)))
           ret (c/parse-spec (java-type->spec (:return-type m)))]
       {:args (c/map->RegexCat {:ps (mapv c/parse-spec java-args)

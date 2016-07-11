@@ -1,6 +1,7 @@
 (ns spectrum.conform
   (:require [clojure.spec :as s]
             [clojure.set :as set]
+            [clojure.string :as str]
             [spectrum.util :refer (fn-literal? literal?)]
             [spectrum.java :as j])
   (:import (clojure.lang Var)))
@@ -8,6 +9,12 @@
 (defprotocol Spect
   (conform* [spec x]
     "True if value x conforms to spec."))
+
+(defprotocol SpectPrettyString
+  (pretty-str [spec]))
+
+(defn regex-pretty-str [re-name spec]
+  (str "#" re-name "[" (str/join ", " (map pretty-str (:ps spec))) "]"))
 
 (defn spect? [x]
   (satisfies? Spect x))
@@ -234,7 +241,10 @@
     (let [ret (return this)]
       (if (empty? ret)
         r
-        (conj r (if k {k ret} ret))))))
+        (conj r (if k {k ret} ret)))))
+  SpectPrettyString
+  (pretty-str [this]
+    (regex-pretty-str "Cat" this)))
 
 (declare map->RegexSeq)
 
@@ -267,7 +277,10 @@
     (let [ret (return this)]
       (if (empty? ret)
         r
-        ((if splice into conj) r (if k {k ret} ret))))))
+        ((if splice into conj) r (if k {k ret} ret)))))
+  SpectPrettyString
+  (pretty-str [this]
+    (regex-pretty-str "Seq" this)))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
@@ -314,7 +327,10 @@
     (let [ret (return this)]
       (if (= ret ::nil)
         r
-        (conj r (if {k ret} ret))))))
+        (conj r (if {k ret} ret)))))
+  SpectPrettyString
+  (pretty-str [this]
+    (regex-pretty-str "Alt" this)))
 
 (declare new-regex-plus)
 
@@ -387,7 +403,10 @@
   (or-conform [this or-s]
     (some (fn [[k f]]
             (when (conform* f this)
-              [k this])) (map vector (:ks or-s) (:forms or-s)))))
+              [k this])) (map vector (:ks or-s) (:forms or-s))))
+  SpectPrettyString
+  (pretty-str [this]
+    (str form)))
 
 (defn pred-spec? [x]
   (instance? PredSpec x))
@@ -419,7 +438,10 @@
   (pred-conform [this pred-s]
     (when-let [pred-class (spec->class pred-s)]
       (when (subclass? cls pred-class)
-        pred-s))))
+        pred-s)))
+  SpectPrettyString
+  (pretty-str [this]
+    (str cls)))
 
 (defn class-spec [c]
   (map->ClassSpec {:cls c}))

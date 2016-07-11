@@ -1,5 +1,6 @@
 (ns spectrum.check
-  (:require [clojure.reflect :as reflect]
+  (:require [clojure.pprint :as pprint :refer (pprint)]
+            [clojure.reflect :as reflect]
             [clojure.string :as str]
             [clojure.spec :as s]
             [clojure.tools.analyzer.jvm :as ana.jvm]
@@ -49,10 +50,11 @@
   (swap! data/checked-nses conj ns)
   (maybe-load-clojure-builtins)
   (println "checking " ns)
-  (->>
+  (some->>
    (ana.jvm/analyze-ns ns)
    (map flow/flow)
    (mapcat check*)
+   (doall)
    (filter identity)
    (doall)))
 
@@ -106,22 +108,19 @@
     (when-not valid?
       (wrong-number-args-error f a))))
 
-(defn spec->args-error-str
-  "Return a pretty-printed spect for an error message"
-  [s]
-  (cond
-    (seq (:ps s)) (str "[" (str/join ", " (map spec->args-error-str (:ps s))) "]")
-    (:pred s) (:form s)
-    :else s))
+(defn a-loc-str
+  "A human-formatted string for the file & line of the current analysis"
+  [a]
+  (println "file" (:file a) "line" (:line a) "col" (:column a)))
 
 (defn check-invoke-fn-spec
   [name s a]
   (println "check invoke-fn-spec")
   (let [a-args (zip a :args)
-        args (flow/analysis->args a-args)
-        valid? (c/valid? (:args s) args)]
+        args-spec (flow/analysis-args->spec a-args)
+        valid? (c/valid? (:args s) args-spec)]
     (when-not valid?
-      (new-error {:message (format "Function %s cannot be called with args %s. Expected %s" name (spec->args-error-str args) (spec->args-error-str (-> s :args)))} a))))
+      (new-error {:message (format "Function %s cannot be called with args %s. Expected %s" name (c/pretty-str args-spec) (c/pretty-str (-> s :args)))} a))))
 
 (defn check-invoke-var [a]
   (let [v (-> a :fn :var)]
@@ -152,14 +151,13 @@
       :local (check-invoke-local a)
       (println "unknown invoke expr" a))))
 
-
-
 (defmethod check* :do [a]
-  (->>
+  (some->>
    (concat
     (mapcat (fn [s]
               (check* (with-a s a))) (:statements a))
     [(check* (zip a :ret))])
+   (doall)
    (filter identity)))
 
 (defmethod check* :with-meta [a]
@@ -169,9 +167,10 @@
   (check* (zip a :init)))
 
 (defmethod check* :fn [a]
-  (->>
+  (some->>
    (mapcat (fn [m]
              (check* (with-a m a))) (:methods a))
+   (doall)
    (filter identity)))
 
 (defmethod check* :fn-method [a]
@@ -179,3 +178,23 @@
   (check* (zip a :body)))
 
 (defmethod check* :quote [a])
+
+(defn a->java-static-method-name [a]
+  (str (:class a) "/" (:method a)))
+
+(defn java-methods-str [cls method]
+  (->> (flow/get-java-method cls method)
+       (mapv :parameter-types)
+       (str/join ", ")))
+
+(defmethod check* :static-call [a]
+  (let [a-args (zip a :args)
+        args-spec (flow/analysis-args->spec a-args)
+        call-spec (::flow/args-spec a)]
+    (if call-spec
+      (if args-spec
+        (let [valid? (c/valid? call-spec args-spec)]
+          (when-not valid?
+            [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (c/pretty-str args-spec) (c/pretty-str call-spec))} a)]))
+        (println "static-call no arg-spec:" (a-loc-str a)))
+      [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (c/pretty-str args-spec) (java-methods-str (:class a) (:method a)))} a)])))
