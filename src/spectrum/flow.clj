@@ -6,7 +6,8 @@
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.data :as data]
-            [spectrum.util :as util :refer (zip with-a unwrap-a)]))
+            [spectrum.java :as j]
+            [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
 
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
 
@@ -16,10 +17,12 @@
 
 (s/def ::fn-spec (s/keys :req-un [::args ::ret ::fn]))
 (s/def ::spec (s/or ::c/spect ::fn-spec))
+(s/def ::args-spec ::spec)
+(s/def ::ret-spec ::spec)
 (s/def ::var var?)
 
 (s/def ::analysis (s/keys :req-un [::ana.jvm/op ::ana.jvm/form]
-                          :opt-un [::var ::spec]))
+                          :opt-un [::var ::args-spec ::ret-spec]))
 
 (s/def ::analysis? (s/nilable ::analysis))
 
@@ -35,6 +38,7 @@
 
 (s/fdef flow-dispatch :args (s/cat :a ::analysis) :ret keyword?)
 (defn flow-dispatch [a]
+  (print-once "flow-dispatch:" (:op a))
   (assert (:op a))
   (:op a))
 
@@ -49,7 +53,18 @@
 (defn flow-ns
   "Given the result of analyze-ns, flow all forms"
   [as]
-  (map flow as))
+  (mapv flow as))
+
+(defn java-type->spec [t]
+  {:pre [(do (println "java-type->spec:" t) true)]
+   :post [(do (when-not %
+                (println "java-type->spec:" t "=>" %)) true)]}
+  (c/class-spec
+   (cond
+     (j/primitive? t) (j/primitive->class t)
+     (symbol? t) (j/resolve-class t)
+     (class? t) t
+     :else (assert "unknown type:" t))))
 
 (s/fdef maybe-assoc-var-name :args (s/cat :a ::analysis) :ret ::analysis)
 (defn maybe-assoc-var-name
@@ -61,11 +76,6 @@
     (if (= :fn (:op (get-in a path)))
       (assoc-in a (conj path ::var) (:var a))
       a)))
-
-(defn print-once* [& args]
-  (apply println args))
-
-(def print-once (memoize print-once*))
 
 (defmethod flow :default [a]
   (print-once "TODO" "analyze op" (:op a))
@@ -86,20 +96,28 @@
         spec (when v
                (get-var-fn-spec v))
         a (if spec
-            (assoc a ::spec spec)
+            (assoc a
+                   ::args-spec (:args spec)
+                   ::ret-spec (:ret spec))
             a)]
     (-> a
         (update-in [:methods] (fn [methods]
                                 (mapv (fn [m]
                                         (flow (with-meta m {:a a}))) methods))))))
 
+(defn const->spec [a]
+  (java-type->spec (:o-tag a)))
+
+(defmethod flow :const [a]
+  (assoc a ::ret-spec (const->spec a)))
+
 (defmethod flow :do [a]
   (-> a
       (update-in [:statements] (fn [statements] (mapv flow statements)))
       (update-in [:ret] flow)))
 
-(defn object? [x]
-  (instance? Object x))
+(defmethod flow :try [a]
+  (update-in a [:body] flow))
 
 (defn analysis->arg*-dispatch [x]
   (:op x))
@@ -107,7 +125,7 @@
 (defmulti analysis->arg* #'analysis->arg*-dispatch)
 
 (defmethod analysis->arg* :const [x]
-  (-> x :val))
+  (::ret-spec x))
 
 (s/fdef find-binding :args (s/cat :a ::analysis :name symbol?) :ret (s/nilable ::analysis))
 (defn find-binding
@@ -123,164 +141,103 @@
                      :params
                      (filter (fn [b] (= name (:name b))))
                      first)
-     nil
-     ;; :local (print-once "TODO find-binding" :local)
-     )
+     nil)
 
    (when-let [a* (unwrap-a a)]
      (recur a* name))))
 
 (defmethod analysis->arg* :local [a]
   (let [b (find-binding a (:name a))]
-    (or (::spec b) (c/unknown (:name a)))))
+    (or (::ret-spec b) (c/unknown (:name a)))))
 
-(s/fdef analysis->args :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::c/spect))
+(s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::c/spect))
 
-(defn analysis->args
+(defn analysis-args->spec
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
   [args]
   (c/map->RegexCat {:ps (mapv (fn [arg]
                                 (analysis->arg* (with-a arg args))) args)
                     :ret []}))
 
-(def primitive->class {'long Long
-                       'double Double})
-
-(def class->primitive (set/map-invert primitive->class))
-
-(defn primitive? [x]
-  (contains? primitive->class x))
-
-(defn long? [x]
-  (instance? java.lang.Long))
-
-(def class->pred* {Long #'long?
-                   Double #'double?
-                   Integer #'int?
-                   java.util.Date #'inst?
-                   Number #'number?
-                   Object #'object?
-                   spectrum.conform.Unknown c/unknown?})
-
-(defn class->pred [cls]
-  {:post [(do (when-not % (println "class->pred not found:" cls)) true) %]}
-  (get class->pred* cls))
-
-(def pred->class* (set/map-invert class->pred*))
-
-(s/fdef pred->class :args (s/cat :pred ::predicate) :ret (s/nilable Class))
-(defn pred->class [pred]
-  {:post [(do (when-not % (println "pred->class not found:" pred)) true)]}
-  (get pred->class* pred))
-
-(s/def ::predicate (s/fspec :args (s/cat :x ::s/any) :ret boolean?))
-
-(s/fdef primitive->pred :args (s/cat :p primitive?) :ret class?)
-
-(defn primitive->pred [p]
-  (get class->pred (get primitive->class p)))
-
-(s/def ::java-type (s/or :p primitive? :c class?))
-
-(s/def ::java-args (s/coll-of ::java-type))
-
-(s/fdef spec->java-args :args (s/cat :arg-spec ::c/spect) :ret ::java-args)
+(s/fdef spec->java-args :args (s/cat :arg-spec ::c/spect) :ret ::j/java-args)
 (defn spec->java-args
   "Given args spec, convert to java"
   [arg-spec]
   ;;{:post [(every? identity %)]}
   (assert (instance? spectrum.conform.RegexCat arg-spec))
   (mapv (fn [arg]
-          (or (pred->class arg) (c/unknown arg))) (:ps arg-spec)))
+          (or (c/spec->class arg) (c/unknown arg))) (:ps arg-spec)))
 
-(s/fdef resolve-class :args (s/cat :str symbol?) :ret class?)
-(defn resolve-class
-  [sym]
-  (clojure.lang.RT/classForName (str sym)))
 
-(s/fdef compatible-java-method? :args (s/cat :v ::java-args :m ::java-args) :ret boolean?)
+(s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?
-  "True if values of type arg-a can be passed to a method that takes arg-b "
-  [value-types method-types]
-  (and
-   (= (count value-types)
-      (count method-types))
-   (every? (fn [[v m]]
-             (cond
-               (primitive? m) (or (= m v) (= m (get class->primitive v)))
-               (resolve-class m) (instance? (resolve-class m) v))) (map vector value-types method-types))))
+  "True if args conforming to spec s can be passed to a method that takes method-types"
+  [arg-spec method-types]
+  (let [spec (c/cat- (mapv java-type->spec method-types))
+        argv (-> arg-spec :ps)]
+    (assert argv)
+    (c/conform spec argv)))
 
 (s/def ::reflect-name symbol?)
-(s/def ::reflect-return-type ::java-type)
-(s/def ::reflect-parameter-types ::java-args)
+(s/def ::reflect-return-type ::j/java-type)
+(s/def ::reflect-parameter-types ::j/java-args)
 
 (s/def ::reflect-method (s/keys :req-un [::reflect-name ::reflect-return-type ::reflect-parameter-types]))
 
-(s/fdef more-specific? :args (s/cat :v ::reflect-method :m ::reflect-method) :ret boolean?)
-(defn more-specific?
-  "Given two vectors of java args, return true if a is a more specific method than b"
+(s/fdef more-specific? :args (s/cat :v ::reflect-method :m ::reflect-method) :ret integer?)
+(defn more-specific-compare
+  "sort comparator for two vectors of java args"
   [a b]
-  {:post [(do (println "more-specific?" a b "=>" %) true)]}
   (loop [[a & as] (:parameter-types a)
          [b & bs] (:parameter-types b)]
     (if (and a b)
       (cond
-        (or (primitive? a) (contains? (parents a) (class b))) 1
-        (or (primitive? b) (contains? (parents b) (class a))) -1
+        (or (j/primitive? a) (contains? (parents a) (class b))) 1
+        (or (j/primitive? b) (contains? (parents b) (class a))) -1
         :else (recur as bs))
       0)))
 
-(s/fdef most-specific :args (s/cat :vecs (s/coll-of ::java-args)) :ret ::java-args)
+(s/fdef most-specific :args (s/cat :vecs (s/coll-of j/reflect-method?)) :ret ::j/java-args)
 (defn most-specific
   "Given a seq of vectors of java args, return the most specific method"
   [arg-vecs]
-  (-> (sort more-specific? arg-vecs) last))
+  (-> (sort more-specific-compare arg-vecs) last))
 
-(s/fdef get-java-method :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret map?)
+(s/fdef get-java-method :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret (s/nilable map?))
 (defn get-java-method [cls method arg-spec]
-  (->> (reflect/reflect cls)
-       :members
-       (filterv (fn [m]
-                  (and (instance? clojure.reflect.Method m)
-                       (= method (:name m)))))
-       (filterv (fn [m]
-                  (compatible-java-method? (spec->java-args arg-spec) (:parameter-types m))))
-       (most-specific)))
+  (some->> (reflect/reflect cls)
+           :members
+           (filterv (fn [m]
+                      (and (instance? clojure.reflect.Method m)
+                           (= method (:name m)))))
+           (filterv (fn [m]
+                      (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
+           (most-specific)))
 
-(defn java-type->pred [t]
-  {:post [(do (when-not %
-                (println "java-type->pred:" t (class t) "=>" %)) true)]}
-  (cond
-    (primitive? t) (primitive->pred t)
-    (symbol? t) (get class->pred (resolve-class t))
-    (class? t) (get class->pred t)
-    :else (assert "unknown type:" t)))
-
-(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret ::fn-spec)
+(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret (s/nilable ::fn-spec))
 (defn get-java-method-spec
   "Return a fake spec for a java interop call"
   [cls method arg-spec]
-  (let [m (get-java-method cls method arg-spec)
-        _ (assert m)
-        _ (println "method:" m)
-        java-args (->> (mapv java-type->pred (:parameter-types m)))
-        _ (println "java-args:" java-args)
-        ret (c/parse-spec (java-type->pred (:return-type m)))]
-    {:args (c/map->RegexCat {:ps (mapv c/parse-spec java-args)
-                             :forms java-args
-                             :ret []})
-     :ret (c/parse-spec ret)}))
+  (when-let [m (get-java-method cls method arg-spec)]
+    (let [java-args (->> (mapv java-type->spec (:parameter-types m)))
+          ret (c/parse-spec (java-type->spec (:return-type m)))]
+      {:args (c/map->RegexCat {:ps (mapv c/parse-spec java-args)
+                               :forms java-args
+                               :ret []})
+       :ret (c/parse-spec ret)})))
 
 (defmethod flow :static-call [a]
   (println "static-call:" a)
   (let [cls (:class a)
         method (:method a)
-        args (analysis->args (:args a))]
+        a (update-in a [:args] (fn [args]
+                               (mapv (fn [arg]
+                                       (flow (with-meta arg {:a a}))) args)))
+        args-spec (analysis-args->spec (:args a))
+        spec (get-java-method-spec cls method args-spec)]
     (-> a
-        (update-in [:args] (fn [args]
-                             (mapv (fn [arg]
-                                     (flow (with-meta arg {:a a}))) args)))
-        (assoc ::spec (get-java-method-spec cls method args)))))
+        (assoc ::ret-spec (:ret spec)
+               ::args-spec (:args spec)))))
 
 (defmethod flow :binding [a]
   ;;(println "flow binding:" a)
@@ -305,7 +262,9 @@
         _ (assert v)
         s (get-var-fn-spec v)]
     (if s
-      (assoc a ::spec s)
+      (assoc a
+             ::args-spec (:args s)
+             ::ret-spec (:ret s))
       a)))
 
 ;; (s/fdef get-form-spec :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
@@ -340,8 +299,8 @@
             s (c/first* spec)]
         (assert s)
         (if (:variadic? param)
-          (conj ret (assoc param ::spec (c/rest* spec)))
-          (recur (conj ret (assoc param ::spec s)) (rest params) (c/rest* spec))))
+          (conj ret (assoc param ::ret-spec (c/rest* spec)))
+          (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
       ret)))
 
 (defmethod flow :fn-method [a]

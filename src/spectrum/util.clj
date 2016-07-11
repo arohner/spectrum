@@ -26,3 +26,8 @@
       (if (f a)
         a
         (recur a f)))))
+
+(defn print-once* [& args]
+  (apply println args))
+
+(def print-once (memoize print-once*))
