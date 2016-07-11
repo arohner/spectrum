@@ -231,7 +231,6 @@
        :ret (c/parse-spec ret)})))
 
 (defmethod flow :static-call [a]
-  (println "static-call:" a)
   (let [cls (:class a)
         method (:method a)
         a (update-in a [:args] (fn [args]
