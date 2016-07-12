@@ -151,8 +151,8 @@
 (extend-protocol Spect
   spectrum.conform.Regex
   (conform* [spec data]
-    (if (or (nil? data) (coll? data) (regex? data))
-      (let [[x & xs] (if (spect? data)
+    (if (or (nil? data) (coll? data) (spect? data))
+      (let [[x & xs] (if (:ps data)
                        (:ps data)
                        data)]
         (if (empty? data)
@@ -445,8 +445,8 @@
   PredConform
   (pred-conform [this pred-s]
     (when-let [pred-class (spec->class pred-s)]
-      (when (subclass? cls pred-class)
-        pred-s)))
+      (when (subclass? pred-class cls)
+        this)))
   SpectPrettyString
   (pretty-str [this]
     (str cls)))
@@ -571,6 +571,9 @@
     (some (fn [s]
             (when (conform* pred s)
               s)) (:forms pred))))
+
+(defn or- [ps]
+  (map->OrSpec {:forms ps}))
 
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))

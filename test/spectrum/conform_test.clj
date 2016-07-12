@@ -38,9 +38,12 @@
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
 
-         #'int? (c/class-spec Integer) (c/parse-spec #'int?)
+         #'int? (c/class-spec Integer) (c/class-spec Integer)
          (c/class-spec Long) 3 3
          (c/class-spec String) (c/class-spec String) (c/class-spec String)
+
+         (c/parse-spec #'number?) (c/class-spec Long) (c/class-spec Long)
+         (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
 
          (s/and integer? even?) 10 10
          (s/and integer? even?) (s/and integer? even?) (c/parse-spec (s/and integer? even?))
