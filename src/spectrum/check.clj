@@ -166,16 +166,46 @@
 (defmethod check* :def [a]
   (check* (zip a :init)))
 
+(defn check-fn-method-return [method-a]
+  (let [f (unwrap-a method-a)
+        f-var (::flow/var f)
+        _ (inspect f)
+        ret-spec (::flow/ret-spec f)
+        body (-> method-a :body)
+        last-expr (if (map? body)
+                    body
+                    (do
+                      (assert (sequential? body))
+                      (last body)))]
+    (if ret-spec
+      (if-let [expr-spec (::flow/ret-spec last-expr)]
+        (when-not (c/valid? ret-spec expr-spec)
+          [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or f-var "fn") (c/pretty-str ret-spec) (c/pretty-str expr-spec))} method-a)])
+        (println "check-fn-method-return no spec for:" last-expr))
+      (println "check-fn-method-return no spec for " f))))
+
+(s/fdef maybe-check-fn-return :args (s/cat :a ::analysis) :ret ::check-errors)
+(defn maybe-check-fn-return [a]
+  (if-let [ret-spec (::flow/ret-spec a)]
+    (mapcat (fn [m]
+              (check-fn-method-return (with-a m a))) (:methods a))
+    (println "maybe-check-return no spec for" (::flow/var a))))
+
 (defmethod check* :fn [a]
-  (some->>
-   (mapcat (fn [m]
-             (check* (with-a m a))) (:methods a))
-   (doall)
-   (filter identity)))
+  (concat
+   (some->>
+    (mapcat (fn [m]
+              (check* (with-a m a))) (:methods a))
+    (doall)
+    (filter identity))
+   [(maybe-check-fn-return a)]))
 
 (defmethod check* :fn-method [a]
-  ;; (println "check fn method:" a)
-  (check* (zip a :body)))
+  (println "check fn method:" a)
+  (let [body (zip a :body)]
+    (concat
+     (check* body)
+     (maybe-check-fn-return a))))
 
 (defmethod check* :quote [a])
 

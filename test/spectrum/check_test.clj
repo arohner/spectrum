@@ -6,13 +6,10 @@
             [clojure.spec.test :as spec-test]
             [spectrum.check :as st]))
 
-(spec-test/instrument)
+;;(spec-test/instrument)
 
 (defn example-namespaces []
   (find/find-namespaces-in-dir (io/file "test/spectrum/examples")))
-
-;; (deftest clojure-core-no-errors []
-;;   (is (= nil (st/check 'clojure.core))))
 
 (deftest in-ns-works
   (st/maybe-load-clojure-builtins)
