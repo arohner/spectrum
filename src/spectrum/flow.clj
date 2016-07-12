@@ -75,7 +75,7 @@
       a)))
 
 (defmethod flow :default [a]
-  (print-once "TODO" "analyze op" (:op a))
+  (print-once "TODO" "flow op" (:op a))
   a)
 
 (defmethod flow :def [a]
