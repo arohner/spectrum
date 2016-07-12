@@ -1,6 +1,6 @@
 # spectrum
 
-A library for catching clojure.spec errors at compile time.
+A library for doing static analysis of Clojure code, catching clojure.spec conform errors at compile time.
 
 **Wait what?**
 
@@ -54,7 +54,7 @@ This section is for the curious, and potential contributors. Shouldn't be necess
 
 ### spectrum.conform
 
-This contains a spec parser and a re-implementation of clojure.spec regexes, except they work on literals and specs rather than normal clojure values.
+This contains a spec parser and a re-implementation of clojure.spec, except they work on literals and specs rather than normal clojure values.
 
 ```clojure
 (c/conform (s/cat :x integer?) [3])
@@ -77,7 +77,7 @@ Returns a defrecord, containing the parsed spec. This is basically a reimplement
 
 ### spectrum.flow
 
-Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes function parameters and let bindings, and updates the analyzer output with the appropriate specs, to make checking simpler. The main thing it's responsible for is adding a :spectrum.flow/spec to every expression.
+Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes function parameters and let bindings, and updates the analyzer output with the appropriate specs, to make checking simpler. The main thing it's responsible for is adding `::flow/args-spec` and `::flow/ret-spec` to every expression.
 
 ### spectrum.check
 
