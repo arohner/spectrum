@@ -8,7 +8,7 @@
             [spectrum.conform :as c]
             [spectrum.data :as data]
             [spectrum.flow :as flow]
-            [spectrum.util :as util :refer (zip with-a unwrap-a)]))
+            [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
 
 (defrecord CheckError [message file line column end-column])
 
@@ -30,6 +30,7 @@
 (defmulti check* "Entrypoint into low level checking. Takes a tools.analyzer expression. Returns nil or an error" :op)
 
 (defmethod check* :default [a]
+  (print-once "TODO check" (:op a))
   nil)
 
 (declare check)
@@ -108,11 +109,6 @@
     (when-not valid?
       (wrong-number-args-error f a))))
 
-(defn a-loc-str
-  "A human-formatted string for the file & line of the current analysis"
-  [a]
-  (println "file" (:file a) "line" (:line a) "col" (:column a)))
-
 (defn check-invoke-fn-spec
   [name s a]
   (println "check invoke-fn-spec")
@@ -169,7 +165,6 @@
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
         f-var (::flow/var f)
-        _ (inspect f)
         ret-spec (::flow/ret-spec f)
         body (-> method-a :body)
         last-expr (if (map? body)
@@ -181,15 +176,8 @@
       (if-let [expr-spec (::flow/ret-spec last-expr)]
         (when-not (c/valid? ret-spec expr-spec)
           [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or f-var "fn") (c/pretty-str ret-spec) (c/pretty-str expr-spec))} method-a)])
-        (println "check-fn-method-return no spec for:" last-expr))
-      (println "check-fn-method-return no spec for " f))))
-
-(s/fdef maybe-check-fn-return :args (s/cat :a ::analysis) :ret ::check-errors)
-(defn maybe-check-fn-return [a]
-  (if-let [ret-spec (::flow/ret-spec a)]
-    (mapcat (fn [m]
-              (check-fn-method-return (with-a m a))) (:methods a))
-    (println "maybe-check-return no spec for" (::flow/var a))))
+        (println "check-fn-method-return no ret-spec for expression:" (:form last-expr) "@" (flow/a-loc-str last-expr)))
+      (println "check-fn-method-return no ret-spec for fn " f-var))))
 
 (defmethod check* :fn [a]
   (concat
@@ -224,5 +212,5 @@
         (let [valid? (c/valid? call-spec args-spec)]
           (when-not valid?
             [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (c/pretty-str args-spec) (c/pretty-str call-spec))} a)]))
-        (println "static-call no arg-spec:" (a-loc-str a)))
+        (println "static-call no arg-spec:" (flow/a-loc-str a)))
       [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (c/pretty-str args-spec) (java-methods-str (:class a) (:method a)))} a)])))

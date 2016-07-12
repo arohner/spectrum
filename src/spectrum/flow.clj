@@ -36,9 +36,14 @@
     (when s
       (c/parse-fn-spec s))))
 
+(defn a-loc-str
+  "A human-formatted string for the file & line of the current analysis"
+  [a]
+  (let [{{:keys [file line column]} :env} a]
+    (str "file " file " line " line " col " column)))
+
 (s/fdef flow-dispatch :args (s/cat :a ::analysis) :ret keyword?)
 (defn flow-dispatch [a]
-  (print-once "flow-dispatch:" (:op a))
   (assert (:op a))
   (:op a))
 
@@ -327,7 +332,7 @@
   (let [v (-> a meta :a ::var)
         s (if v
             (get-var-fn-spec v)
-            (println "warning: no v:" a))
+            (println "fn-method: no var at " (a-loc-str a)))
         a (if s
             (update-in a [:params] destructure-fn-params (:args s))
             (do
