@@ -43,3 +43,9 @@
   (are [x result] (= result (flow/java-type->spec x))
        'long (c/class-spec Long)
        String (c/class-spec String)))
+
+(deftest expression-return-specs
+  (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))
+    '(+ 1 2) (c/parse-spec #'number?)
+    '(if true 1 "string") (c/parse-spec (s/or :num number? :str string?))
+    '(if true 1 2) (c/parse-spec #'number?)))

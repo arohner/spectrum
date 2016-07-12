@@ -197,15 +197,13 @@
     (mapcat (fn [m]
               (check* (with-a m a))) (:methods a))
     (doall)
-    (filter identity))
-   [(maybe-check-fn-return a)]))
+    (filter identity))))
 
 (defmethod check* :fn-method [a]
-  (println "check fn method:" a)
   (let [body (zip a :body)]
     (concat
      (check* body)
-     (maybe-check-fn-return a))))
+     (check-fn-method-return a))))
 
 (defmethod check* :quote [a])
 

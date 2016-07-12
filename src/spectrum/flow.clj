@@ -102,6 +102,22 @@
                                 (mapv (fn [m]
                                         (flow (with-meta m {:a a}))) methods))))))
 
+(defmethod flow :if [a]
+  (let [a (-> a
+              (update-in [:test] (fn [form] (flow (with-a form a))))
+              (update-in [:then] (fn [form] (flow (with-a form a))))
+              (update-in [:else] (fn [form] (flow (with-a form a)))))]
+    (-> a
+        (assoc ::ret-spec (if (and (-> a :then ::ret-spec)
+                                   (-> a :else ::ret-spec))
+                            (if (= (-> a :then ::ret-spec)
+                                   (-> a :else ::ret-spec))
+                              (-> a :then ::ret-spec)
+                              (c/or- [(-> a :then ::ret-spec)
+                                    (-> a :else ::ret-spec)]))
+
+                            (c/unknown (:form a)))))))
+
 (defn const->spec [a]
   (java-type->spec (:o-tag a)))
 
@@ -121,8 +137,9 @@
 
 (defmulti analysis->arg* #'analysis->arg*-dispatch)
 
-(defmethod analysis->arg* :const [x]
-  (::ret-spec x))
+(defmethod analysis->arg* :default [x]
+  (println "analysis->arg*:" (:op x))
+  (or (::ret-spec x) (c/unknown (:form x))))
 
 (s/fdef find-binding :args (s/cat :a ::analysis :name symbol?) :ret (s/nilable ::analysis))
 (defn find-binding
