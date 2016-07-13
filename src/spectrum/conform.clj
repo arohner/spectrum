@@ -4,7 +4,7 @@
             [clojure.string :as str]
             [spectrum.util :refer (fn-literal? literal?)]
             [spectrum.java :as j])
-  (:import (clojure.lang Var)))
+  (:import (clojure.lang Var Keyword)))
 
 (defprotocol Spect
   (conform* [spec x]
@@ -28,6 +28,8 @@
   (satisfies? Spect x))
 
 (s/def ::spect spect?)
+
+(s/def ::error #(= % ::invalid))
 
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
 
@@ -580,6 +582,37 @@
 (defn or- [ps]
   (map->OrSpec {:forms ps}))
 
+
+(s/fdef conform-keys-spec :args (s/cat :a spect? :b spect?) :ret (s/or :s spect? :err ::error))
+(defn conform-keys-spec [a b]
+  (when (and (= (set (:req a)) (set/intersection (set (:req a)) (set (:req b))))
+             (= (set (:req-un a)) (set/intersection (set (:req-un a)) (set (:req-un b)))))
+    b))
+
+(defn conform-keys-literal [this x]
+  (when (and
+         (every? (fn [[key spec]]
+                   (valid? spec (get x key))) (:req this))
+         (every? (fn [[key spec]]
+                   (valid? spec (get x (keyword (.getName ^Keyword key))))) (:req-un this))
+         (every? (fn [[key spec]]
+                   (if (contains? x key)
+                     (valid? spec (get x key))
+                     true)) (:opt this))
+         (every? (fn [[key spec]]
+                   (if (contains? x (keyword (.getName ^Keyword key)))
+                     (valid? spec (get x (keyword (.getName ^Keyword key))))
+                     true)) (:opt-un this)))
+    x))
+
+(defrecord KeysSpec [req req-un opt opt-un]
+  Spect
+  (conform* [this x]
+    (cond
+      (instance? KeysSpec x) (conform-keys-spec this x)
+      (map? x) (conform-keys-literal this x)
+      :else false)))
+
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))
         keys (mapv first pairs)
@@ -587,6 +620,15 @@
     (map->OrSpec {:ks keys
                   :forms (mapv (fn [f]
                                  (parse-spec f)) forms)})))
+
+(defmethod parse-spec* 'clojure.spec/keys [x]
+  (->> (for [[key-type specs] (partition 2 (rest x))]
+         [key-type (into {} (map (fn [spec-name]
+                                   (if-let [s (s/get-spec spec-name)]
+                                     [spec-name (parse-spec (s/form s))]
+                                     (throw (Exception. (format "Could not resolve spec: %s" spec-name))))) specs))])
+       (into {})
+       (map->KeysSpec)))
 
 (defn parse-fn-spec [s]
   {:args (-> s :args parse-spec)

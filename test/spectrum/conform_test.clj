@@ -4,6 +4,8 @@
             [spectrum.conform :as c])
   (:import clojure.lang.Keyword))
 
+(s/def ::integer integer?)
+(s/def ::string string?)
 (s/def ::even-int (s/and integer? even?))
 
 (deftest parse-spec-works
@@ -19,7 +21,7 @@
          (s/and #(> % 10))
          (s/and integer? #(> % 10))))
   (testing "returns Regex"
-    (are [spec] (satisfies? c/Regex (c/parse-spec spec))
+    (are [spec] (c/regex? (c/parse-spec spec))
          (s/* integer?)
          (s/+ integer?)
          (s/? integer?)
@@ -28,7 +30,12 @@
          (s/* (s/alt :int integer? :str string?))))
   (testing "literals"
     (is (= 3 (c/parse-spec 3)))
-    (is (every? #(satisfies? c/Spect %) (c/parse-spec '[integer? integer?])))))
+    (is (every? #(satisfies? c/Spect %) (c/parse-spec '[integer? integer?]))))
+
+  (testing "keys"
+    (are [spec] (c/spect? (c/parse-spec spec))
+      (s/keys :req [::even-int])
+      (s/keys :req-un [::even-int]))))
 
 (deftest conform-works
   (testing "should pass"
@@ -84,7 +91,15 @@
 
          (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
 
-         (s/cat :x int?) [(c/class-spec Integer)] {:x (c/class-spec Integer)}))
+         (s/cat :x int?) [(c/class-spec Integer)] {:x (c/class-spec Integer)}
+
+
+         (s/keys :req [::integer]) {::integer 3} {::integer 3}
+
+         (s/keys :req [::integer] :opt-un [::string]) {::integer 3 ::string "foo"} {::integer 3 ::string "foo"}
+
+
+         ))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
@@ -108,4 +123,7 @@
          ;; (s/& (s/+ integer?) #(even? (count %))) [1]
 
          (c/class-spec String) 3
-         (c/class-spec Integer) 3)))
+         (c/class-spec Integer) 3
+
+         (s/keys :req [::integer] :opt [::string]) {::integer 3 ::string 5}
+         (s/keys :req [::integer] :opt [::string]) {::string "foo"})))

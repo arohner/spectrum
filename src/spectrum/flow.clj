@@ -143,7 +143,6 @@
 (defmulti analysis->arg* #'analysis->arg*-dispatch)
 
 (defmethod analysis->arg* :default [x]
-  (println "analysis->arg*:" (:op x))
   (or (::ret-spec x) (c/unknown (:form x))))
 
 (s/fdef find-binding :args (s/cat :a ::analysis :name symbol?) :ret (s/nilable ::analysis))
@@ -270,7 +269,6 @@
                ::args-spec (:args spec)))))
 
 (defmethod flow :binding [a]
-  ;;(println "flow binding:" a)
   a)
 
 (declare assoc-form-spec)
@@ -280,7 +278,6 @@
 (defn get-invoke-fn-spec
   "Given an :fn a, return the spec"
   [a]
-  ;;(println "get-invoke-fn-spec:" a)
   (when (-> a :op (= :var))
     (assert (var? (:var a))))
 
