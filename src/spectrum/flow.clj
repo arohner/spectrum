@@ -152,6 +152,10 @@
   [a name]
   (or
    (condp = (:op a)
+     :let (->> a
+               :bindings
+               (filter (fn [b] (= name (:name b))))
+               first)
      :binding (->> a
                    :bindings
                    (filter (fn [b] (= name (:name b))))
@@ -192,6 +196,7 @@
 (defn compatible-java-method?
   "True if args conforming to spec s can be passed to a method that takes method-types"
   [arg-spec method-types]
+  ;;{:post [(do (println "compatible-java-method:" arg-spec method-types "=>" %) true)]}
   (let [spec (c/cat- (mapv java-type->spec method-types))
         argv (-> arg-spec :ps)]
     (assert argv)
@@ -307,11 +312,24 @@
                                (mapv (fn [b]
                                        (flow (with-meta b {:a a}))) bindings)))))
 
+(defmethod flow :local [a]
+  (let [b (find-binding a (:name a))]
+    (assert b)
+    (assoc a ::ret-spec (::ret-spec b))))
+
+(defmethod flow :binding [a]
+  (let [a (-> a
+              (update-in [:init] (fn [init]
+                                   (flow (with-a init a)))))]
+    (assoc a ::ret-spec (::ret-spec (:init a)))))
+
 (defmethod flow :let [a]
-  (-> a
-      (assoc-spec-bindings)
-      (update-in [:body] (fn [body]
-                           (flow (with-meta body {:a a}))))))
+  (let [a (assoc-spec-bindings a)
+        a (update-in a [:body] (fn [body] (flow (with-meta body {:a a}))))]
+    (-> a
+        (assoc ::ret-spec (if (-> a :body :op (= :do))
+                            (-> a :body last ::ret-spec)
+                            (-> a :body ::ret-spec))))))
 
 (defn destructure-fn-params
   "Given a spect and ana.jvm/fn-method params, update params to include spec"
@@ -330,14 +348,16 @@
 
 (defmethod flow :fn-method [a]
   (let [v (-> a meta :a ::var)
-        s (if v
-            (get-var-fn-spec v)
-            (println "fn-method: no var at " (a-loc-str a)))
+        s (when v
+            (get-var-fn-spec v))
         a (if s
             (update-in a [:params] destructure-fn-params (:args s))
             (do
-              (println "warning: no spec for " v)
+              (print-once "fn-method: no spec for " v)
               a))]
     (-> a
         (update-in [:body] (fn [body]
                              (flow (with-meta body {:a a})))))))
+
+(defn analyze+flow [form]
+  (flow (ana.jvm/analyze form)))

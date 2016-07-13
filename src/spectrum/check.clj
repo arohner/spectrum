@@ -126,7 +126,7 @@
       (check-invoke-fn-arity (get-var-analysis v) a)
       (if-let [s (flow/get-var-fn-spec v)]
         (check-invoke-fn-spec (str v) s a)
-        (println "no spec for" v))]
+        (print-once "check-invoke-var: no spec for" v))]
      (filter identity))))
 
 (defn check-invoke-local [a]
@@ -155,6 +155,12 @@
     [(check* (zip a :ret))])
    (doall)
    (filter identity)))
+
+(defmethod check* :let [a]
+  (concat
+   (mapcat (fn [b]
+             (check* (with-a b a))) (:bindings a))
+   (check* (zip a :body))))
 
 (defmethod check* :with-meta [a]
   (check* (zip a :expr)))

@@ -26,5 +26,5 @@
   (doseq [ns (->> (example-namespaces)
                   (filter (fn [sym]
                             (re-find #"^spectrum\.examples\.bad." (name sym)))))]
-    (testing (str "testing" ns)
+    (testing (str "testing: " ns)
       (is (seq (st/check ns))))))
