@@ -570,7 +570,12 @@
   (pred-conform [this pred]
     (some (fn [s]
             (when (conform* pred s)
-              s)) (:forms pred))))
+              s)) (:forms pred)))
+  OrConform
+  (or-conform [this spec]
+    (assert (satisfies? OrConform spec))
+    (when (= (set (:forms spec)) (set/intersection (set (:forms spec)) (set (:forms this))))
+      this)))
 
 (defn or- [ps]
   (map->OrSpec {:forms ps}))

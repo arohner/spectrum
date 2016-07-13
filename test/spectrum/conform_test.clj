@@ -1,7 +1,8 @@
 (ns spectrum.conform-test
   (:require [clojure.spec :as s]
             [clojure.test :refer :all]
-            [spectrum.conform :as c]))
+            [spectrum.conform :as c])
+  (:import clojure.lang.Keyword))
 
 (s/def ::even-int (s/and integer? even?))
 
@@ -41,6 +42,12 @@
          #'int? (c/class-spec Integer) (c/class-spec Integer)
          (c/class-spec Long) 3 3
          (c/class-spec String) (c/class-spec String) (c/class-spec String)
+
+         (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/or- [(c/class-spec Long) (c/class-spec String)])
+
+         (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/or- [(c/class-spec String) (c/class-spec Long)]) (c/or- [(c/class-spec String) (c/class-spec Long)])
+
+         (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/or- [(c/class-spec Long) (c/class-spec String) (c/class-spec Keyword)]) (c/or- [(c/class-spec Long) (c/class-spec String) (c/class-spec Keyword)])
 
          (c/parse-spec #'number?) (c/class-spec Long) (c/class-spec Long)
          (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
