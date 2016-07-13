@@ -6,6 +6,8 @@
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)))
 
+(declare valid?)
+
 (defprotocol Spect
   (conform* [spec x]
     "True if value x conforms to spec."))
@@ -344,19 +346,10 @@
 
 (declare new-regex-plus)
 
-(defn parse-regex-dispatch [x]
-  ;; could be evaled or form, so check both
-
-  (cond
-    (map? x) (:clojure.spec/op x)
-    (seq? x) (first x)))
-
-(defmulti parse-regex #'parse-regex-dispatch)
-
 (defn parse-spec-dispatch [x]
   (cond
     (s/spec? x) :spec
-    (s/regex? x) :spec-regex
+    (s/regex? x) (:clojure.spec/op x)
     (symbol? x) :fn-sym
     (var? x) :var
     (= :clojure.spec/nil x) :clojure.spec/nil
@@ -368,13 +361,8 @@
 
 (defmulti parse-spec* #'parse-spec-dispatch)
 
-(defmethod parse-spec* :spec-regex [x]
-  (parse-regex x))
-
 (defmethod parse-spec* :literal [x]
   x)
-
-(def regex-vars '#{clojure.spec/* clojure.spec/alt})
 
 (defn var-name [^Var v]
   (symbol (str (.ns v)) (str (.sym v))))
@@ -391,7 +379,7 @@
     (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
     (literal? x) x
     (vector? x) (parse-spec* x)
-    (and (seq? x) (contains? regex-vars (first x))) (parse-regex x)
+    (and (seq? x) (symbol? (first x))) (parse-spec* x)
     :else (do (println "unknown:" x (class x))
               (throw (Exception. (format "unknown spec: %s" x))))))
 
@@ -476,12 +464,12 @@
 (defmethod parse-spec* 'quote [x]
   (parse-spec* (first x)))
 
-(defmethod parse-regex :clojure.spec/pcat [x]
+(defmethod parse-spec* :clojure.spec/pcat [x]
   (map->RegexCat {:ks (:ks x)
                   :ps (mapv (fn [[form pred]]
-                              (if (:clojure.spec/op pred)
-                                (parse-regex pred)
-                                (parse-spec form))) (map vector (:forms x) (:ps x)))
+                              (parse-spec (if (:clojure.spec/op pred)
+                                            pred
+                                            form))) (map vector (:forms x) (:ps x)))
                   :forms (:forms x)
                   :ret (:ret x)}))
 
@@ -505,19 +493,19 @@
                     :ret []
                     :splice (:splice x)})))
 
-(defmethod parse-regex :clojure.spec/rep [x]
+(defmethod parse-spec* :clojure.spec/rep [x]
   (parse-seq x))
 
-(defmethod parse-regex 'clojure.spec/* [x]
+(defmethod parse-spec* 'clojure.spec/* [x]
   (parse-seq x))
 
-(defmethod parse-regex :clojure.spec/alt [x]
+(defmethod parse-spec* :clojure.spec/alt [x]
   ;; evaled alt
   (map->RegexAlt {:ks (:ks x)
                   :forms (:forms x)
                   :ps (map parse-spec (:forms x))}))
 
-(defmethod parse-regex 'clojure.spec/alt [x]
+(defmethod parse-spec* 'clojure.spec/alt [x]
   ;; literal alt form
   (let [pairs (partition 2 (rest x))
         ks (map first pairs)
