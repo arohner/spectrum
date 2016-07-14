@@ -662,7 +662,10 @@
                                 v))
                       (map (fn [[k v]]
                              (str k (vec (keys v)))))
-                      (str/join " ")) ")")))
+                      (str/join " ")) ")"))
+  SpecToClass
+  (spec->class [this]
+    clojure.lang.PersistentHashMap))
 
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))
