@@ -193,6 +193,9 @@
     (doall)
     (filter identity))))
 
+(defn params-str [a]
+  (->> a :params (mapv :form)))
+
 (defn check-spec-arity [a]
   (let [f (unwrap-a a)
         f-var (::flow/var f)
@@ -201,7 +204,7 @@
     (assert params)
     (when args-spec
       (when-not (flow/arity-conform? args-spec params)
-        [(new-error {:message (format "fn spec doesn't match arity: %s vs. %s" (:form a) (c/pretty-str args-spec))} a)]))))
+        [(new-error {:message (format "fn spec doesn't match arity: %s, %s vs. %s" f-var (params-str a) (c/pretty-str args-spec))} a)]))))
 
 (defmethod check* :fn-method [a]
   (let [body (zip a :body)]
