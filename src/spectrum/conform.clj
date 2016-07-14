@@ -7,6 +7,7 @@
   (:import (clojure.lang Var Keyword)))
 
 (declare valid?)
+(declare parse-spec)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -651,7 +652,17 @@
       :else false))
   WillAccept
   (will-accept [this]
-    this))
+    this)
+  SpectPrettyString
+  (pretty-str [this]
+    (str "(keys " (->> [:req :req-un :opt :opt-un]
+                      (map (fn [k]
+                             [k (get this k)]))
+                      (filter (fn [[k v]]
+                                v))
+                      (map (fn [[k v]]
+                             (str k (vec (keys v)))))
+                      (str/join " ")) ")")))
 
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))
