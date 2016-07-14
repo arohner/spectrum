@@ -130,3 +130,14 @@
 
          (s/keys :req [::integer] :opt [::string]) {::integer 3 ::string 5}
          (s/keys :req [::integer] :opt [::string]) {::string "foo"})))
+
+(deftest first-rest
+  (are [expected expr] (is (= expected expr))
+    (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))
+    (c/parse-spec (s/* integer?)) (c/rest* (c/parse-spec (s/* integer?)))
+    (c/parse-spec (s/* integer?)) (c/rest* (c/parse-spec (s/+ integer?)))))
+
+
+;; (s/cat :a int? :b int?)
+;; (s/cat :a int? :b int? :c int?)
+;; (c/rest* (c/parse-spec (s/cat :a (s/+ int?))))

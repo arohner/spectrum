@@ -30,7 +30,10 @@
 (s/fdef resolve-class :args (s/cat :str symbol?) :ret class?)
 (defn resolve-class
   [sym]
-  (clojure.lang.RT/classForName (str sym)))
+  (try
+    (clojure.lang.RT/classForName (str sym))
+    (catch ClassNotFoundException e
+      nil)))
 
 (s/def ::predicate (s/fspec :args (s/cat :x any?) :ret boolean?))
 

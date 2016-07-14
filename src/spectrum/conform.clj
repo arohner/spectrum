@@ -15,6 +15,10 @@
 (defprotocol SpectPrettyString
   (pretty-str [spec]))
 
+(defprotocol WillAccept
+  (will-accept [spec]
+    "Returns a value that will make (derivative spec x) return accept"))
+
 (extend-protocol SpectPrettyString
   nil
   (pretty-str [x]
@@ -52,6 +56,9 @@
   (conform* [this x]
     false))
 
+(defn invalid [form]
+  (map->Invalid {:form form}))
+
 (s/fdef spec->class :args (s/cat :s ::spect) :ret (s/nilable ::j/java-type))
 (defprotocol SpecToClass
   (spec->class [s]
@@ -77,8 +84,6 @@
   (derivative
     [spec x]
     "Given a parsed spec, return the derivative")
-  (first* [this])
-  (rest* [this])
   (empty-regex [this]
     "The empty pattern for this regex")
   (accept-nil? [this]
@@ -87,6 +92,20 @@
     "Given a completed regex parse, return the conform matching value")
   (add-return [this ret k]
     "Add ret to the return data of this regex, with optional key k"))
+
+(defprotocol FirstRest
+  (first* [this])
+  (rest* [this]))
+
+(defn maybe-first* [ps]
+  (if (satisfies? FirstRest ps)
+    (first* ps)
+    (first ps)))
+
+(defn maybe-rest* [ps]
+  (if (satisfies? FirstRest ps)
+    (rest* ps)
+    (rest ps)))
 
 (defn regex? [x]
   (satisfies? Regex x))
@@ -107,7 +126,10 @@
   (return [this]
     ret)
   (add-return [this ret k]
-    ret))
+    ret)
+  WillAccept
+  (will-accept [this]
+    nil))
 
 (defn accept [x]
   (map->RegexAccept {:ret x}))
@@ -123,6 +145,9 @@
   (return [this]
     ::invalid)
   (add-return [this ret k]
+    nil)
+  WillAccept
+  (will-accept [this]
     nil))
 
 (defn regex-accept? [x]
@@ -143,10 +168,6 @@
     regex-reject)
   (accept-nil? [this]
     false)
-  (first* [this]
-    this)
-  (rest* [this]
-    nil)
   (return [this]
     this)
   (add-return [this ret k]
@@ -236,15 +257,8 @@
                (if (accept-nil? p0)
                  (derivative (new-regex-cat pr kr fr (add-return p0 ret k0)) x)
                  regex-reject)))]
-      v
-      ))
-  (first* [this]
-    (first ps))
-  (rest* [this]
-    (when (seq (rest ps))
-      (if (= 1 (count (rest ps)))
-        (first (rest ps))
-        (new-regex-cat (rest ps) (rest ks) (rest forms) []))))
+      v))
+
   (accept-nil? [this]
     (every? accept-nil? ps))
   (return [this]
@@ -256,7 +270,18 @@
         (conj r (if k {k ret} ret)))))
   SpectPrettyString
   (pretty-str [this]
-    (regex-pretty-str "Cat" this)))
+    (regex-pretty-str "Cat" this))
+  WillAccept
+  (will-accept [this]
+    (will-accept (first ps)))
+  FirstRest
+  (first* [this]
+    (let [p (first ps)]
+      (if (satisfies? FirstRest p)
+        (first* p)
+        p)))
+  (rest* [this]
+    (derivative this (parse-spec (will-accept this)))))
 
 (declare map->RegexSeq)
 
@@ -281,10 +306,6 @@
     true)
   (return [this]
     ret)
-  (first* [this]
-    (first ps))
-  (rest* [this]
-    (assoc this :splice false))
   (add-return [this r k]
     (let [ret (return this)]
       (if (empty? ret)
@@ -292,7 +313,15 @@
         ((if splice into conj) r (if k {k ret} ret)))))
   SpectPrettyString
   (pretty-str [this]
-    (regex-pretty-str "Seq" this)))
+    (regex-pretty-str "Seq" this))
+  FirstRest
+  (first* [this]
+    (first ps))
+  (rest* [this]
+    (derivative this (will-accept this)))
+  WillAccept
+  (will-accept [this]
+    (will-accept (first ps))))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
@@ -342,7 +371,15 @@
         (conj r (if {k ret} ret)))))
   SpectPrettyString
   (pretty-str [this]
-    (regex-pretty-str "Alt" this)))
+    (regex-pretty-str "Alt" this))
+  FirstRest
+  (first* [this]
+    (first ps))
+  (rest* [this]
+    (derivative this (will-accept this)))
+  WillAccept
+  (will-accept [this]
+    (will-accept (first ps))))
 
 (declare new-regex-plus)
 
@@ -404,7 +441,10 @@
               [k this])) (map vector (:ks or-s) (:forms or-s))))
   SpectPrettyString
   (pretty-str [this]
-    (str form)))
+    (str form))
+  WillAccept
+  (will-accept [this]
+    pred))
 
 (defn pred-spec? [x]
   (instance? PredSpec x))
@@ -439,7 +479,10 @@
         this)))
   SpectPrettyString
   (pretty-str [this]
-    (str cls)))
+    (str cls))
+  WillAccept
+  (will-accept [this]
+    cls))
 
 (defn class-spec [c]
   (map->ClassSpec {:cls c}))
@@ -538,7 +581,10 @@
     (let [this-specs (set (:forms this))
           that-specs (set (:forms that))]
       (when (= this-specs (set/intersection this-specs that-specs))
-        this))))
+        this)))
+  WillAccept
+  (will-accept [this]
+    this))
 
 (defmethod parse-spec* 'clojure.spec/and [x]
   (map->AndSpec {:forms (mapv (fn [f]
@@ -565,7 +611,10 @@
   (or-conform [this spec]
     (assert (satisfies? OrConform spec))
     (when (= (set (:forms spec)) (set/intersection (set (:forms spec)) (set (:forms this))))
-      this)))
+      this))
+  WillAccept
+  (will-accept [this]
+    (first forms)))
 
 (defn or- [ps]
   (map->OrSpec {:forms ps}))
@@ -599,7 +648,10 @@
     (cond
       (instance? KeysSpec x) (conform-keys-spec this x)
       (map? x) (conform-keys-literal this x)
-      :else false)))
+      :else false))
+  WillAccept
+  (will-accept [this]
+    this))
 
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))

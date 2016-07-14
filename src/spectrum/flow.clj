@@ -170,6 +170,8 @@
 
 (defmethod analysis->arg* :local [a]
   (let [b (find-binding a (:name a))]
+    (when-not b
+      (print "failed to find binding:" (:name a)))
     (or (::ret-spec b) (c/unknown (:name a)))))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::c/spect))
@@ -311,7 +313,7 @@
 
 (defmethod flow :local [a]
   (let [b (find-binding a (:name a))]
-    (assert b)
+    ;; (assert b (format "flow :local: failed to find binding: %s %s" (:name a) (a-loc-str a)))
     (assoc a ::ret-spec (::ret-spec b))))
 
 (defmethod flow :binding [a]
@@ -328,20 +330,41 @@
                             (-> a :body last ::ret-spec)
                             (-> a :body ::ret-spec))))))
 
+(s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
+(defn arity-conform?
+  "Without knowing the types of args, return true if it's possible for args to conform, based on arity alone"
+  [spec args]
+  (if (and spec args)
+    (if (:variadic? (first args))
+      true
+      (if (empty? args)
+        (if (c/accept-nil? spec)
+          true
+          false)
+        (if-let [spec* (c/derivative spec (c/parse-spec (c/will-accept spec)))]
+          (recur spec* (rest args))
+          false)))
+    false))
+
+(s/fdef destructure-fn-params :args (s/cat :params ::ana.jvm/bindings :spec ::c/spect) :ret ::ana.jvm/bindings)
 (defn destructure-fn-params
   "Given a spect and ana.jvm/fn-method params, update params to include spec"
   [params spec]
-  (loop [ret []
-         params params
-         spec spec]
-    (if (seq params)
-      (let [param (first params)
-            s (c/first* spec)]
-        (assert s)
-        (if (:variadic? param)
-          (conj ret (assoc param ::ret-spec (c/rest* spec)))
-          (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
-      ret)))
+  (if (arity-conform? spec params)
+    (loop [ret []
+           params params
+           spec spec]
+      (if (and (seq params)
+               spec)
+        (let [param (first params)
+              _ (inspect spec)
+              s (c/first* spec)]
+          (assert s)
+          (if (:variadic? param)
+            (conj ret (assoc param ::ret-spec (c/rest* spec)))
+            (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
+        ret))
+    params))
 
 (defmethod flow :fn-method [a]
   (let [v (-> a meta :a ::var)
@@ -358,3 +381,6 @@
 
 (defn analyze+flow [form]
   (flow (ana.jvm/analyze form)))
+
+(defn analyze+flow-ns [ns]
+  (mapv flow (ana.jvm/analyze-ns ns)))

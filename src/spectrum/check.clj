@@ -193,11 +193,22 @@
     (doall)
     (filter identity))))
 
+(defn check-spec-arity [a]
+  (let [f (unwrap-a a)
+        f-var (::flow/var f)
+        args-spec (::flow/args-spec f)
+        params (:params a)]
+    (assert params)
+    (when args-spec
+      (when-not (flow/arity-conform? args-spec params)
+        [(new-error {:message (format "fn spec doesn't match arity: %s vs. %s" (:form a) (c/pretty-str args-spec))} a)]))))
+
 (defmethod check* :fn-method [a]
   (let [body (zip a :body)]
     (concat
      (check* body)
-     (check-fn-method-return a))))
+     (check-fn-method-return a)
+     (check-spec-arity a))))
 
 (defmethod check* :quote [a])
 

@@ -51,3 +51,20 @@
     '(if true 1 2) (c/parse-spec #'number?)
     '(let [x 1] x) (c/parse-spec #'number?)
     '(let [x (+ 1 2)] x) (c/parse-spec #'number?)))
+
+(s/def ::integer int?)
+
+(deftest arity-conform?
+  (testing "should pass"
+    (are [spec args] (= true (flow/arity-conform? (c/parse-spec spec) args))
+      (s/cat :a int?) '[a]
+      (s/cat :a int? :b int?) '[a b]
+
+      (s/cat :a (s/+ int?)) '[a {:name as :variadic? true}]
+
+      (s/cat :a (s/keys :req [::integer])) '[a]))
+
+  (testing "should fail"
+    (are [spec args] (= false (flow/arity-conform? (c/parse-spec spec) args))
+       (s/cat :a int?) '[a b]
+       (s/cat :a int? :b int?) '[a])))
