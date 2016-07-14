@@ -21,8 +21,9 @@
 (s/def ::ret-spec ::spec)
 (s/def ::var var?)
 
-(s/def ::analysis (s/keys :req-un [::ana.jvm/op ::ana.jvm/form]
-                          :opt-un [::var ::args-spec ::ret-spec]))
+(s/def ::analysis (s/keys :req []
+                          :req-un [::ana.jvm/op ::ana.jvm/form]
+                          :opt [::var ::args-spec ::ret-spec]))
 
 (s/def ::analysis? (s/nilable ::analysis))
 
