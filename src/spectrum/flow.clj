@@ -92,7 +92,7 @@
       a)))
 
 (defmethod flow :with-meta [a]
-  (update-in a [:expr] flow))
+  (assoc a :expr (flow (with-a (:expr a) a))))
 
 (defmethod flow :fn [a]
   (let [v (get a ::var)
@@ -106,7 +106,7 @@
     (-> a
         (update-in [:methods] (fn [methods]
                                 (mapv (fn [m]
-                                        (flow (with-meta m {:a a}))) methods))))))
+                                        (flow (with-a m a))) methods))))))
 
 (defmethod flow :if [a]
   (let [a (-> a
@@ -132,11 +132,14 @@
 
 (defmethod flow :do [a]
   (-> a
-      (update-in [:statements] (fn [statements] (mapv flow statements)))
-      (update-in [:ret] flow)))
+      (update-in [:statements] (fn [statements] (mapv (fn [s]
+                                                        (flow (with-a s a))) statements)))
+      (update-in [:ret] (fn [ret]
+                          (flow (with-a ret a))))))
 
 (defmethod flow :try [a]
-  (update-in a [:body] flow))
+  (update-in a [:body] (fn [body]
+                         (flow (with-a body a)))))
 
 (defn analysis->arg*-dispatch [x]
   (:op x))
@@ -172,10 +175,10 @@
 (defmethod analysis->arg* :local [a]
   (let [b (find-binding a (:name a))]
     (when-not b
-      (print "failed to find binding:" (:name a)))
+      (println "analysis->arg*: failed to find binding:" (:name a) (a-loc-str a)))
     (or (::ret-spec b) (c/unknown (:name a)))))
 
-(s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret (s/coll-of ::c/spect))
+(s/fdef analysis-args->spec :args (s/cat :a ::analyses) :ret (s/coll-of ::c/spect))
 
 (defn analysis-args->spec
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
@@ -198,7 +201,6 @@
 (defn compatible-java-method?
   "True if args conforming to spec s can be passed to a method that takes method-types"
   [arg-spec method-types]
-  ;;{:post [(do (println "compatible-java-method:" arg-spec method-types "=>" %) true)]}
   (let [spec (c/cat- (mapv java-type->spec method-types))
         argv (-> arg-spec :ps)]
     (assert argv)
@@ -247,32 +249,33 @@
                       (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
            (most-specific)))
 
-(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret (s/nilable ::fn-spec))
+(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret ::fn-spec)
 (defn get-java-method-spec
   "Return a fake spec for a java interop call"
   [cls method arg-spec]
-  (when-let [m (get-conforming-java-method cls method arg-spec)]
+  (if-let [m (get-conforming-java-method cls method arg-spec)]
     (let [java-args (->> (mapv java-type->spec (:parameter-types m)))
           ret (c/parse-spec (java-type->spec (:return-type m)))]
       {:args (c/map->RegexCat {:ps (mapv c/parse-spec java-args)
                                :forms java-args
                                :ret []})
-       :ret (c/parse-spec ret)})))
+       :ret (c/parse-spec ret)})
+    (do
+      (println "get-java-method-spec: no conforming:" cls method arg-spec)
+      {:args (c/unknown nil)
+       :ret (c/unknown nil)})))
 
 (defmethod flow :static-call [a]
   (let [cls (:class a)
         method (:method a)
         a (update-in a [:args] (fn [args]
-                               (mapv (fn [arg]
-                                       (flow (with-meta arg {:a a}))) args)))
-        args-spec (analysis-args->spec (:args a))
+                                 (mapv (fn [arg]
+                                         (flow (with-meta arg {:a a}))) args)))
+        args-spec (analysis-args->spec (util/zip a :args))
         spec (get-java-method-spec cls method args-spec)]
     (-> a
         (assoc ::ret-spec (:ret spec)
                ::args-spec (:args spec)))))
-
-(defmethod flow :binding [a]
-  a)
 
 (declare assoc-form-spec)
 
@@ -307,29 +310,37 @@
 (defn assoc-spec-bindings
   "Given the :bindings from a let, assoc ::flow/spec to the binding, based on the right-hand value"
   [a]
-  (-> a
-      (update-in [:bindings] (fn [bindings]
-                               (mapv (fn [b]
-                                       (flow (with-meta b {:a a}))) bindings)))))
+  (reduce (fn [a b]
+            (update-in a [:bindings] conj (flow (with-meta b {:a a})))) (assoc a :bindings []) (:bindings a)))
 
 (defmethod flow :local [a]
   (let [b (find-binding a (:name a))]
-    ;; (assert b (format "flow :local: failed to find binding: %s %s" (:name a) (a-loc-str a)))
+    (assert b)
+    (assert b (format "flow :local: failed to find binding: %s %s" (:name a) (a-loc-str a)))
+    (when-not (::ret-spec b)
+      (println "error: no ret-spec on:" (:name b) (:op b)))
+    (assert (::ret-spec b))
     (assoc a ::ret-spec (::ret-spec b))))
 
 (defmethod flow :binding [a]
   (let [a (-> a
               (update-in [:init] (fn [init]
                                    (flow (with-a init a)))))]
-    (assoc a ::ret-spec (::ret-spec (:init a)))))
+    (when-not (-> a :init ::ret-spec)
+      (println "error: no ret-spec on:" (:name a)))
+    (assert (-> a :init ::ret-spec))
+    (assoc a ::ret-spec (-> a :init ::ret-spec))))
 
 (defmethod flow :let [a]
   (let [a (assoc-spec-bindings a)
-        a (update-in a [:body] (fn [body] (flow (with-meta body {:a a}))))]
+        a (update-in a [:body] (fn [body] (flow (with-a body a))))
+        last-expr (if (-> a :body :op (= :do))
+                    (-> a :body last)
+                    (-> a :body))
+        _ (assert last-expr)
+        ret-spec (::ret-spec last-expr)]
     (-> a
-        (assoc ::ret-spec (if (-> a :body :op (= :do))
-                            (-> a :body last ::ret-spec)
-                            (-> a :body ::ret-spec))))))
+        (assoc ::ret-spec ret-spec))))
 
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
 (defn arity-conform?
@@ -347,10 +358,10 @@
           false)))
     false))
 
-(s/fdef destructure-fn-params :args (s/cat :params ::ana.jvm/bindings :spec ::c/spect) :ret ::ana.jvm/bindings)
+(s/fdef destructure-fn-params :args (s/cat :params ::ana.jvm/bindings :spec ::c/spect :a ::analysis) :ret ::ana.jvm/bindings)
 (defn destructure-fn-params
   "Given a spect and ana.jvm/fn-method params, update params to include spec"
-  [params spec]
+  [params spec a]
   (if (arity-conform? spec params)
     (loop [ret []
            params params
@@ -358,21 +369,23 @@
       (if (and (seq params)
                spec)
         (let [param (first params)
-              _ (inspect spec)
               s (c/first* spec)]
           (assert s)
           (if (:variadic? param)
             (conj ret (assoc param ::ret-spec (c/rest* spec)))
             (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
         ret))
-    params))
+    (do
+      (println "destructure failed:" (a-loc-str a) "params are all unknown")
+      (mapv (fn [p]
+              (assoc p ::ret-spec (c/unknown (:name p)))) params))))
 
 (defmethod flow :fn-method [a]
   (let [v (-> a meta :a ::var)
         s (when v
             (get-var-fn-spec v))
         a (if s
-            (update-in a [:params] destructure-fn-params (:args s))
+            (update-in a [:params] destructure-fn-params (:args s) a)
             (do
               (print-once "fn-method: no spec for " v)
               a))]

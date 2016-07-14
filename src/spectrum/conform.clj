@@ -692,7 +692,10 @@
   (->> forms
        rest
        (map (fn [f]
-              (j/shared-ancestors (spec->class (first forms)) (spec->class f))))
+              (let [a (spec->class (first forms))
+                    b (spec->class f)]
+                (when (and a b)
+                  (j/shared-ancestors a b)))))
        (filter identity)
        (apply set/union)
        (first)))
