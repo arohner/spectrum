@@ -392,10 +392,9 @@
     (var? x) :var
     (= :clojure.spec/nil x) :clojure.spec/nil
     (fn-literal? x) :fn-literal
-    (literal? x) :literal
-    (vector? x) :coll
-    (seq? x) (first x)
-    :else (do (println "unknown:" x (class x)) (throw (Exception. (format "parse-spec unknown: %s" x))))))
+    (and (seq? x) (symbol? (first x))) (first x)
+    (coll? x) :coll
+    :else :literal))
 
 (defmulti parse-spec* #'parse-spec-dispatch)
 
@@ -407,19 +406,11 @@
 
 (defn parse-spec [x]
   (cond
-    (s/spec? x) (parse-spec* x)
-    (s/regex? x) (parse-spec* x)
     (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
-    (= :clojure.spec/nil x) (parse-spec* x)
     (keyword? x) (parse-spec* (#'s/the-spec x))
-    (#'s/named? x) (parse-spec* (s/spec x))
-    (fn-literal? x) (parse-spec* x)
     (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
-    (literal? x) x
-    (vector? x) (parse-spec* x)
-    (and (seq? x) (symbol? (first x))) (parse-spec* x)
-    :else (do (println "unknown:" x (class x))
-              (throw (Exception. (format "unknown spec: %s" x))))))
+    (#'s/named? x) (parse-spec* (s/spec x))
+    :else (parse-spec* x)))
 
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
@@ -499,7 +490,10 @@
                   :form x}))
 
 (defmethod parse-spec* :coll [x]
-  (mapv parse-spec* x))
+  (let [v (mapv parse-spec* x)]
+    (if (not (list? x))
+      (into (empty x) v)
+      (list* v))))
 
 (defmethod parse-spec* 'clojure.core/fn [x]
   (map->PredSpec {:pred (eval x)
