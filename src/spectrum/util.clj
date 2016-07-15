@@ -6,8 +6,11 @@
     (and (:literal? a) (not= :unknown (:type a)))))
 
 (defn fn-literal? [x]
-  (let [a (ana.jvm/analyze x)]
-    (= :fn (:op a))))
+
+  (and (seq? x)
+       (= 'fn (first x))
+       (let [a (ana.jvm/analyze x)]
+         (= :fn (:op a)))))
 
 (defn zip
   "Returns (get x key), with x attached as metadata"
