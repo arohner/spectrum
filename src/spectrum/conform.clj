@@ -735,8 +735,14 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
  "
   [spec args]
-  `(let [spec# (parse-spec ~spec)
-         args# (parse-spec ~args)]
+  `(let [spec# ~spec
+         spec# (if (spect? spec#)
+                 spec#
+                 (parse-spec spec#))
+         args# ~args
+         args# (if (spect? args#)
+                 args#
+                 (parse-spec args#))]
      (if-let [val# (conform* spec# args#)]
        (if (= ::nil val#)
          nil
