@@ -116,6 +116,18 @@
     (-> a :expr)
     a))
 
+(s/fdef predicate? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
+(defn var-predicate?
+  "True if :def analysis is a predicate."
+  [a]
+  (assert (= :def (:op a)))
+  (let [var-name (:name a)
+        def-val (-> a :init (maybe-strip-meta))]
+    (if (and (re-find #"\?$" (name var-name))
+             (= :fn (:op def-val)))
+      (and (-> def-val :methods (count) (= 1))
+           (= 1 (-> def-val :methods first :params (count))))
+      false)))
 
 (defmethod flow :if [a]
   (let [a (-> a
