@@ -10,6 +10,9 @@
 
 (def class->primitive (set/map-invert primitive->class-))
 
+(defn interface? [x]
+  (and (class? x) (.isInterface ^Class x)))
+
 (defn primitive? [x]
   (contains? primitive->class- x))
 
