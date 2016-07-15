@@ -1,5 +1,6 @@
 (ns spectrum.data
-  (:require [clojure.tools.analyzer.jvm :as ana.jvm]))
+  (:require [clojure.tools.analyzer.jvm :as ana.jvm]
+            [clojure.spec :as s]))
 
 (defonce var-analysis
   ;; var => ana.jvm/analysis cache
@@ -29,3 +30,14 @@
     (doseq [a as]
       (when (= :def (:op a))
         (store-var-analysis a)))))
+
+(defn get-var-analysis [v]
+  (get @var-analysis v))
+
+(s/fdef get-var-arities :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis))
+(defn get-var-arities
+  "Return the set of :arglists for this var. Must have been analyzed"
+  [v]
+  (some->> (get-var-analysis v)
+           :init
+           :expr))

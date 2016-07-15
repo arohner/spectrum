@@ -59,21 +59,14 @@
    (filter identity)
    (doall)))
 
-(s/fdef get-var-arities :args (s/cat :v var?) :ret (s/nilable ::flow/analysis))
-(defn get-var-arities
-  "Return the set of :arglists for this var. Must have been analyzed"
+(s/fdef get-var-analysis :args (s/cat :v var?) :ret ::flow/analysis?)
+(defn get-var-analysis
+  "Return the fn analysis for a var"
   [v]
-  (some->> (get-in data/var-analysis v)
-           :init
-           :expr))
-
-(s/fdef maybe-strip-meta :args ::flow/analysis :ret ::flow/analysis)
-(defn maybe-strip-meta
-  "If a is a :op :with-meta, strip it and return the :expr, or a"
-  [a]
-  (if (-> a :op (= :with-meta))
-    (-> a :expr)
-    a))
+  (-> @data/var-analysis
+      (get v)
+      :init
+      flow/maybe-strip-meta))
 
 (s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
 (defn var-fn?
@@ -82,16 +75,7 @@
   (let [a (get @data/var-analysis v)]
     (when-not a
       (println (format "Couldn't find var %s in analysis cache:" v)))
-    (-> a :init maybe-strip-meta :op (= :fn))))
-
-(s/fdef get-var-analysis :args (s/cat :v var?) :ret ::flow/analysis?)
-(defn get-var-analysis
-  "Return the fn analysis for a var"
-  [v]
-  (-> @data/var-analysis
-      (get v)
-      :init
-      maybe-strip-meta))
+    (-> a :init flow/maybe-strip-meta :op (= :fn))))
 
 (defn wrong-number-args-error [f a]
   (let [arities (-> f :methods (->> (map :arglist) (str/join " or ")))]
@@ -139,7 +123,7 @@
   (println "check-invoke-map todo"))
 
 (defmethod check* :invoke [a]
-  (let [f (-> a :fn maybe-strip-meta)]
+  (let [f (-> a :fn flow/maybe-strip-meta)]
     (condp = (:op f)
       :var (check-invoke-var a)
       :fn (check-invoke-fn-literal a)

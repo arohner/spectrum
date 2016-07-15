@@ -108,6 +108,15 @@
                                 (mapv (fn [m]
                                         (flow (with-a m a))) methods))))))
 
+(s/fdef maybe-strip-meta :args ::analysis :ret ::analysis)
+(defn maybe-strip-meta
+  "If a is a :op :with-meta, strip it and return the :expr, or a"
+  [a]
+  (if (-> a :op (= :with-meta))
+    (-> a :expr)
+    a))
+
+
 (defmethod flow :if [a]
   (let [a (-> a
               (update-in [:test] (fn [form] (flow (with-a form a))))
