@@ -34,7 +34,14 @@
 (defn spect? [x]
   (satisfies? Spect x))
 
-(s/def ::spect spect?)
+(s/def ::spect (s/and spect? map?))
+
+(s/def ::args ::spect)
+(s/def ::ret ::spect)
+(s/def ::fn ::spect)
+
+(s/def ::fn-spect (s/keys :req-un [(or ::args ::ret)]
+                          :opt-un [::spect]))
 
 (s/def ::error #(= % ::invalid))
 
@@ -50,6 +57,16 @@
 
 (defn unknown? [x]
   (instance? Unknown x))
+
+(defrecord Value [v]
+  Spect
+  (conform* [this x]
+    (= x v)))
+
+(defn value
+  "spec representing a single value"
+  [v]
+  (map->Value {:v v}))
 
 ;; spec resulting from e.g. bad java interop calls, but we still need a ::spec
 (defrecord Invalid [form]
@@ -289,11 +306,11 @@
 (defn new-regex-seq [ps ret splice forms]
   (if (every? #(not (regex-reject? %)) ps)
     (if (regex-accept? (first ps))
-      (map->RegexSeq {:ps (rest ps)
+      (map->RegexSeq {:ps (vec (rest ps))
                       :forms forms
                       :ret ((fnil conj []) ret (:ret (first ps)))
                       :splice splice})
-      (map->RegexSeq {:ps ps
+      (map->RegexSeq {:ps (vec ps)
                       :forms forms
                       :ret ret
                       :splice splice}))
@@ -367,7 +384,7 @@
         r)))
   (add-return [this r k]
     (let [ret (return this)]
-      (if (= ret ::nil)
+      (if (= ret ::s/nil)
         r
         (conj r (if {k ret} ret)))))
   SpectPrettyString
@@ -388,9 +405,9 @@
   (cond
     (s/spec? x) :spec
     (s/regex? x) (:clojure.spec/op x)
+    (spect? x) :literal
     (symbol? x) :fn-sym
     (var? x) :var
-    (= :clojure.spec/nil x) :clojure.spec/nil
     (fn-literal? x) :fn-literal
     (and (seq? x) (symbol? (first x))) (first x)
     (coll? x) :coll
@@ -407,9 +424,12 @@
 (defn parse-spec [x]
   (cond
     (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
-    (keyword? x) (parse-spec* (#'s/the-spec x))
+    (= ::s/nil x) ::s/nil
+    (and (keyword? x)) (parse-spec* (#'s/the-spec x))
     (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
     (#'s/named? x) (parse-spec* (s/spec x))
+    (s/spec? x) (parse-spec* (s/form x))
+    (s/regex? x) (parse-spec* x)
     :else (parse-spec* x)))
 
 (defmethod parse-spec* :spec [x]
@@ -420,6 +440,7 @@
   (conform* [spec x]
     (cond
       (satisfies? PredConform x) (do "x satisfies predconform" (pred-conform x spec))
+      (= x pred) x
       (literal? x) (when ((:pred spec) x) x)
       :else false))
   PredConform
@@ -441,13 +462,6 @@
 (defn pred-spec? [x]
   (instance? PredSpec x))
 
-(defn subclass?
-  "True if a is compatible with b"
-  [a b]
-  (or (= a b)
-      (contains? (ancestors b) a)))
-
-
 ;; Spec representing a java class. Probably won't need to use this
 ;; directly. Used in java interop, and other places where we don't
 ;; have 'real' specs
@@ -457,17 +471,17 @@
   (conform* [this v]
     (cond
       (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
-                             (when (subclass? cls v-class)
+                             (when (isa? cls v-class)
                                this))
-      (class? v) (subclass? cls v)
-      (j/primitive? v) (subclass? cls (j/primitive->class v))
-      (literal? v) (when (subclass? cls (class v))
+      (class? v) (isa? cls v)
+      (j/primitive? v) (isa? cls (j/primitive->class v))
+      (literal? v) (when (isa? cls (class v))
                      v)
       :else false))
   PredConform
   (pred-conform [this pred-s]
     (when-let [pred-class (spec->class pred-s)]
-      (when (subclass? pred-class cls)
+      (when (isa? cls pred-class)
         this)))
   SpectPrettyString
   (pretty-str [this]
@@ -491,9 +505,9 @@
 
 (defmethod parse-spec* :coll [x]
   (let [v (mapv parse-spec* x)]
-    (if (not (list? x))
-      (into (empty x) v)
-      (list* v))))
+    (if (list? x)
+      (list* v)
+      (into (or (empty x) []) v))))
 
 (defmethod parse-spec* 'clojure.core/fn [x]
   (map->PredSpec {:pred (eval x)
@@ -510,6 +524,9 @@
                                             form))) (map vector (:forms x) (:ps x)))
                   :forms (:forms x)
                   :ret (:ret x)}))
+
+(defmethod parse-spec* :clojure.spec/accept [x]
+  (map->RegexAccept {:ret (:ret x)}))
 
 (defmethod parse-spec* 'clojure.spec/cat [x]
   (let [pairs (->> x rest (partition 2))
@@ -539,22 +556,25 @@
 
 (defmethod parse-spec* :clojure.spec/alt [x]
   ;; evaled alt
-  (map->RegexAlt {:ks (:ks x)
-                  :forms (:forms x)
-                  :ps (map parse-spec (:forms x))}))
+  (let [pairs (map vector (:ps x) (:forms x))
+        forms (map (fn [[p f]]
+                    (if (fn? p)
+                      f
+                      p)) pairs)]
+
+    (map->RegexAlt {:ks (:ks x)
+                    :forms (:forms x)
+                    :ps (mapv parse-spec forms)})))
 
 (defmethod parse-spec* 'clojure.spec/alt [x]
   ;; literal alt form
   (let [pairs (partition 2 (rest x))
-        ks (map first pairs)
-        forms (map second pairs)
-        ps (map parse-spec forms)]
+        ks (mapv first pairs)
+        forms (mapv second pairs)
+        ps (mapv parse-spec forms)]
     (map->RegexAlt {:ks ks
                     :forms forms
                     :ps ps})))
-
-(defmethod parse-spec* :clojure.spec/nil [x]
-  (accept ::nil))
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
@@ -582,8 +602,7 @@
     this))
 
 (defmethod parse-spec* 'clojure.spec/and [x]
-  (map->AndSpec {:forms (mapv (fn [f]
-                                (parse-spec f)) (rest x))}))
+  (map->AndSpec {:forms (mapv parse-spec (rest x))}))
 
 (defn or-conform-literal [or-s x]
   (some (fn [[k f]]
@@ -666,8 +685,7 @@
         keys (mapv first pairs)
         forms (mapv second pairs)]
     (map->OrSpec {:ks keys
-                  :forms (mapv (fn [f]
-                                 (parse-spec f)) forms)})))
+                  :forms (mapv parse-spec forms)})))
 
 (defmethod parse-spec* 'clojure.spec/keys [x]
   (->> (for [[key-type specs] (partition 2 (rest x))]
@@ -686,7 +704,8 @@
 (extend-protocol Spect
   clojure.spec.Spec
   (conform* [spec x]
-    (conform* (parse-spec spec) x)))
+    (println "spect conform spec" spec x)
+    (conform* (parse-spec spec) (parse-spec x))))
 
 (extend-type clojure.spec.Spec
   Spect
@@ -725,7 +744,7 @@
   (spec->class [s]
     Object))
 
-(defmacro conform
+(defn conform
   "Given a spec and args, return the conforming parse. Behaves the same way as s/conform, but args may be clojure literals, or specs, not variables that contain values.
 
 If an arg is a spec, it is treated as a variable that conforms to the spec. pass ::unknown for an variable with no specs.
@@ -735,19 +754,11 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
  "
   [spec args]
-  `(let [spec# ~spec
-         spec# (if (spect? spec#)
-                 spec#
-                 (parse-spec spec#))
-         args# ~args
-         args# (if (spect? args#)
-                 args#
-                 (parse-spec args#))]
-     (if-let [val# (conform* spec# args#)]
-       (if (= ::nil val#)
-         nil
-         val#)
-       ::invalid)))
+  (if-let [val (conform* (parse-spec spec) (parse-spec args))]
+    (if (= ::s/nil val)
+      nil
+      val)
+    ::invalid))
 
 (defn valid? [spec x]
   (not= ::invalid (conform spec x)))

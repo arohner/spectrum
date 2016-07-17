@@ -20,6 +20,10 @@
          (s/or :int integer? :str string?)
          (s/and #(> % 10))
          (s/and integer? #(> % 10))))
+
+  (testing "nil"
+    (= ::s/nil (c/parse-spec ::s/nil)))
+
   (testing "returns Regex"
     (are [spec] (c/regex? (c/parse-spec spec))
          (s/* integer?)
@@ -44,10 +48,11 @@
          'integer? 3 3
          (s/spec #(< % 10)) 3 3
          'integer? 'integer? (c/parse-spec 'integer?)
+         #'integer? #'integer? (c/parse-spec #'integer?)
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
 
-         #'int? (c/class-spec Integer) (c/class-spec Integer)
+         #'number? (c/class-spec Long) (c/class-spec Long)
          (c/class-spec Long) 3 3
          (c/class-spec String) (c/class-spec String) (c/class-spec String)
 
@@ -92,7 +97,7 @@
 
          (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
 
-         (s/cat :x int?) [(c/class-spec Integer)] {:x (c/class-spec Integer)}
+         (s/cat :x string?) [(c/class-spec String)] {:x (c/class-spec String)}
 
 
          (s/keys :req [::integer]) {::integer 3} {::integer 3}
@@ -132,10 +137,9 @@
          (s/keys :req [::integer] :opt [::string]) {::string "foo"})))
 
 (deftest first-rest
-  (are [expected expr] (is (= expected expr))
-    (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))
-    (c/parse-spec (s/* integer?)) (c/rest* (c/parse-spec (s/* integer?)))
-    (c/parse-spec (s/* integer?)) (c/rest* (c/parse-spec (s/+ integer?)))))
+  (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
+  (is (instance? spectrum.conform.RegexSeq (c/rest* (c/parse-spec (s/* integer?)))))
+  (is (instance? spectrum.conform.RegexCat (c/rest* (c/parse-spec (s/+ integer?))))))
 
 
 ;; (s/cat :a int? :b int?)
