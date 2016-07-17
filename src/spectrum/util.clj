@@ -8,7 +8,7 @@
 (defn fn-literal? [x]
 
   (and (seq? x)
-       (= 'fn (first x))
+       (= 'fn* (first x))
        (let [a (ana.jvm/analyze x)]
          (= :fn (:op a)))))
 
