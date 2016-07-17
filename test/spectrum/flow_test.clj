@@ -4,7 +4,10 @@
             [clojure.spec :as s]
             [clojure.spec.test :as spec-test]
             [spectrum.conform :as c]
-            [spectrum.flow :as flow]))
+            [spectrum.flow :as flow]
+            [spectrum.check :as check]))
+
+(check/maybe-load-clojure-builtins)
 
 ;;(spec-test/instrument)
 
@@ -19,7 +22,7 @@
   (is (-> (map flow/flow (ana.jvm/analyze-ns 'spectrum.examples.good.defn)) last :init :expr ::flow/args-spec)))
 
 (deftest destructure-fn-params
-  (are [spec params result] (= result (flow/destructure-fn-params params (c/parse-spec spec)))
+  (are [spec params result] (= result (flow/destructure-fn-params params (c/parse-spec spec) {}))
        (s/cat :x integer?) '[{:name x__#0 :variadic? false}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)}]
        (s/cat :x integer? :y keyword?) '[{:name x__#0 :variadic? false} {:name y__#0 :variadic? false}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)}
                                                                                                          {:name 'y__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'keyword?)}]

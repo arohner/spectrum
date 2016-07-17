@@ -155,7 +155,7 @@
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
         f-var (::flow/var f)
-        ret-spec (::flow/ret-spec f)
+        ret-spec (:ret (flow/get-var-fn-spec f-var))
         body (-> method-a :body)
         last-expr (if (map? body)
                     body

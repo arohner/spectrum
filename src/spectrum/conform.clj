@@ -68,6 +68,9 @@
   [v]
   (map->Value {:v v}))
 
+(defn value? [s]
+  (instance? Value s))
+
 ;; spec resulting from e.g. bad java interop calls, but we still need a ::spec
 (defrecord Invalid [form]
   Spect
