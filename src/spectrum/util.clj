@@ -6,7 +6,6 @@
     (and (:literal? a) (not= :unknown (:type a)))))
 
 (defn fn-literal? [x]
-
   (and (seq? x)
        (= 'fn* (first x))
        (let [a (ana.jvm/analyze x)]

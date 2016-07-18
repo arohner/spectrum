@@ -300,10 +300,11 @@
 (defn get-conforming-java-method
   "Returns the java method that conforms to arg-spec "
   [cls method arg-spec]
-  (some->> (get-java-method cls method)
-           (filterv (fn [m]
-                      (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
-           (most-specific)))
+  (let [ms (get-java-method cls method)]
+    (some->> (get-java-method cls method)
+             (filterv (fn [m]
+                        (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
+             (most-specific))))
 
 (s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret ::fn-spec)
 (defn get-java-method-spec
@@ -317,7 +318,7 @@
                                :ret []})
        :ret (c/parse-spec ret)})
     (do
-      (println "get-java-method-spec: no conforming:" cls method arg-spec)
+      (println "get-java-method-spec: no conforming:" cls method arg-spec "possible:" (mapv :parameter-types (get-java-method cls method)))
       {:args (c/unknown nil)
        :ret (c/unknown nil)})))
 
@@ -449,9 +450,9 @@
             (get-var-fn-spec v))
         a (if s
             (update-in a [:params] destructure-fn-params (:args s) a)
-            (do
-              (print-once "fn-method: no spec for " v)
-              a))]
+            (update-in a [:params] (fn [params]
+                                     (mapv (fn [p]
+                                             (assoc p ::ret-spec (c/unknown (:name p)))) params))))]
     (-> a
         (update-in [:body] (fn [body]
                              (flow (with-meta body {:a a})))))))
