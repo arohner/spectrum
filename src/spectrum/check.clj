@@ -6,6 +6,8 @@
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
+            [spectrum.core-specs]
+            [spectrum.ann]
             [spectrum.data :as data]
             [spectrum.flow :as flow]
             [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
@@ -30,12 +32,14 @@
 (defmulti check* "Entrypoint into low level checking. Takes a tools.analyzer expression. Returns nil or an error" :op)
 
 (defmethod check* :default [a]
-  (print-once "TODO check" (:op a))
+  (print-once (str "TODO check " (:op a)))
   nil)
 
 (declare check)
 
-(def builtin-nses '[clojure.core clojure.set clojure.string clojure.spec])
+;; clojure.spec isn't in the check list atm, because analyzer re-evals the protocols, which breaks e.g. (satsifies? s/Spec) checking
+
+(def builtin-nses '[clojure.core clojure.set clojure.string])
 
 (defn maybe-load-clojure-builtins []
   (when-not (contains? @data/checked-nses 'clojure.core)
@@ -95,7 +99,6 @@
 
 (defn check-invoke-fn-spec
   [name s a]
-  (println "check invoke-fn-spec")
   (let [a-args (zip a :args)
         args-spec (flow/analysis-args->spec a-args)
         valid? (c/valid? (:args s) args-spec)]
@@ -114,13 +117,13 @@
      (filter identity))))
 
 (defn check-invoke-local [a]
-  (println "check-invoke-local todo"))
+  (print-once "check-invoke-local todo"))
 
 (defn check-invoke-fn-literal [a]
-  (println "check-invoke-fn-literal todo"))
+  (print-once "check-invoke-fn-literal todo"))
 
 (defn check-invoke-map [a]
-  (println "check-invoke-map todo"))
+  (print-once "check-invoke-map todo"))
 
 (defmethod check* :invoke [a]
   (let [f (-> a :fn flow/maybe-strip-meta)]
