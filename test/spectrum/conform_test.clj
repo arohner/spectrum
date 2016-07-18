@@ -32,6 +32,7 @@
          (s/alt :x integer? :y keyword?)
          (s/cat :x integer? :y keyword?)
          (s/* (s/alt :int integer? :str string?))))
+
   (testing "literals"
     (is (= 3 (c/parse-spec 3)))
     (is (every? #(satisfies? c/Spect %) (c/parse-spec '[integer? integer?]))))
@@ -47,6 +48,9 @@
     (are [spec val expected] (= expected (c/conform spec val))
          'integer? 3 3
          (s/spec #(< % 10)) 3 3
+         (c/value 1) (c/value 1) (c/value 1)
+
+         #'symbol? (c/value 'foo) (c/value 'foo)
          'integer? 'integer? (c/parse-spec 'integer?)
          #'integer? #'integer? (c/parse-spec #'integer?)
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
@@ -132,6 +136,8 @@
 
          (c/class-spec String) 3
          (c/class-spec Integer) 3
+
+         (c/value 1) (c/value 2)
 
          (s/keys :req [::integer] :opt [::string]) {::integer 3 ::string 5}
          (s/keys :req [::integer] :opt [::string]) {::string "foo"})))
