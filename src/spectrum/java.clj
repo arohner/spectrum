@@ -1,6 +1,7 @@
 (ns spectrum.java
   (:require [clojure.spec :as s]
-            [clojure.set :as set]))
+            [clojure.set :as set]
+            [spectrum.data :as data]))
 
 (def primitive->class- {'long Long
                        Long/TYPE Long
@@ -20,16 +21,6 @@
 
 (s/def ::java-args (s/coll-of ::java-type))
 
-(def class->pred- {Double #'double?
-                   Integer #'int?
-                   java.util.Date #'inst?
-                   Number #'number?
-                   String #'string?
-                   Boolean #'boolean?})
-
-
-(def pred->class- (set/map-invert class->pred-))
-
 (s/fdef resolve-class :args (s/cat :str symbol?) :ret class?)
 (defn resolve-class
   [sym]
@@ -42,8 +33,8 @@
 
 (s/fdef pred->class :args (s/cat :pred ::predicate) :ret (s/nilable Class))
 (defn pred->class [pred]
-  {:post [(do (when-not % (println "pred->class not found:" pred)) true)]}
-  (get pred->class- pred))
+  {:post [(do (when-not % (println "pred->class not found:" pred (class pred))) true)]}
+  (get @data/pred->class pred))
 
 (s/fdef primitive->pred :args (s/cat :p primitive?) :ret class?)
 (defn primitive->class [p]
