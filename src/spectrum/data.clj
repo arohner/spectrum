@@ -1,6 +1,8 @@
 (ns spectrum.data
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
-            [clojure.spec :as s]))
+            [clojure.spec :as s]
+            [spectrum.util :refer (print-once)]
+            [spectrum.analyzer :as a]))
 
 (defonce var-analysis
   ;; var => ana.jvm/analysis cache
@@ -9,6 +11,27 @@
 (defonce checked-nses
   ;; Previously checked namespaces. Will not be rechecked unless checked at the top-level (i.e. not a dep of another ns
   (atom #{}))
+
+(defonce
+  ^{:doc "Map of vars to transformer functions"}
+  spec-transformers
+  (atom {}))
+
+(defonce
+  ^{:doc "map of preds to java classes."}
+  pred->class-
+  (atom {}))
+
+(s/fdef register-class-pred :args (s/cat :p var? :cls class?))
+(defn register-pred->class
+  "Register pred as checking for instances of class c. Use this for preds that correspond *directlly* to classes. "
+  [pred cls]
+  (swap! pred->class- assoc pred cls)
+  nil)
+
+(s/fdef pred->class :args (s/cat :p var?) :ret (s/nilable class?))
+(defn pred->class [v]
+  (get @pred->class- v))
 
 (defn store-var-analysis
   "Store the ana.jvm/analyze result for a var. Used for future type checking"
@@ -31,7 +54,10 @@
       (when (= :def (:op a))
         (store-var-analysis a)))))
 
-(defn get-var-analysis [v]
+(defn get-var-analysis
+  [v]
+  {:post [(do (when-not %
+                (print-once "warning: no var analysis for %s" v)) true)]}
   (get @var-analysis v))
 
 (s/fdef get-var-arities :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis))

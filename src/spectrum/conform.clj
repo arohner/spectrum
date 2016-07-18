@@ -2,12 +2,15 @@
   (:require [clojure.spec :as s]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.util :refer (fn-literal? literal?)]
+            [spectrum.util :refer (fn-literal? literal? print-once)]
+            [spectrum.data :as data]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)))
 
 (declare valid?)
 (declare parse-spec)
+(declare conform)
+(declare value?)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -19,6 +22,11 @@
 (defprotocol WillAccept
   (will-accept [spec]
     "Returns a value that will make (derivative spec x) return accept"))
+
+(s/fdef spec->class :args (s/cat :s ::spect) :ret (s/nilable ::j/java-type))
+(defprotocol SpecToClass
+  (spec->class [s]
+    "If this spec checks for an instance of a class, return it, else nil"))
 
 (extend-protocol SpectPrettyString
   nil
@@ -32,16 +40,13 @@
   (str "#" re-name "[" (str/join ", " (map pretty-str (:ps spec))) "]"))
 
 (defn spect? [x]
-  (satisfies? Spect x))
+  (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
 
 (s/def ::spect (s/and spect? map?))
 
 (s/def ::args ::spect)
 (s/def ::ret ::spect)
 (s/def ::fn ::spect)
-
-(s/def ::fn-spect (s/keys :req-un [(or ::args ::ret)]
-                          :opt-un [::spect]))
 
 (s/def ::error #(= % ::invalid))
 
@@ -58,19 +63,6 @@
 (defn unknown? [x]
   (instance? Unknown x))
 
-(defrecord Value [v]
-  Spect
-  (conform* [this x]
-    (= x v)))
-
-(defn value
-  "spec representing a single value"
-  [v]
-  (map->Value {:v v}))
-
-(defn value? [s]
-  (instance? Value s))
-
 ;; spec resulting from e.g. bad java interop calls, but we still need a ::spec
 (defrecord Invalid [form]
   Spect
@@ -80,14 +72,9 @@
 (defn invalid [form]
   (map->Invalid {:form form}))
 
-(s/fdef spec->class :args (s/cat :s ::spect) :ret (s/nilable ::j/java-type))
-(defprotocol SpecToClass
-  (spec->class [s]
-    "If this spec checks for an instance of a class, return it, else nil"))
-
 (defprotocol PredConform
   (pred-conform [this pred-s]
-    "True if this spec conforms to the pred spec"))
+    "True if this conforms to the pred spec"))
 
 (defprotocol AndConform
   (and-conform [this and-s]
@@ -426,6 +413,7 @@
 
 (defn parse-spec [x]
   (cond
+    (spect? x) x
     (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
     (= ::s/nil x) ::s/nil
     (and (keyword? x)) (parse-spec* (#'s/the-spec x))
@@ -437,6 +425,29 @@
 
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
+
+
+(defrecord Value [v]
+  Spect
+  (conform* [this x]
+    (if (and (value? x) (= (:v this) (:v x)))
+      x
+      false))
+  SpecToClass
+  (spec->class [this]
+    (class (:v this)))
+  PredConform
+  (pred-conform [this pred-s]
+    (when ((:pred pred-s) (:v this))
+      this)))
+
+(defn value
+  "spec representing a single value"
+  [v]
+  (map->Value {:v v}))
+
+(defn value? [s]
+  (instance? Value s))
 
 (defrecord PredSpec [pred form]
   Spect
@@ -539,6 +550,29 @@
                     :ps (mapv parse-spec ps)
                     :forms ps
                     :ret {}})))
+
+(declare fn-spec?)
+
+(defrecord FnSpec [args ret fn]
+  Spect
+  (conform* [this x]
+    (if (and (fn-spec? x)
+             (conform (:args this) (:args x))
+             (conform (:ret this) (:ret x)))
+      x
+      false)))
+
+(defn fn-spec? [x]
+  (instance? FnSpec x))
+
+(s/def ::fn-spect fn-spec?)
+
+(defmethod parse-spec* 'clojure.spec/fspec [x]
+  (let [pairs (->> x rest (partition 2))
+        pairs (map (fn [[k p]]
+                     [k (parse-spec p)]) pairs)
+        args (into {} pairs)]
+    (map->FnSpec args)))
 
 (defn parse-seq [x]
   (let [forms (if (vector? (:forms x))
@@ -733,7 +767,7 @@
 (extend-protocol SpecToClass
   spectrum.conform.PredSpec
   (spec->class [s]
-    (j/pred->class (:pred s)))
+    (data/pred->class (:pred s)))
   spectrum.conform.OrSpec
   (spec->class [s]
     (spec->class-seq (:forms s)))
