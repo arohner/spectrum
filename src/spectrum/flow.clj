@@ -33,9 +33,8 @@
 
 (defn get-var-fn-spec [v]
   (assert (var? v))
-  (let [s (s/get-spec v)]
-    (when s
-      (c/parse-fn-spec s))))
+  (when-let [s (s/get-spec v)]
+    (c/parse-spec s)))
 
 (defn a-loc-str
   "A human-formatted string for the file & line of the current analysis"
@@ -51,7 +50,7 @@
 (s/fdef flow :args (s/cat :a ::analysis) :ret ::analysis)
 
 (defmulti flow
-  "Given an analysis, walk and update-in the the analysis attaching ::specs and ::ret to values"
+  "Given an analysis, walk and update-in the the analysis attaching ::args-spec and ::ret-spec to values"
   #'flow-dispatch)
 
 (s/fdef flow-ns :args (s/cat :as ::analyses) :ret ::analyses)
@@ -81,8 +80,13 @@
       a)))
 
 (defmethod flow :default [a]
-  (print-once "TODO" "flow op" (:op a))
+  (println "TODO" "flow op" (:op a))
   a)
+
+(defmethod flow :quote [a]
+  (let [a (update-in a [:expr] (fn [expr]
+                                 (flow (with-a expr a))))]
+    (assoc a ::ret-spec (-> a :expr ::ret-spec))))
 
 (defmethod flow :def [a]
   (data/store-var-analysis a)
@@ -91,76 +95,22 @@
       (assoc a :init (flow (util/zip a :init)))
       a)))
 
+(defmethod flow :the-var [a]
+  ;; the-var => (var foo). Returns the actual var
+  (assoc a ::ret-spec (c/parse-spec var?)))
+
+(defmethod flow :var [a]
+  ;; :var => the value the var holds
+  (assoc a ::ret-spec @(:var a)))
+
 (defmethod flow :with-meta [a]
   (assoc a :expr (flow (with-a (:expr a) a))))
 
 (defmethod flow :fn [a]
-  (let [v (get a ::var)
-        spec (when v
-               (get-var-fn-spec v))
-        a (if spec
-            (assoc a
-                   ::args-spec (:args spec)
-                   ::ret-spec (:ret spec))
-            a)]
-    (-> a
-        (update-in [:methods] (fn [methods]
-                                (mapv (fn [m]
-                                        (flow (with-a m a))) methods))))))
-
-(s/fdef maybe-strip-meta :args ::analysis :ret ::analysis)
-(defn maybe-strip-meta
-  "If a is a :op :with-meta, strip it and return the :expr, or a"
-  [a]
-  (if (-> a :op (= :with-meta))
-    (-> a :expr)
-    a))
-
-(s/fdef predicate? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
-(defn var-predicate?
-  "True if :def analysis is a predicate."
-  [a]
-  (assert (= :def (:op a)))
-  (let [var-name (:name a)
-        def-val (-> a :init (maybe-strip-meta))]
-    (if (and (re-find #"\?$" (name var-name))
-             (= :fn (:op def-val)))
-      (and (-> def-val :methods (count) (= 1))
-           (= 1 (-> def-val :methods first :params (count))))
-      false)))
-
-(defmethod flow :if [a]
-  (let [a (-> a
-              (update-in [:test] (fn [form] (flow (with-a form a))))
-              (update-in [:then] (fn [form] (flow (with-a form a))))
-              (update-in [:else] (fn [form] (flow (with-a form a)))))]
-    (-> a
-        (assoc ::ret-spec (if (and (-> a :then ::ret-spec)
-                                   (-> a :else ::ret-spec))
-                            (if (= (-> a :then ::ret-spec)
-                                   (-> a :else ::ret-spec))
-                              (-> a :then ::ret-spec)
-                              (c/or- [(-> a :then ::ret-spec)
-                                    (-> a :else ::ret-spec)]))
-
-                            (c/unknown (:form a)))))))
-
-(defn const->spec [a]
-  (java-type->spec (:o-tag a)))
-
-(defmethod flow :const [a]
-  (assoc a ::ret-spec (const->spec a)))
-
-(defmethod flow :do [a]
-  (-> a
-      (update-in [:statements] (fn [statements] (mapv (fn [s]
-                                                        (flow (with-a s a))) statements)))
-      (update-in [:ret] (fn [ret]
-                          (flow (with-a ret a))))))
-
-(defmethod flow :try [a]
-  (update-in a [:body] (fn [body]
-                         (flow (with-a body a)))))
+  (let [a (update-in a [:methods] (fn [methods]
+                                  (mapv (fn [m]
+                                          (flow (with-a m a))) methods)))]
+    (assoc a ::ret-spec (c/parse-spec #'fn?))))
 
 (defn analysis->arg*-dispatch [x]
   (:op x))
@@ -207,6 +157,101 @@
   (c/map->RegexCat {:ps (mapv (fn [arg]
                                 (analysis->arg* (with-a arg args))) args)
                     :ret []}))
+
+(s/fdef maybe-transform :args (s/cat :v var? :s ::c/spect) :ret ::c/fn-spect)
+(defn maybe-transform
+  "apply the var's spec transformer, if applicable"
+  [v fn-spec args-spec]
+  (if-let [t (get @data/spec-transformers v)]
+    (let [_ (when-not (s/valid? ::c/fn-spect fn-spec)
+              (println "invalid fn-spec:" v fn-spec)
+              (println (s/explain ::c/fn-spect fn-spec)))
+          _ (assert (s/valid? ::c/fn-spect fn-spec))
+          fn-spec* (t fn-spec args-spec)]
+      (assert (s/valid? ::c/fn-spect fn-spec*))
+      fn-spec*)
+    fn-spec))
+
+(defmethod flow :invoke [a]
+  ;;(println "flow invoke" a)
+  (let [v (-> a :fn :var)
+        spec (when v
+               (get-var-fn-spec v))
+        a (update-in a [:args] (fn [args]
+                                 (mapv (fn [arg]
+                                         (flow (with-a arg a))) args)))
+        spec (when spec
+               (maybe-transform v spec (analysis-args->spec (:args a))))]
+    (if v
+      (if spec
+        (assoc a ::ret-spec (:ret spec))
+        (do
+          (print-once "warning: no spec for" (:var (:fn a)))
+          (assoc a ::ret-spec (c/unknown (:form a)))))
+      (do
+        (print-once "warning: invoke non-var:" (:form (:fn a)) (a-loc-str a))
+        (assoc a ::ret-spec (c/unknown (:form a)))))))
+
+(s/fdef maybe-strip-meta :args ::analysis :ret ::analysis)
+(defn maybe-strip-meta
+  "If a is a :op :with-meta, strip it and return the :expr, or a"
+  [a]
+  (if (-> a :op (= :with-meta))
+    (-> a :expr)
+    a))
+
+(s/fdef predicate? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
+(defn var-predicate?
+  "True if :def analysis is a predicate."
+  [a]
+  (when-not (= :def (:op a))
+    (println "var-predicate?:" a))
+  (assert (= :def (:op a)))
+  (let [var-name (:name a)
+        def-val (-> a :init (maybe-strip-meta))]
+    (if (and (re-find #"\?$" (name var-name))
+             (= :fn (:op def-val)))
+      (and (-> def-val :methods (count) (= 1))
+           (= 1 (-> def-val :methods first :params (count))))
+      false)))
+
+(defmethod flow :if [a]
+  (let [a (-> a
+              (update-in [:test] (fn [form] (flow (with-a form a))))
+              (update-in [:then] (fn [form] (flow (with-a form a))))
+              (update-in [:else] (fn [form] (flow (with-a form a)))))
+        then-ret-spec (-> a :then ::ret-spec)
+        else-ret-spec (-> a :else ::ret-spec)
+        test-ret-spec (-> a :test ::ret-spec)]
+    (when-not test-ret-spec
+      (println "no ::ret-spec on" (-> a :test :op) (-> a :test :form) (a-loc-str a)))
+    (assert test-ret-spec)
+    (assert then-ret-spec)
+    (assert else-ret-spec)
+    (-> a
+        (assoc ::ret-spec (if (c/value? test-ret-spec)
+                            (if (inspect (:v test-ret-spec))
+                              then-ret-spec
+                              else-ret-spec)
+                            (if (= then-ret-spec else-ret-spec)
+                              then-ret-spec
+                              (c/or- [(-> a :then ::ret-spec)
+                                      (-> a :else ::ret-spec)])))))))
+
+(defmethod flow :const [a]
+  (assoc a ::ret-spec (c/value (:val a))))
+
+(defmethod flow :do [a]
+  (let [a (-> a
+              (update-in [:statements] (fn [statements] (mapv (fn [s]
+                                                                (flow (with-a s a))) statements)))
+              (update-in [:ret] (fn [ret]
+                                  (flow (with-a ret a)))))]
+    (assoc a ::ret-spec (-> a :ret ::ret-spec))))
+
+(defmethod flow :try [a]
+  (update-in a [:body] (fn [body]
+                         (flow (with-a body a)))))
 
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?

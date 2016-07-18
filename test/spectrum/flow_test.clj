@@ -50,10 +50,12 @@
 (deftest expression-return-specs
   (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))
     '(+ 1 2) (c/parse-spec #'number?)
-    '(if true 1 "string") (c/or- [(c/class-spec Long) (c/class-spec String)])
-    '(if true 1 2) (c/parse-spec #'number?)
-    '(let [x 1] x) (c/parse-spec #'number?)
-    '(let [x (+ 1 2)] x) (c/parse-spec #'number?)))
+    '(if (even? *print-length*) 1 "string") (c/or- [(c/value 1) (c/value "string")])
+    '(let [x 1] x) (c/value 1)
+    '(let [x (+ 1 2)] x) (c/parse-spec #'number?)
+
+    '(if (map? {:foo 3}) :then :else) (c/value :then)
+    '(if (not (map? {:foo 3})) :then :else) (c/value :else)))
 
 (s/def ::integer int?)
 
