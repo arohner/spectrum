@@ -276,17 +276,24 @@
       {:args (c/unknown nil)
        :ret (c/unknown nil)})))
 
-(defmethod flow :static-call [a]
-  (let [cls (:class a)
-        method (:method a)
+(defn flow-java-call
+  "Handles both :static-call and :instance-call"
+  [a]
+  (let [{:keys [class method instance]} a
         a (update-in a [:args] (fn [args]
                                  (mapv (fn [arg]
                                          (flow (with-meta arg {:a a}))) args)))
         args-spec (analysis-args->spec (util/zip a :args))
-        spec (get-java-method-spec cls method args-spec)]
+        spec (get-java-method-spec class method args-spec)]
     (-> a
         (assoc ::ret-spec (:ret spec)
                ::args-spec (:args spec)))))
+
+(defmethod flow :static-call [a]
+  (flow-java-call a))
+
+(defmethod flow :instance-call [a]
+  (flow-java-call a))
 
 (declare assoc-form-spec)
 
