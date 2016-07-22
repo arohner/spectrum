@@ -1,8 +1,7 @@
 (ns spectrum.data
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec :as s]
-            [spectrum.util :refer (print-once)]
-            [spectrum.analyzer :as a]))
+            [spectrum.util :refer (print-once)]))
 
 (defonce var-analysis
   ;; var => ana.jvm/analysis cache
@@ -16,6 +15,9 @@
   ^{:doc "Map of vars to transformer functions"}
   spec-transformers
   (atom {}))
+
+(defn get-transformer [v]
+  (get @spec-transformers v))
 
 (defonce
   ^{:doc "map of preds to java classes."}

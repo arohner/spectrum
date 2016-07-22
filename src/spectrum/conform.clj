@@ -63,6 +63,9 @@
 (defn unknown? [x]
   (instance? Unknown x))
 
+(defn known? [x]
+  (not (unknown? x)))
+
 ;; spec resulting from e.g. bad java interop calls, but we still need a ::spec
 (defrecord Invalid [form]
   Spect
@@ -116,7 +119,7 @@
     (rest ps)))
 
 (defn regex? [x]
-  (satisfies? Regex x))
+  (and (spect? x) (satisfies? Regex x) (or (:ps x) (:ret x))))
 
 (declare regex-accept)
 (declare regex-reject)

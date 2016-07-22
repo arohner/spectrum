@@ -31,11 +31,6 @@
 
 (s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable ::c/spect))
 
-(defn get-var-fn-spec [v]
-  (assert (var? v))
-  (when-let [s (s/get-spec v)]
-    (c/parse-spec s)))
-
 (defn a-loc-str
   "A human-formatted string for the file & line of the current analysis"
   [a]
@@ -162,7 +157,7 @@
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
   [v fn-spec args-spec]
-  (if-let [t (get @data/spec-transformers v)]
+  (if-let [t (data/get-transformer v)]
     (let [_ (when-not (s/valid? ::c/fn-spect fn-spec)
               (println "invalid fn-spec:" v fn-spec)
               (println (s/explain ::c/fn-spect fn-spec)))
@@ -179,9 +174,7 @@
                (get-var-fn-spec v))
         a (update-in a [:args] (fn [args]
                                  (mapv (fn [arg]
-                                         (flow (with-a arg a))) args)))
-        spec (when spec
-               (maybe-transform v spec (analysis-args->spec (:args a))))]
+                                         (flow (with-a arg a))) args)))]
     (if v
       (if spec
         (assoc a ::ret-spec (:ret spec))
@@ -230,7 +223,7 @@
     (assert else-ret-spec)
     (-> a
         (assoc ::ret-spec (if (c/value? test-ret-spec)
-                            (if (inspect (:v test-ret-spec))
+                            (if (:v test-ret-spec)
                               then-ret-spec
                               else-ret-spec)
                             (if (= then-ret-spec else-ret-spec)
@@ -252,6 +245,17 @@
 (defmethod flow :try [a]
   (update-in a [:body] (fn [body]
                          (flow (with-a body a)))))
+
+(defmethod flow :instance? [a]
+  (let [a (update-in a [:target] (fn [target]
+                                   (flow (with-a target a))))
+        s (c/class-spec (:class a))
+        arg-spec (-> a :target ::ret-spec)]
+    (if (not= (c/unknown? arg-spec))
+      (if (c/valid? s arg-spec)
+        (assoc a ::ret-spec (c/value true))
+        (assoc a ::ret-spec (c/value false)))
+      (assoc a ::ret-spec (c/parse-spec #'boolean?)))))
 
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?
@@ -410,7 +414,7 @@
 (defn arity-conform?
   "Without knowing the types of args, return true if it's possible for args to conform, based on arity alone"
   [spec args]
-  (if (and spec args)
+  (if (and spec args (c/regex? spec))
     (if (:variadic? (first args))
       true
       (if (empty? args)
@@ -456,6 +460,36 @@
     (-> a
         (update-in [:body] (fn [body]
                              (flow (with-meta body {:a a})))))))
+
+(defmethod flow :vector [a]
+  (let [a (update-in a [:items] (fn [items]
+                                  (mapv (fn [i]
+                                          (flow (with-a i a))) items)))]
+    (assoc a ::ret-spec (mapv ::ret-spec (:items a)))))
+
+(defn keyword-invoke-ret-spec
+  [a]
+  {:post [(c/spect? %) ]}
+  (let [a (update-in a [:target] (fn [t]
+                                   (flow (with-a t a))))
+        target-ret-spec (-> a :target ::ret-spec)
+        k (-> a :keyword :val)]
+    (when-not target-ret-spec
+      (println "no target-ret-spec:" (:form a) (a-loc-str a))
+      (assert false))
+
+    (assert k)
+    (assert target-ret-spec)
+    (or
+     (cond
+       (and (c/value? target-ret-spec) (map? (:v target-ret-spec))) (get-in target-ret-spec [:v k])
+       (c/keys? target-ret-spec) (or (get-in target-ret-spec [:req-un k])
+                                     (get-in target-ret-spec [:opt-un k]))
+       :else (do (println "warning: unknown keyword invoke:" (:form a) (a-loc-str a))
+                 (c/unknown (:form a)))))))
+
+(defmethod flow :keyword-invoke [a]
+  (assoc a ::ret-spec (keyword-invoke-ret-spec a)))
 
 (defn analyze+flow [form]
   (flow (ana.jvm/analyze form)))

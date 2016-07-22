@@ -71,5 +71,6 @@
 
   (testing "should fail"
     (are [spec args] (= false (flow/arity-conform? (c/parse-spec spec) args))
-       (s/cat :a int?) '[a b]
-       (s/cat :a int? :b int?) '[a])))
+      (s/cat :a int?) '[a b]
+      (s/cat :a int? :b int?) '[a]
+      #'int? '[a])))
