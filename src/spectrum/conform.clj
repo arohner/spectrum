@@ -720,6 +720,9 @@
   (spec->class [this]
     clojure.lang.PersistentHashMap))
 
+(defn keys? [x]
+  (instance? KeysSpec x))
+
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))
         keys (mapv first pairs)
