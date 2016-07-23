@@ -85,10 +85,11 @@
 
 (defmethod flow :def [a]
   (data/store-var-analysis a)
-  (let [a (maybe-assoc-var-name a)]
-    (if (-> a :init)
-      (assoc a :init (flow (util/zip a :init)))
-      a)))
+  (let [a (maybe-assoc-var-name a)
+        a (update-in a [:init] (fn [i]
+                                 (when i
+                                   (flow (with-a i a)))))]
+    (assoc a ::ret-spec (c/parse-spec #'var?))))
 
 (defmethod flow :the-var [a]
   ;; the-var => (var foo). Returns the actual var
