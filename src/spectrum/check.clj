@@ -73,6 +73,12 @@
       flow/maybe-strip-meta))
 
 (s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
+(defn var-analysis?
+  "True if we have analysis on v"
+  [v]
+  (boolean (get @data/var-analysis v)))
+
+(s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
 (defn var-fn?
   "True if this var holds a fn"
   [v]
@@ -101,16 +107,20 @@
   [name s a]
   (let [a-args (zip a :args)
         args-spec (flow/analysis-args->spec a-args)
-        valid? (c/valid? (:args s) args-spec)]
+        valid? (c/valid-invoke? s args-spec)]
     (when-not valid?
       (new-error {:message (format "Function %s cannot be called with args %s. Expected %s" name (c/pretty-str args-spec) (c/pretty-str (-> s :args)))} a))))
 
 (defn check-invoke-var [a]
-  (let [v (-> a :fn :var)]
+  (let [v (-> a :fn :var)
+        va (get-var-analysis v)]
     (->>
-     [(when-not (var-fn? v)
+     [(when-not va
+        (print-once "warning: no analysis for %s" v))
+      (when (and va (not (var-fn? v)))
         (new-error {:message (format "attempt to call non-fn var: %s" (:form a))} a))
-      (check-invoke-fn-arity (get-var-analysis v) a)
+      (when va
+        (check-invoke-fn-arity (get-var-analysis v) a))
       (if-let [s (flow/get-var-fn-spec v)]
         (check-invoke-fn-spec (str v) s a)
         (print-once "check-invoke-var: no spec for" v))]
@@ -164,10 +174,11 @@
                     body
                     (do
                       (assert (sequential? body))
-                      (last body)))]
+                      (last body)))
+        expr-spec (::flow/ret-spec last-expr)]
     (if ret-spec
-      (if-let [expr-spec (::flow/ret-spec last-expr)]
-        (when-not (c/valid? ret-spec expr-spec)
+      (if expr-spec
+        (when-not (c/valid-return? ret-spec expr-spec)
           [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or f-var "fn") (c/pretty-str ret-spec) (c/pretty-str expr-spec))} method-a)])
         (println "check-fn-method-return no ret-spec for expression:" (:form last-expr) "@" (flow/a-loc-str last-expr)))
       (println "check-fn-method-return no ret-spec for fn " f-var))))
@@ -186,7 +197,7 @@
 (defn check-spec-arity [a]
   (let [f (unwrap-a a)
         f-var (::flow/var f)
-        args-spec (::flow/args-spec f)
+        args-spec (:args (c/parse-spec (s/get-spec f-var)))
         params (:params a)]
     (assert params)
     (when args-spec

@@ -153,19 +153,8 @@
                                 (analysis->arg* (with-a arg args))) args)
                     :ret []}))
 
-(s/fdef maybe-transform :args (s/cat :v var? :s ::c/spect) :ret ::c/fn-spect)
-(defn maybe-transform
-  "apply the var's spec transformer, if applicable"
-  [v fn-spec args-spec]
-  (if-let [t (data/get-transformer v)]
-    (let [_ (when-not (s/valid? ::c/fn-spect fn-spec)
-              (println "invalid fn-spec:" v fn-spec)
-              (println (s/explain ::c/fn-spect fn-spec)))
-          _ (assert (s/valid? ::c/fn-spect fn-spec))
-          fn-spec* (t fn-spec args-spec)]
-      (assert (s/valid? ::c/fn-spect fn-spec*))
-      fn-spec*)
-    fn-spec))
+(defn get-var-fn-spec [v]
+  (c/parse-spec (s/get-spec v)))
 
 (defmethod flow :invoke [a]
   ;;(println "flow invoke" a)
@@ -174,7 +163,9 @@
                (get-var-fn-spec v))
         a (update-in a [:args] (fn [args]
                                  (mapv (fn [arg]
-                                         (flow (with-a arg a))) args)))]
+                                         (flow (with-a arg a))) args)))
+        spec (when spec
+            (c/maybe-transform v spec (analysis-args->spec (:args a))))]
     (if v
       (if spec
         (assoc a ::ret-spec (:ret spec))
@@ -219,7 +210,7 @@
     (when-not test-ret-spec
       (println "no ::ret-spec on" (-> a :test :op) (-> a :test :form) (a-loc-str a)))
     (assert test-ret-spec)
-    (assert then-ret-spec)
+    (assert then-ret-spec (format "missing then-ret-spec: %s" (a-loc-str a)))
     (assert else-ret-spec)
     (-> a
         (assoc ::ret-spec (if (c/value? test-ret-spec)
@@ -395,7 +386,7 @@
               (update-in [:init] (fn [init]
                                    (flow (with-a init a)))))]
     (when-not (-> a :init ::ret-spec)
-      (println "error: no ret-spec on:" (:name a)))
+      (println "error: no ret-spec on:" (:name a) (:op a)))
     (assert (-> a :init ::ret-spec))
     (assoc a ::ret-spec (-> a :init ::ret-spec))))
 
@@ -467,17 +458,29 @@
                                           (flow (with-a i a))) items)))]
     (assoc a ::ret-spec (mapv ::ret-spec (:items a)))))
 
+(defmethod flow :map [a]
+  (-> a
+      (update-in [:keys] (fn [keys]
+                           (mapv (fn [k]
+                                   (flow (with-a k a))) keys)))
+      (update-in [:vals] (fn [vals]
+                           (mapv (fn [v]
+                                   (flow (with-a v a))) vals)))
+      (assoc ::ret-spec (if (:literal? a)
+                          (c/value (:form a))
+                          (c/parse-spec #'map?)))))
+
 (defn keyword-invoke-ret-spec
   [a]
-  {:post [(c/spect? %) ]}
-  (let [a (update-in a [:target] (fn [t]
-                                   (flow (with-a t a))))
-        target-ret-spec (-> a :target ::ret-spec)
-        k (-> a :keyword :val)]
-    (when-not target-ret-spec
-      (println "no target-ret-spec:" (:form a) (a-loc-str a))
-      (assert false))
+  {:post [(c/spect? %)]}
 
+  (let [path (if (-> a :target :op (= :with-meta))
+               [:target :expr]
+               [:target])
+        a (update-in a path (fn [t]
+                                   (flow (with-a t a))))
+        target-ret-spec (-> (get-in a path) ::ret-spec)
+        k (-> a :keyword :val)]
     (assert k)
     (assert target-ret-spec)
     (or

@@ -11,6 +11,7 @@
 (declare parse-spec)
 (declare conform)
 (declare value?)
+(declare fn-spec?)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -47,6 +48,8 @@
 (s/def ::args ::spect)
 (s/def ::ret ::spect)
 (s/def ::fn ::spect)
+
+(s/def ::fn-spect #'fn-spec?)
 
 (s/def ::error #(= % ::invalid))
 
@@ -172,9 +175,11 @@
 (extend-protocol Regex
   spectrum.conform.Spect
   (derivative [spec x]
-    (if (conform* spec x)
-      (map->RegexAccept {:ret x})
-      regex-reject))
+    (let [v (conform* spec x)]
+      (if (and v (or (not (value? v))
+                     (and (value? v) (:v v))))
+        (map->RegexAccept {:ret x})
+        regex-reject)))
   (empty-regex [this]
     regex-reject)
   (accept-nil? [this]
@@ -394,7 +399,14 @@
 
 (declare new-regex-plus)
 
-(defn parse-spec-dispatch [x]
+(defn get-spec [spec-name]
+  (let [s (s/get-spec spec-name)
+        cs (parse-spec s)]
+    (if-let [t (data/get-transformer spec-name)]
+      (assoc cs :transformer t)
+      cs)))
+
+(defn parse-spec*-dispatch [x]
   (cond
     (s/spec? x) :spec
     (s/regex? x) (:clojure.spec/op x)
@@ -406,7 +418,7 @@
     (coll? x) :coll
     :else :literal))
 
-(defmulti parse-spec* #'parse-spec-dispatch)
+(defmulti parse-spec* #'parse-spec*-dispatch)
 
 (defmethod parse-spec* :literal [x]
   x)
@@ -418,9 +430,9 @@
   (cond
     (spect? x) x
     (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
+    (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
     (= ::s/nil x) ::s/nil
     (and (keyword? x)) (parse-spec* (#'s/the-spec x))
-    (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
     (#'s/named? x) (parse-spec* (s/spec x))
     (s/spec? x) (parse-spec* (s/form x))
     (s/regex? x) (parse-spec* x)
@@ -428,7 +440,6 @@
 
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
-
 
 (defrecord Value [v]
   Spect
@@ -452,14 +463,48 @@
 (defn value? [s]
   (instance? Value s))
 
+(declare pred-spec?)
+(defn resolve-pred-spec
+  "If spec is a PredSpec, find and parse its fnspec"
+  [s]
+  (if (pred-spec? s)
+    (let [fnspec (s/get-spec (:pred s))]
+      (assert fnspec (format "couldn't find spec for: %s %s" (:form s) (class (:form s))))
+      (parse-spec fnspec))
+    s))
+
+(s/fdef maybe-transform :args (s/cat :v var? :s ::spect) :ret ::fn-spect)
+(defn maybe-transform
+  "apply the var's spec transformer, if applicable"
+  [v fn-spec args-spec]
+  (if-let [t (data/get-transformer v)]
+    (let [_ (when-not (s/valid? ::fn-spect fn-spec)
+              (println "invalid fn-spec:" v fn-spec)
+              (println (s/explain ::fn-spect fn-spec)))
+          _ (assert (s/valid? ::fn-spect fn-spec))
+          fn-spec* (t fn-spec args-spec)]
+      fn-spec*)
+    fn-spec))
+
+(s/fdef conform-spec-ret :args (s/cat :s pred-spec? :arg any?))
+(defn conform-spec-ret
+  "Check that fnspec, a predicate, returns truthy when called w/ arg. Returns a c/value or c/unknown"
+  [fnspec arg]
+  (let [s (resolve-pred-spec fnspec)]
+    (let [v (:pred fnspec)
+          ret (:ret (maybe-transform v s arg))]
+      (if (value? ret)
+        ret
+        false))))
+
 (defrecord PredSpec [pred form]
   Spect
   (conform* [spec x]
     (cond
-      (satisfies? PredConform x) (do "x satisfies predconform" (pred-conform x spec))
+      (satisfies? PredConform x) (or (pred-conform x spec) (conform-spec-ret spec x))
       (= x pred) x
       (literal? x) (when ((:pred spec) x) x)
-      :else false))
+      :else (conform-spec-ret spec x)))
   PredConform
   (pred-conform [this pred]
     (when (= (:form this) (:form pred))
@@ -554,8 +599,6 @@
                     :forms ps
                     :ret {}})))
 
-(declare fn-spec?)
-
 (defrecord FnSpec [args ret fn]
   Spect
   (conform* [this x]
@@ -567,8 +610,6 @@
 
 (defn fn-spec? [x]
   (instance? FnSpec x))
-
-(s/def ::fn-spect fn-spec?)
 
 (defmethod parse-spec* 'clojure.spec/fspec [x]
   (let [pairs (->> x rest (partition 2))
@@ -788,7 +829,7 @@
     Object))
 
 (defn conform
-  "Given a spec and args, return the conforming parse. Behaves the same way as s/conform, but args may be clojure literals, or specs, not variables that contain values.
+  "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, not variables that contain values.
 
 If an arg is a spec, it is treated as a variable that conforms to the spec. pass ::unknown for an variable with no specs.
 
@@ -797,11 +838,34 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
  "
   [spec args]
-  (if-let [val (conform* (parse-spec spec) (parse-spec args))]
-    (if (= ::s/nil val)
-      nil
-      val)
-    ::invalid))
+  (let [spec (parse-spec spec)
+        args (parse-spec args)
+        t (:transformer spec)
+        spec (if t
+               (t spec args)
+               spec)]
+    (if-let [val (conform* spec args)]
+      (if (= ::s/nil val)
+        nil
+        val)
+      ::invalid)))
 
 (defn valid? [spec x]
   (not= ::invalid (conform spec x)))
+
+(defn valid-invoke?
+  "check that fnspec can be invoked w/ args"
+  [spec args]
+  (assert (fn-spec? spec))
+  (let [c (conform (:args spec) args)]
+    (if (value? c)
+      (boolean (:v c))
+      (not= ::invalid c))))
+
+(defn valid-return?
+  "True if spec conforms, as a return value. Conform must return truthy c/value"
+  [spec args]
+  (let [c (conform spec args)]
+    (if (value? c)
+      (boolean (:v c))
+      (not= ::invalid c))))

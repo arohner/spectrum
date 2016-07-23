@@ -21,11 +21,29 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
   "Returns a spec-transformer for a simple (instance? c x) spec."
   [cls]
   (fn [spect args-spect]
-    (let [c (c/spec->class (c/first* args-spect))]
+    (let [c (c/spec->class (if (c/regex? args-spect)
+                             (c/first* args-spect)
+                             args-spect))]
       (if c
         (if (isa? c cls)
           (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))))))
+          (assoc spect :ret (c/value false)))
+        ::c/invalid))))
+
+(defn instance-or
+  "spec-transformer for (or (instance? a) (instance? b)...) case. clses is a seq of classes."
+  [clses]
+  (fn [spect args-spect]
+    (let [c (if (c/spect? args-spect)
+              (c/spec->class (if (c/regex? args-spect)
+                               (c/first* args-spect)
+                               args-spect))
+              (class args-spect))]
+      (if c
+        (if (some (fn [cls] (isa? c cls)) clses)
+          (assoc spect :ret (c/value true))
+          (assoc spect :ret (c/value false)))
+        ::c/invalid))))
 
 (def pred->class
   {#'associative? clojure.lang.Associative
@@ -71,10 +89,11 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
   (register-spec-transformer v (instance-transformer cls)))
 
 (ann #'not (fn [spect args-spec]
-             (println "ann #'not:" spect args-spec)
              (let [arg (c/first* args-spec)]
                (if (c/value? arg)
                  (if (:v arg)
                    (assoc spect :ret (c/value false))
                    (assoc spect :ret (c/value true)))
                  spect))))
+
+(ann #'int? (instance-or [Long Integer Short Byte]))

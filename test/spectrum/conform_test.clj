@@ -57,7 +57,7 @@
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
 
          #'number? (c/class-spec Long) (c/class-spec Long)
-         #'int? (c/class-spec Long) (c/class-spec Long)
+         #'int? (c/class-spec Long) (c/value true)
          (c/class-spec Long) 3 3
          (c/class-spec String) (c/class-spec String) (c/class-spec String)
 
@@ -133,6 +133,8 @@
          (s/cat :x integer? :y keyword?) [3]
          (s/cat :x integer? :y keyword?) 3
          (s/alt :int integer? :str string?) ["foo" 3]
+         (s/cat :x keyword?) [3]
+         (s/cat :x keyword?) [(c/value 3)]
          ;; (s/& (s/+ integer?) #(even? (count %))) [1]
 
          (c/class-spec String) 3
@@ -148,6 +150,10 @@
   (is (instance? spectrum.conform.RegexSeq (c/rest* (c/parse-spec (s/* integer?)))))
   (is (instance? spectrum.conform.RegexCat (c/rest* (c/parse-spec (s/+ integer?))))))
 
+
+(deftest spect?-works)
+
+(deftest regex?-works)
 
 ;; (s/cat :a int? :b int?)
 ;; (s/cat :a int? :b int? :c int?)

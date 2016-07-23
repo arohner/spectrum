@@ -18,7 +18,7 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 ```clojure
 (require '[spectrum.check :as st])
 
-(st/check-ns 'foo.bar)
+(st/check 'your.namespace)
 ```
 
 Returns a seq of Error defrecords.
@@ -68,9 +68,9 @@ This contains a spec parser and a re-implementation of clojure.spec, except they
 Returns a defrecord, containing the parsed spec. This is basically a reimplementation of clojure.spec, except more data-driven. If you're not using spectrum, but want to do other analysis-y stuff with specs, you may find this useful.
 
 ```
-(c/conform (c/parse-spec (s/+ integer?)) [1 2 3])
+(c/conform (s/+ integer?) [1 2 3])
 
-(c/conform (c/parse-spec (s/+ integer?)) (c/parse-spec '[integer? integer?]))
+(c/conform (s/+ integer?) '[integer? integer?])
 ```
 
 `c/conform` behaves the same as `s/conform`, except it works on literals and specs (i.e. the things we have access to at compile time)
