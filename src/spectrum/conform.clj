@@ -463,6 +463,13 @@
 (defn value? [s]
   (instance? Value s))
 
+(defn conformy?
+  "True if the conform result returns anything other than ::invalid or (c/value falsey)"
+  [x]
+  (if (value? x)
+    (boolean (:v x))
+    (not= ::invalid x)))
+
 (declare pred-spec?)
 (defn resolve-pred-spec
   "If spec is a PredSpec, find and parse its fnspec"
@@ -857,15 +864,9 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
   "check that fnspec can be invoked w/ args"
   [spec args]
   (assert (fn-spec? spec))
-  (let [c (conform (:args spec) args)]
-    (if (value? c)
-      (boolean (:v c))
-      (not= ::invalid c))))
+  (conformy? (conform (:args spec) args)))
 
 (defn valid-return?
   "True if spec conforms, as a return value. Conform must return truthy c/value"
   [spec args]
-  (let [c (conform spec args)]
-    (if (value? c)
-      (boolean (:v c))
-      (not= ::invalid c))))
+  (conformy? (conform spec args)))
