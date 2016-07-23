@@ -99,7 +99,9 @@
   (assoc a ::ret-spec @(:var a)))
 
 (defmethod flow :with-meta [a]
-  (assoc a :expr (flow (with-a (:expr a) a))))
+  (let [a (update-in a [:expr] (fn [e]
+                                 (flow (with-a e a))))]
+    (assoc a ::ret-spec (::ret-spec (:expr a)))))
 
 (defmethod flow :fn [a]
   (let [a (update-in a [:methods] (fn [methods]
@@ -474,12 +476,9 @@
   [a]
   {:post [(c/spect? %)]}
 
-  (let [path (if (-> a :target :op (= :with-meta))
-               [:target :expr]
-               [:target])
-        a (update-in a path (fn [t]
-                                   (flow (with-a t a))))
-        target-ret-spec (-> (get-in a path) ::ret-spec)
+  (let [a (update-in a [:target] (fn [t]
+                            (flow (with-a t a))))
+        target-ret-spec (-> a :target ::ret-spec)
         k (-> a :keyword :val)]
     (assert k)
     (assert target-ret-spec)
