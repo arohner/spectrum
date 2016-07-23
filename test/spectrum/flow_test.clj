@@ -36,8 +36,12 @@
           :ret
           (= (c/class-spec Double))))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i integer?)))
-          :ret)))
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)))
+          :ret))
+
+  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]))
+          :ret
+          c/known?)))
 
 (deftest java-type->spec-works
   (are [x result] (= result (flow/java-type->spec x))
