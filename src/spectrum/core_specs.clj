@@ -23,6 +23,7 @@
 (s/fdef clojure.core/keyword? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/map? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/number? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/nil? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/not :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/seq :args (s/cat :coll seqable?) :ret seq?)
 (s/fdef clojure.core/seq? :args (s/cat :x any?) :ret boolean?)
