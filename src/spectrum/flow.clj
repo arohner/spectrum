@@ -210,7 +210,7 @@
     (when-not test-ret-spec
       (println "no ::ret-spec on" (-> a :test :op) (-> a :test :form) (a-loc-str a)))
     (assert test-ret-spec)
-    (assert then-ret-spec (format "missing then-ret-spec: %s" (a-loc-str a)))
+    (assert then-ret-spec (format "missing then-ret-spec: %s %s" (-> a :test :op) (a-loc-str a)))
     (assert else-ret-spec)
     (-> a
         (assoc ::ret-spec (if (c/value? test-ret-spec)
