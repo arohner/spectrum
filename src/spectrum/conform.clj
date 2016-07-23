@@ -550,8 +550,13 @@
   PredConform
   (pred-conform [this pred-s]
     (when-let [pred-class (spec->class pred-s)]
-      (when (isa? cls pred-class)
-        this)))
+      (when (isa? pred-class cls)
+        pred-s)))
+  AndConform
+  (and-conform [this and-s]
+    (when (some (fn [p]
+                  (conformy? (conform p this))) (:forms and-s))
+      this))
   SpectPrettyString
   (pretty-str [this]
     (str cls))
@@ -673,7 +678,7 @@
   Spect
   (conform* [this x]
     (cond
-      (satisfies? AndConform x) (and-conform this x)
+      (satisfies? AndConform x) (and-conform x this)
       (literal? x) (and-conform-literal this x)))
   PredConform
   (pred-conform [this pred]
@@ -683,8 +688,8 @@
   (and-conform [this that]
     (let [this-specs (set (:forms this))
           that-specs (set (:forms that))]
-      (when (= this-specs (set/intersection this-specs that-specs))
-        this)))
+      (when (= that-specs (set/intersection this-specs that-specs))
+        that)))
   WillAccept
   (will-accept [this]
     this))

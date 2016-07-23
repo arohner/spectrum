@@ -41,6 +41,10 @@
 
   (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]))
           :ret
+          c/known?))
+
+  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec #'fn?)]))
+          :ret
           c/known?)))
 
 (deftest java-type->spec-works

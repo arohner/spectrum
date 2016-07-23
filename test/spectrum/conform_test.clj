@@ -56,7 +56,7 @@
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
          'integer? (s/and integer? even?) (c/parse-spec 'integer?)
 
-         #'number? (c/class-spec Long) (c/class-spec Long)
+         #'number? (c/class-spec Long) (c/value true)
          #'int? (c/class-spec Long) (c/value true)
          (c/class-spec Long) 3 3
          (c/class-spec String) (c/class-spec String) (c/class-spec String)
@@ -67,7 +67,7 @@
 
          (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/or- [(c/class-spec Long) (c/class-spec String) (c/class-spec Keyword)]) (c/or- [(c/class-spec Long) (c/class-spec String) (c/class-spec Keyword)])
 
-         (c/parse-spec #'number?) (c/class-spec Long) (c/class-spec Long)
+         (c/parse-spec #'number?) (c/class-spec Long) (c/value true)
          (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
 
          (s/and integer? even?) 10 10
@@ -112,7 +112,8 @@
          (s/cat :args (s/keys :req-un [::integer])) [{:integer 3}] {:args {:integer 3}}
 
 
-         ))
+         #'ifn? (c/class-spec java.util.concurrent.Callable) (c/parse-spec #'ifn?)
+         (s/and fn? ifn?) (c/class-spec java.util.concurrent.Callable) (c/class-spec java.util.concurrent.Callable)))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))

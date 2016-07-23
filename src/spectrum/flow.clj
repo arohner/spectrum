@@ -105,7 +105,7 @@
   (let [a (update-in a [:methods] (fn [methods]
                                   (mapv (fn [m]
                                           (flow (with-a m a))) methods)))]
-    (assoc a ::ret-spec (c/parse-spec #'fn?))))
+    (assoc a ::ret-spec (c/parse-spec (s/and fn? ifn?)))))
 
 (defn analysis->arg*-dispatch [x]
   (:op x))
