@@ -493,6 +493,9 @@
 (defmethod flow :keyword-invoke [a]
   (assoc a ::ret-spec (keyword-invoke-ret-spec a)))
 
+(defmethod flow :new [a]
+  (assoc a ::ret-spec (c/class-spec (-> a :class :val))))
+
 (defn analyze+flow [form]
   (flow (ana.jvm/analyze form)))
 
