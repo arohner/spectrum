@@ -13,6 +13,9 @@
 (declare value?)
 (declare fn-spec?)
 
+(declare pred-spec?)
+(declare and-spec?)
+
 (defprotocol Spect
   (conform* [spec x]
     "True if value x conforms to spec."))
@@ -470,7 +473,6 @@
     (boolean (:v x))
     (not= ::invalid x)))
 
-(declare pred-spec?)
 (defn resolve-pred-spec
   "If spec is a PredSpec, find and parse its fnspec"
   [s]
@@ -539,6 +541,9 @@
   Spect
   (conform* [this v]
     (cond
+      (and-spec? v) (when (some (fn [p]
+                                  (isa? (spec->class p) cls)) (:forms v))
+                      v)
       (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
                                (when (isa? v-class cls)
                                  this))
@@ -693,6 +698,9 @@
   WillAccept
   (will-accept [this]
     this))
+
+(defn and-spec? [x]
+  (instance? AndSpec x))
 
 (defmethod parse-spec* 'clojure.spec/and [x]
   (map->AndSpec {:forms (mapv parse-spec (rest x))}))

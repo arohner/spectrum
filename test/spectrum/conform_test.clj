@@ -113,7 +113,9 @@
 
 
          #'ifn? (c/class-spec java.util.concurrent.Callable) (c/parse-spec #'ifn?)
-         (s/and fn? ifn?) (c/class-spec java.util.concurrent.Callable) (c/class-spec java.util.concurrent.Callable)))
+         (s/and fn? ifn?) (c/class-spec java.util.concurrent.Callable) (c/class-spec java.util.concurrent.Callable)
+
+         (c/class-spec java.util.concurrent.Callable) (s/and fn? ifn?) (s/and fn? ifn?)))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))

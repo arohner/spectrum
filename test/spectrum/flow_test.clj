@@ -43,7 +43,7 @@
           :ret
           c/known?))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec #'fn?)]))
+  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]))
           :ret
           c/known?)))
 
