@@ -16,12 +16,12 @@
 
 (s/def ::message string?)
 
-(s/fdef new-error :args (s/cat :args (s/keys :req-un [::message])))
-(defn new-error [{:keys [message form data] :as args} a]
-  (map->CheckError (merge args (select-keys (:env a) [:file :line :column]))))
-
 (defn check-error? [x]
   (instance? CheckError x))
+
+(s/fdef new-error :args (s/cat :data (s/keys :req-un [::message]) :a ::flow/analysis) :ret check-error?)
+(defn new-error [{:keys [message form data] :as args} a]
+  (map->CheckError (merge args (select-keys (:env a) [:file :line :column]))))
 
 (s/def ::maybe-check-error (s/nilable check-error?))
 
