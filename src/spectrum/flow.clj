@@ -106,8 +106,8 @@
 
 (defmethod flow :fn [a]
   (let [a (update-in a [:methods] (fn [methods]
-                                  (mapv (fn [m]
-                                          (flow (with-a m a))) methods)))]
+                                    (mapv (fn [m]
+                                            (flow (with-a m a))) methods)))]
     (assoc a ::ret-spec (c/parse-spec (s/and fn? ifn?)))))
 
 (defn analysis->arg*-dispatch [x]
@@ -217,8 +217,12 @@
     (when-not test-ret-spec
       (println "no ::ret-spec on" (-> a :test :op) (-> a :test :form) (a-loc-str a)))
     (assert test-ret-spec)
-    (assert then-ret-spec (format "missing then-ret-spec: %s %s" (-> a :test :op) (a-loc-str a)))
-    (assert else-ret-spec)
+    (when (:test a)
+      (assert then-ret-spec (format "missing then-ret-spec: %s %s %s" (-> a :then :op) (-> a :then :form)
+                                    (a-loc-str a))))
+    (when (:else a)
+      (assert else-ret-spec (format "missing else-ret-spec: %s %s %s" (-> a :else :op) (-> a :else :form)
+                                    (a-loc-str a))))
     (-> a
         (assoc ::ret-spec (if (c/value? test-ret-spec)
                             (if (:v test-ret-spec)
@@ -333,6 +337,9 @@
                                          (flow (with-meta arg {:a a}))) args)))
         args-spec (analysis-args->spec (util/zip a :args))
         spec (get-java-method-spec class method args-spec)]
+    (when-not (:ret spec)
+      (println "flow-java-call: no spec:" class method args-spec))
+    (assert (:ret spec))
     (-> a
         (assoc ::ret-spec (:ret spec)
                ::args-spec (:args spec)))))
@@ -392,9 +399,10 @@
   (let [a (-> a
               (update-in [:init] (fn [init]
                                    (flow (with-a init a)))))]
-    (when-not (-> a :init ::ret-spec)
-      (println "error: no ret-spec on:" (:name a) (:op a)))
-    (assert (-> a :init ::ret-spec))
+    (when (and (-> a :init) (-> a :init ::ret-spec not))
+      (println "error: no ret-spec on:" (:name a) (:op a) (a-loc-str a)))
+    (when (:init a)
+      (assert (-> a :init ::ret-spec)))
     (assoc a ::ret-spec (-> a :init ::ret-spec))))
 
 (defn flow-loop-let [a]
@@ -492,7 +500,6 @@
 (defn keyword-invoke-ret-spec
   [a]
   {:post [(c/spect? %)]}
-
   (let [a (update-in a [:target] (fn [t]
                             (flow (with-a t a))))
         target-ret-spec (-> a :target ::ret-spec)

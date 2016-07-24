@@ -232,3 +232,5 @@
             [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (c/pretty-str args-spec) (c/pretty-str call-spec))} a)]))
         (println "static-call no arg-spec:" (flow/a-loc-str a)))
       [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (c/pretty-str args-spec) (java-methods-str (:class a) (:method a)))} a)])))
+
+;; check recur values conform to bindings
