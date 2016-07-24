@@ -128,6 +128,10 @@
                :bindings
                (filter (fn [b] (= name (:name b))))
                first)
+     :loop (->> a
+               :bindings
+               (filter (fn [b] (= name (:name b))))
+               first)
      :binding (->> a
                    :bindings
                    (filter (fn [b] (= name (:name b))))
