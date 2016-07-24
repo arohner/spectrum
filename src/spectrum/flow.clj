@@ -503,9 +503,10 @@
      (cond
        (and (c/value? target-ret-spec) (map? (:v target-ret-spec))) (get-in target-ret-spec [:v k])
        (c/keys? target-ret-spec) (or (get-in target-ret-spec [:req-un k])
-                                     (get-in target-ret-spec [:opt-un k]))
-       :else (do (println "warning: unknown keyword invoke:" (:form a) (a-loc-str a))
-                 (c/unknown (:form a)))))))
+                                     (get-in target-ret-spec [:opt-un k])))
+     (do
+       (println "warning: unknown keyword invoke:" (:form a) (a-loc-str a))
+       (c/unknown (:form a))))))
 
 (defmethod flow :keyword-invoke [a]
   (assoc a ::ret-spec (keyword-invoke-ret-spec a)))
