@@ -397,7 +397,7 @@
     (assert (-> a :init ::ret-spec))
     (assoc a ::ret-spec (-> a :init ::ret-spec))))
 
-(defmethod flow :let [a]
+(defn flow-loop-let [a]
   (let [a (assoc-spec-bindings a)
         a (update-in a [:body] (fn [body] (flow (with-a body a))))
         last-expr (if (-> a :body :op (= :do))
@@ -407,6 +407,12 @@
         ret-spec (::ret-spec last-expr)]
     (-> a
         (assoc ::ret-spec ret-spec))))
+
+(defmethod flow :let [a]
+  (flow-loop-let a))
+
+(defmethod flow :loop [a]
+  (flow-loop-let a))
 
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
 (defn arity-conform?
@@ -476,6 +482,12 @@
       (assoc ::ret-spec (if (:literal? a)
                           (c/value (:form a))
                           (c/parse-spec #'map?)))))
+
+(defmethod flow :recur [a]
+  (let [a (update-in a [:exprs] (fn [exprs]
+                                  (mapv (fn [e]
+                                          (flow (with-a e a))) exprs)))]
+    (assoc a ::ret-spec ::recur)))
 
 (defn keyword-invoke-ret-spec
   [a]
