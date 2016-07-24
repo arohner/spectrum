@@ -800,6 +800,9 @@
        (into {})
        (map->KeysSpec)))
 
+(defmethod parse-spec* 'clojure.spec/conformer [x]
+  (value true))
+
 (defn parse-fn-spec [s]
   {:args (-> s :args parse-spec)
    :ret (-> s :ret parse-spec)
