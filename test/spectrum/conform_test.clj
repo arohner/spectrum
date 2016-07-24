@@ -19,7 +19,8 @@
          (s/spec ::even-int)
          (s/or :int integer? :str string?)
          (s/and #(> % 10))
-         (s/and integer? #(> % 10))))
+         (s/and integer? #(> % 10))
+         (s/nilable int?)))
 
   (testing "nil"
     (= ::s/nil (c/parse-spec ::s/nil)))
