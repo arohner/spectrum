@@ -20,7 +20,8 @@
          (s/or :int integer? :str string?)
          (s/and #(> % 10))
          (s/and integer? #(> % 10))
-         (s/nilable int?)))
+         (s/nilable int?)
+         (s/coll-of ::integer)))
 
   (testing "nil"
     (= ::s/nil (c/parse-spec ::s/nil)))
@@ -118,6 +119,8 @@
 
          (c/class-spec java.util.concurrent.Callable) (s/and fn? ifn?) (s/and fn? ifn?)))
 
+         (s/coll-of int?) (s/coll-of int?) (c/parse-spec (s/coll-of int?))))
+
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
          'integer? "foo"
@@ -147,7 +150,9 @@
          (c/value 1) (c/value 2)
 
          (s/keys :req [::integer] :opt [::string]) {::integer 3 ::string 5}
-         (s/keys :req [::integer] :opt [::string]) {::string "foo"})))
+         (s/keys :req [::integer] :opt [::string]) {::string "foo"}
+
+         (s/coll-of int?) (s/coll-of string?))))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))

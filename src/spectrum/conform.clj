@@ -781,6 +781,20 @@
   (spec->class [this]
     clojure.lang.PersistentHashMap))
 
+(defrecord EverySpec [s kind]
+  Spect
+  (conform* [this x]
+    (cond
+      (instance? EverySpec x) (when (conformy? (conform s (:s x)))
+                                x)
+      :else false)))
+
+(defmethod parse-spec* 'clojure.spec/every [x]
+  (let [args (rest x)
+        s (parse-spec (first args))
+        opts (apply hash-map (rest args))]
+    (map->EverySpec (merge {:s s} opts))))
+
 (defn keys? [x]
   (instance? KeysSpec x))
 
