@@ -117,7 +117,8 @@
          #'ifn? (c/class-spec java.util.concurrent.Callable) (c/parse-spec #'ifn?)
          (s/and fn? ifn?) (c/class-spec java.util.concurrent.Callable) (c/class-spec java.util.concurrent.Callable)
 
-         (c/class-spec java.util.concurrent.Callable) (s/and fn? ifn?) (s/and fn? ifn?)))
+         (c/class-spec java.util.concurrent.Callable) (s/and fn? ifn?) (c/parse-spec (s/and fn? ifn?))
+
 
          (s/coll-of int?) (s/coll-of int?) (c/parse-spec (s/coll-of int?))))
 
