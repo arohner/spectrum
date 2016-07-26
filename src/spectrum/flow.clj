@@ -516,11 +516,29 @@
                           (c/value (:form a))
                           (c/parse-spec #'map?)))))
 
+(defrecord Recur [args])
+(defn recur-args [args]
+  (map->Recur {:args args}))
+
 (defmethod flow :recur [a]
+  {:post [(::ret-spec %)]}
+  (println "flow :recur")
   (let [a (update-in a [:exprs] (fn [exprs]
                                   (mapv (fn [e]
                                           (flow (with-a e a))) exprs)))]
-    (assoc a ::ret-spec ::recur)))
+    (assoc a ::ret-spec (recur-args (analysis-args->spec (:exprs a))))))
+
+(defrecord Throw [args])
+
+(defn throw-args [args]
+  (map->Throw {:args args}))
+
+(defmethod flow :throw [a]
+  {:post [(::ret-spec %)]}
+  (println "flow :recur")
+  (let [a (update-in a [:exception] (fn [e]
+                                      (flow (with-a e a))))]
+    (assoc a ::ret-spec (recur-args (:exception a)))))
 
 (defn keyword-invoke-ret-spec
   [a]
