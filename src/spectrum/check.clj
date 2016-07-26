@@ -16,8 +16,11 @@
 
 (s/def ::message string?)
 
+(s/fdef check-error? :args (s/cat :x any?) :ret boolean?)
 (defn check-error? [x]
   (instance? CheckError x))
+
+(s/fdef map->CheckError :args (s/cat :m (s/keys :req-un [::message])) :ret check-error?)
 
 (s/fdef new-error :args (s/cat :data (s/keys :req-un [::message]) :a ::flow/analysis) :ret check-error?)
 (defn new-error [{:keys [message form data] :as args} a]
