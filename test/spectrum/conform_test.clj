@@ -119,8 +119,12 @@
 
          (c/class-spec java.util.concurrent.Callable) (s/and fn? ifn?) (c/parse-spec (s/and fn? ifn?))
 
+         (s/coll-of int?) (s/coll-of int?) (c/parse-spec (s/coll-of int?))
+         (c/or- [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
 
-         (s/coll-of int?) (s/coll-of int?) (c/parse-spec (s/coll-of int?))))
+         (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
+
+         (c/and-spec [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))

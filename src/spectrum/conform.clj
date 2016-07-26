@@ -466,6 +466,10 @@
 (defn value? [s]
   (instance? Value s))
 
+(defn valuey? [s]
+  "true if s is a value with a truthy value"
+  (and (value? s) (boolean (:v s))))
+
 (defn conformy?
   "True if the conform result returns anything other than ::invalid or (c/value falsey)"
   [x]
@@ -531,6 +535,11 @@
   WillAccept
   (will-accept [this]
     pred))
+
+(s/fdef pred-spec :args (s/cat :v var?) :ret ::spect)
+(defn pred-spec [v]
+  (map->PredSpec {:pred v
+                  :form v}))
 
 (defn pred-spec? [x]
   (instance? PredSpec x))
@@ -704,8 +713,15 @@
 (defn and-spec? [x]
   (instance? AndSpec x))
 
+(s/fdef and-spec :args (s/cat :forms (s/coll-of ::spect)) :ret ::spect)
+(defn and-spec [x]
+  (let [forms (remove valuey? x)]
+    (cond
+      (>= (count forms) 2) (map->AndSpec {:forms forms})
+      :else (first forms))))
+
 (defmethod parse-spec* 'clojure.spec/and [x]
-  (map->AndSpec {:forms (mapv parse-spec (rest x))}))
+  (and-spec (mapv parse-spec (rest x))))
 
 (defn or-conform-literal [or-s x]
   (some (fn [[k f]]
@@ -783,19 +799,31 @@
   (spec->class [this]
     clojure.lang.PersistentHashMap))
 
-(defrecord EverySpec [s kind]
+(defrecord CollOfSpec [s kind]
   Spect
   (conform* [this x]
     (cond
-      (instance? EverySpec x) (when (conformy? (conform s (:s x)))
+      (instance? CollOfSpec x) (when (conformy? (conform s (:s x)))
                                 x)
       :else false)))
 
-(defmethod parse-spec* 'clojure.spec/every [x]
+(defn parse-coll-of [x]
+  (println "parse-coll-of:" x)
   (let [args (rest x)
         s (parse-spec (first args))
         opts (apply hash-map (rest args))]
-    (map->EverySpec (merge {:s s} opts))))
+    (map->CollOfSpec (merge {:s s} opts))))
+
+(defmethod parse-spec* 'clojure.spec/every [x]
+  (parse-coll-of x))
+
+(defmethod parse-spec* 'clojure.spec/coll-of [x]
+  (parse-coll-of x))
+
+(defmethod parse-spec* 'clojure.spec/nilable [x]
+  (println "parse-spec nilable" x)
+  (let [s (parse-spec (second x))]
+    (or- [s (parse-spec #'nil?)])))
 
 (defn keys? [x]
   (instance? KeysSpec x))
