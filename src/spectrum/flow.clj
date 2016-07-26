@@ -195,6 +195,26 @@
         (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
         (assoc a ::ret-spec (c/unknown (:form a)))))))
 
+(defmethod flow :protocol-invoke [a]
+  {:post [(::ret-spec %)]}
+  (let [v (-> a :fn :var)
+        spec (when v
+               (get-var-fn-spec v))
+        a (update-in a [:target] (fn [t]
+                                   (flow (with-a t a))))
+        a (update-in a [:args] (fn [args]
+                                 (mapv (fn [arg]
+                                         (flow (with-a arg a))) args)))
+        spec (when spec
+               (c/maybe-transform v spec (analysis-args->spec (:args a))))]
+    (if v
+      (if spec
+        (assoc a ::ret-spec (:ret spec))
+        (do
+          (print-once "warning: no spec for" (:var (:fn a)))
+          (assoc a ::ret-spec (c/unknown (:form a)))))
+      (do
+        (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
         (assoc a ::ret-spec (c/unknown (:form a)))))))
 
 (s/fdef maybe-strip-meta :args ::analysis :ret ::analysis)
