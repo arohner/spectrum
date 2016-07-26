@@ -817,7 +817,6 @@
       :else false)))
 
 (defn parse-coll-of [x]
-  (println "parse-coll-of:" x)
   (let [args (rest x)
         s (parse-spec (first args))
         opts (apply hash-map (rest args))]
