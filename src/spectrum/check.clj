@@ -163,7 +163,8 @@
   (check* (zip a :expr)))
 
 (defmethod check* :def [a]
-  (check* (zip a :init)))
+  (when (:init a)
+    (check* (with-a (:init a) a))))
 
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
