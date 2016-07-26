@@ -522,7 +522,9 @@
   (or-conform [this or-s]
     (some (fn [[k f]]
             (when (conform* f this)
-              [k this])) (map vector (:ks or-s) (:forms or-s))))
+              (if k
+                [k this]
+                this))) (map vector (or (:ks or-s) (repeat nil)) (:forms or-s))))
   SpectPrettyString
   (pretty-str [this]
     (str form))
