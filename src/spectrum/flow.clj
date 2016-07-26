@@ -116,52 +116,44 @@
                                             (flow (with-a m a))) methods)))]
     (assoc a ::ret-spec (c/parse-spec (s/and fn? ifn?)))))
 
-(defn analysis->arg*-dispatch [x]
-  (:op x))
+(defn find-binding*-dispatch [a name]
+  (:op a))
 
-(defmulti analysis->arg* #'analysis->arg*-dispatch)
+(defmulti find-binding* #'find-binding*-dispatch)
 
-(defmethod analysis->arg* :default [x]
-  (or (::ret-spec x) (c/unknown (:form x))))
+(defmethod find-binding* :default [a name]
+  nil)
+
+(defmethod find-binding* :let [a name]
+  (->> a
+       :bindings
+       (filter (fn [b] (= name (:name b))))
+       first))
+
+(defmethod find-binding* :loop [a name]
+  (->> a
+       :bindings
+       (filter (fn [b] (= name (:name b))))
+       first))
+
+(defmethod find-binding* :binding [a name]
+  (when (= name (:name a))
+    a))
+
+(defmethod find-binding* :fn-method [a name]
+  (->> a
+       :params
+       (filter (fn [b] (= name (:name b))))
+       first))
 
 (s/fdef find-binding :args (s/cat :a ::analysis :name symbol?) :ret (s/nilable ::analysis))
 (defn find-binding
   "recursively unwrap a, looking for a :binding for 'name"
   [a name]
-  (or
-   (condp = (:op a)
-     :let (->> a
-               :bindings
-               (filter (fn [b] (= name (:name b))))
-               first)
-     :loop (->> a
-               :bindings
-               (filter (fn [b] (= name (:name b))))
-               first)
-     :binding (->> a
-                   :bindings
-                   (filter (fn [b] (= name (:name b))))
-                   first)
-     :fn-method (->> a
-                     :params
-                     (filter (fn [b] (= name (:name b))))
-                     first)
-     nil)
-
-   (when-let [a* (unwrap-a a)]
-     (recur a* name))))
-
-(defmethod analysis->arg* :local [a]
-  (let [b (find-binding a (:name a))]
-    (when-not b
-      (println "analysis->arg*: failed to find binding:" (:name a) (a-loc-str a)))
-    (or (::ret-spec b) (c/unknown (:name a)))))
-
-(defmethod analysis->arg* :loop [a]
-  (let [b (find-binding a (:name a))]
-    (when-not b
-      (println "analysis->arg*: failed to find binding:" (:name a) (a-loc-str a)))
-    (or (::ret-spec b) (c/unknown (:name a)))))
+  (if-let [b (find-binding* a name)]
+    b
+    (when-let [a* (unwrap-a a)]
+      (recur a* name))))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::analyses) :ret (s/coll-of ::c/spect))
 
@@ -169,7 +161,8 @@
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
   [args]
   (c/map->RegexCat {:ps (mapv (fn [arg]
-                                (analysis->arg* (with-a arg args))) args)
+                                (assert (::ret-spec arg))
+                                (::ret-spec arg)) args)
                     :ret []}))
 
 (defn get-var-fn-spec [v]
