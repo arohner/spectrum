@@ -61,7 +61,10 @@
 (defrecord Unknown [form]
   Spect
   (conform* [this x]
-    false))
+    false)
+  SpectPrettyString
+  (pretty-str [x]
+    (str "#Unknown[" (pretty-str form) "]")))
 
 (defn unknown [form]
   (map->Unknown {:form form}))
@@ -456,7 +459,10 @@
   PredConform
   (pred-conform [this pred-s]
     (when ((:pred pred-s) (:v this))
-      this)))
+      this))
+  SpectPrettyString
+  (pretty-str [x]
+    (str "#Value[" (pretty-str v) "]")))
 
 (defn value
   "spec representing a single value"
@@ -747,7 +753,10 @@
       this))
   WillAccept
   (will-accept [this]
-    (first forms)))
+    (first forms))
+  SpectPrettyString
+  (pretty-str [x]
+    (str "#Or[" (str/join ", " (map pretty-str forms)) "]")))
 
 (defn or- [ps]
   (map->OrSpec {:forms ps}))
