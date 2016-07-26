@@ -79,11 +79,13 @@
   a)
 
 (defmethod flow :quote [a]
+  {:post [(::ret-spec %)]}
   (let [a (update-in a [:expr] (fn [expr]
                                  (flow (with-a expr a))))]
     (assoc a ::ret-spec (-> a :expr ::ret-spec))))
 
 (defmethod flow :def [a]
+  {:post [(::ret-spec %)]}
   (data/store-var-analysis a)
   (let [a (maybe-assoc-var-name a)
         a (update-in a [:init] (fn [i]
@@ -92,19 +94,23 @@
     (assoc a ::ret-spec (c/parse-spec #'var?))))
 
 (defmethod flow :the-var [a]
+  {:post [(::ret-spec %)]}
   ;; the-var => (var foo). Returns the actual var
   (assoc a ::ret-spec (c/parse-spec var?)))
 
 (defmethod flow :var [a]
+  {:post [(::ret-spec %)]}
   ;; :var => the value the var holds
   (assoc a ::ret-spec @(:var a)))
 
 (defmethod flow :with-meta [a]
+  {:post [(::ret-spec %)]}
   (let [a (update-in a [:expr] (fn [e]
                                  (flow (with-a e a))))]
     (assoc a ::ret-spec (::ret-spec (:expr a)))))
 
 (defmethod flow :fn [a]
+  {:post [(::ret-spec %)]}
   (let [a (update-in a [:methods] (fn [methods]
                                     (mapv (fn [m]
                                             (flow (with-a m a))) methods)))]
@@ -151,6 +157,12 @@
       (println "analysis->arg*: failed to find binding:" (:name a) (a-loc-str a)))
     (or (::ret-spec b) (c/unknown (:name a)))))
 
+(defmethod analysis->arg* :loop [a]
+  (let [b (find-binding a (:name a))]
+    (when-not b
+      (println "analysis->arg*: failed to find binding:" (:name a) (a-loc-str a)))
+    (or (::ret-spec b) (c/unknown (:name a)))))
+
 (s/fdef analysis-args->spec :args (s/cat :a ::analyses) :ret (s/coll-of ::c/spect))
 
 (defn analysis-args->spec
@@ -164,7 +176,7 @@
   (c/parse-spec (s/get-spec v)))
 
 (defmethod flow :invoke [a]
-  ;;(println "flow invoke" a)
+  {:post [(::ret-spec %)]}
   (let [v (-> a :fn :var)
         spec (when v
                (get-var-fn-spec v))
@@ -207,6 +219,7 @@
       false)))
 
 (defmethod flow :if [a]
+  {:post [(::ret-spec %)]}
   (let [a (-> a
               (update-in [:test] (fn [form] (flow (with-a form a))))
               (update-in [:then] (fn [form] (flow (with-a form a))))
@@ -234,9 +247,12 @@
                                       (-> a :else ::ret-spec)])))))))
 
 (defmethod flow :const [a]
+  {:post [(::ret-spec %)]}
+
   (assoc a ::ret-spec (c/value (:val a))))
 
 (defmethod flow :do [a]
+  {:post [(::ret-spec %)]}
   (let [a (-> a
               (update-in [:statements] (fn [statements] (mapv (fn [s]
                                                                 (flow (with-a s a))) statements)))
@@ -245,10 +261,12 @@
     (assoc a ::ret-spec (-> a :ret ::ret-spec))))
 
 (defmethod flow :try [a]
+  {:post [(::ret-spec %)]}
   (update-in a [:body] (fn [body]
                          (flow (with-a body a)))))
 
 (defmethod flow :instance? [a]
+  {:post [(::ret-spec %)]}
   (let [a (update-in a [:target] (fn [target]
                                    (flow (with-a target a))))
         s (c/class-spec (:class a))
@@ -345,9 +363,11 @@
                ::args-spec (:args spec)))))
 
 (defmethod flow :static-call [a]
+  {:post [(::ret-spec %)]}
   (flow-java-call a))
 
 (defmethod flow :instance-call [a]
+  {:post [(::ret-spec %)]}
   (flow-java-call a))
 
 (declare assoc-form-spec)
@@ -387,6 +407,7 @@
             (update-in a [:bindings] conj (flow (with-meta b {:a a})))) (assoc a :bindings []) (:bindings a)))
 
 (defmethod flow :local [a]
+  {:post [(::ret-spec %)]}
   (let [b (find-binding a (:name a))]
     (assert b)
     (assert b (format "flow :local: failed to find binding: %s %s" (:name a) (a-loc-str a)))
@@ -396,6 +417,7 @@
     (assoc a ::ret-spec (::ret-spec b))))
 
 (defmethod flow :binding [a]
+  {:post [(::ret-spec %)]}
   (let [a (-> a
               (update-in [:init] (fn [init]
                                    (flow (with-a init a)))))]
@@ -406,20 +428,20 @@
     (assoc a ::ret-spec (-> a :init ::ret-spec))))
 
 (defn flow-loop-let [a]
+  {:post [(::ret-spec %)]}
   (let [a (assoc-spec-bindings a)
         a (update-in a [:body] (fn [body] (flow (with-a body a))))
-        last-expr (if (-> a :body :op (= :do))
-                    (-> a :body last)
-                    (-> a :body))
-        _ (assert last-expr)
-        ret-spec (::ret-spec last-expr)]
+        ret-spec (::ret-spec (:body a))]
+    (assert ret-spec)
     (-> a
         (assoc ::ret-spec ret-spec))))
 
 (defmethod flow :let [a]
+  {:post [(::ret-spec %)]}
   (flow-loop-let a))
 
 (defmethod flow :loop [a]
+  {:post [(::ret-spec %)]}
   (flow-loop-let a))
 
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
@@ -461,6 +483,7 @@
               (assoc p ::ret-spec (c/unknown (:name p)))) params))))
 
 (defmethod flow :fn-method [a]
+  ;;{:post [(::ret-spec %)]}
   (let [v (-> a meta :a ::var)
         s (when v
             (get-var-fn-spec v))
@@ -474,12 +497,14 @@
                              (flow (with-meta body {:a a})))))))
 
 (defmethod flow :vector [a]
+  {:post [(::ret-spec %)]}
   (let [a (update-in a [:items] (fn [items]
                                   (mapv (fn [i]
                                           (flow (with-a i a))) items)))]
     (assoc a ::ret-spec (mapv ::ret-spec (:items a)))))
 
 (defmethod flow :map [a]
+  {:post [(::ret-spec %)]}
   (-> a
       (update-in [:keys] (fn [keys]
                            (mapv (fn [k]
@@ -516,9 +541,11 @@
        (c/unknown (:form a))))))
 
 (defmethod flow :keyword-invoke [a]
+  {:post [(::ret-spec %)]}
   (assoc a ::ret-spec (keyword-invoke-ret-spec a)))
 
 (defmethod flow :new [a]
+  {:post [(::ret-spec %)]}
   (assoc a ::ret-spec (c/class-spec (-> a :class :val))))
 
 (defn analyze+flow [form]
