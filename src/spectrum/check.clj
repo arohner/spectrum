@@ -116,7 +116,7 @@
         va (get-var-analysis v)]
     (->>
      [(when-not va
-        (print-once "warning: no analysis for %s" v))
+        (print-once "warning: no analysis for" v))
       (when (and va (not (var-fn? v)))
         (new-error {:message (format "attempt to call non-fn var: %s" (:form a))} a))
       (when va
