@@ -192,7 +192,9 @@
           (print-once "warning: no spec for" (:var (:fn a)))
           (assoc a ::ret-spec (c/unknown (:form a)))))
       (do
-        (print-once "warning: invoke non-var:" (:form (:fn a)) (a-loc-str a))
+        (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
+        (assoc a ::ret-spec (c/unknown (:form a)))))))
+
         (assoc a ::ret-spec (c/unknown (:form a)))))))
 
 (s/fdef maybe-strip-meta :args ::analysis :ret ::analysis)
