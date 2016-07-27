@@ -6,7 +6,7 @@
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
 (s/fdef register-spec-transformer :args (s/cat :v var? :f ::transformer))
-(defn register-spec-transformer
+(defn ann
   "Register a spec transformer. Takes a var, and a transformer function
 
 transformer function: a function taking 2 args: the function's spect, and the Spect for the fn args at this callsite. Returns an updated spec. Updating the :ret is probably a good idea. When types can be determined statically, consider returning (c/val true) and (c/val false)
@@ -15,7 +15,6 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
   (swap! data/spec-transformers assoc v f)
   nil)
 
-(def ann register-spec-transformer)
 (ann #'instance? (fn [spect args-spect]
                    {:post [(do (println "ann instance:" spect args-spect "=>" %) true)]}
                    (let [c (c/first* args-spect)
