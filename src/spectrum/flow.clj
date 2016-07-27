@@ -584,6 +584,9 @@
   {:post [(::ret-spec %)]}
   (assoc a ::ret-spec (c/class-spec (-> a :class :val))))
 
+(defmethod flow :instance-field [a]
+  (assoc a ::ret-spec (c/unknown a)))
+
 (defn analyze+flow [form]
   (flow (ana.jvm/analyze form)))
 
