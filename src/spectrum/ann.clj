@@ -33,7 +33,6 @@
                        spect))))
 
 (ann #'into (fn [spect args-spect]
-              {:post [(do (println "ann into:" spect args-spect "=>" %) true)]}
               (let [to (c/first* args-spect)
                     from (c/second* args-spect)]
                 (if (c/known? to)
