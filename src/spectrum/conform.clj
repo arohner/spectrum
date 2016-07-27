@@ -228,14 +228,16 @@
   (accept-nil? [this]
     false)
   (return [this]
-    nil)
-  (add-return [this ret k]
-    nil))
+    ::s/nil)
+  (add-return [this r k]
+    r))
 
-(extend-protocol Regex
-  Object
+(extend-type Object
+  Regex
   (derivative [spec x]
-    regex-reject)
+    (if (= spec x)
+      (accept x)
+      regex-reject))
   (empty-regex [spec]
     regex-reject)
   (accept-nil? [this]
@@ -243,6 +245,9 @@
   (return [this]
     this)
   (add-return [this ret k]
+    this)
+  WillAccept
+  (will-accept [this]
     this))
 
 (defn maybe-alt-
