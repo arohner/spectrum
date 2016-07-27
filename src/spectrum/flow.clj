@@ -552,7 +552,6 @@
 
 (defmethod flow :throw [a]
   {:post [(::ret-spec %)]}
-  (println "flow :recur")
   (let [a (update-in a [:exception] (fn [e]
                                       (flow (with-a e a))))]
     (assoc a ::ret-spec (recur-args (:exception a)))))
