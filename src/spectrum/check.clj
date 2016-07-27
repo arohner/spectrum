@@ -92,6 +92,7 @@
       (println (format "Couldn't find var %s in analysis cache:" v)))
     (-> a :init flow/maybe-strip-meta :op (= :fn))))
 
+(s/fdef wrong-number-args-error :args (s/cat :f ::flow/analysis :a ::flow/analysis) :ret check-error?)
 (defn wrong-number-args-error [f a]
   (let [arities (-> f :methods (->> (map :arglist) (str/join " or ")))]
     (new-error {:message (format "Function %s called with incorrect number of args. Expected %s, got %s" (-> a :form first) arities (->> a :form rest vec))} a)))

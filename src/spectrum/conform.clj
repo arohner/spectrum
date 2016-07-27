@@ -135,6 +135,8 @@
 (defn second* [ps]
   (first* (rest* ps)))
 
+(s/fdef regex? :args (s/cat :x any?) :ret boolean?)
+
 (defn regex? [x]
   (and (spect? x) (satisfies? Regex x) (or (:ps x) (:ret x))))
 
