@@ -5,11 +5,16 @@
 
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
-(s/fdef register-spec-transformer :args (s/cat :v var? :f ::transformer))
+(s/fdef ann :args (s/cat :v var? :f ::transformer))
 (defn ann
   "Register a spec transformer. Takes a var, and a transformer function
 
-transformer function: a function taking 2 args: the function's spect, and the Spect for the fn args at this callsite. Returns an updated spec. Updating the :ret is probably a good idea. When types can be determined statically, consider returning (c/val true) and (c/val false)
+  ransformer function: a function taking 2 args: the function's spect,
+  and the Spect for the fn args at this callsite. Returns an updated
+  spec. Updating the :ret is probably a good idea.
+
+  When types can be determined statically, consider returning (c/value true)
+   and (c/value false)
 "
   [v f]
   (swap! data/spec-transformers assoc v f)
@@ -19,7 +24,6 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
                    {:post [(do (println "ann instance:" spect args-spect "=>" %) true)]}
                    (let [c (c/first* args-spect)
                          inst-spec (c/first* (c/rest* args-spect))
-                         _ (inspect inst-spec)
                          inst-cls (c/spec->class inst-spec)]
                      (assert c)
                      (if (c/known? inst-spec)
@@ -36,13 +40,17 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
                   (assoc spect :ret to)
                   spect))))
 
+(s/fdef instance-transformer :args (s/cat :c class?) :ret ::transformer)
 (defn instance-transformer
   "Returns a spec-transformer for a simple (instance? c x) spec."
   [cls]
   (fn [spect args-spect]
-    (let [c (c/spec->class (if (c/regex? args-spect)
-                             (c/first* args-spect)
-                             args-spect))]
+    (let [arg (if (c/regex? args-spect)
+                (c/first* args-spect)
+                args-spect)
+          c (if (c/spect? arg)
+              (c/spec->class arg)
+              (class arg))]
       (if c
         (if (isa? c cls)
           (assoc spect :ret (c/value true))
@@ -105,7 +113,7 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
 
 (doseq [[v cls] pred->class]
   (data/register-pred->class v cls)
-  (register-spec-transformer v (instance-transformer cls)))
+  (ann v (instance-transformer cls)))
 
 (ann #'not (fn [spect args-spec]
              (let [arg (c/first* args-spec)]
