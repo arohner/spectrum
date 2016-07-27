@@ -180,7 +180,7 @@
                                  (mapv (fn [arg]
                                          (flow (with-a arg a))) args)))
         spec (when spec
-            (c/maybe-transform v spec (analysis-args->spec (:args a))))]
+               (c/maybe-transform v spec (analysis-args->spec (:args a))))]
     (if v
       (if spec
         (assoc a ::ret-spec (:ret spec))
