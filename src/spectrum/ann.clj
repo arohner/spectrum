@@ -16,6 +16,18 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
   nil)
 
 (def ann register-spec-transformer)
+(ann #'instance? (fn [spect args-spect]
+                   {:post [(do (println "ann instance:" spect args-spect "=>" %) true)]}
+                   (let [c (c/first* args-spect)
+                         inst-spec (c/first* (c/rest* args-spect))
+                         _ (inspect inst-spec)
+                         inst-cls (c/spec->class inst-spec)]
+                     (assert c)
+                     (if (c/known? inst-spec)
+                       (if (isa? inst-cls c)
+                         (assoc spect :ret (c/value true))
+                         (assoc spect :ret (c/value false)))
+                       spect))))
 
 (defn instance-transformer
   "Returns a spec-transformer for a simple (instance? c x) spec."

@@ -171,6 +171,11 @@
 
 (deftest regex?-works)
 
+(deftest instance?-transformer
+  (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [String (c/parse-spec #'string?)])) :ret :v))
+
+  (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [String (c/unknown nil)])) :ret (= (c/parse-spec #'boolean?)))))
+
 ;; (s/cat :a int? :b int?)
 ;; (s/cat :a int? :b int? :c int?)
 ;; (c/rest* (c/parse-spec (s/cat :a (s/+ int?))))
