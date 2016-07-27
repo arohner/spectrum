@@ -19,6 +19,8 @@
 (s/fdef clojure.core/fn? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/ifn? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/in-ns :args (s/cat :ns symbol?) :ret namespace?)
+(s/fdef clojure.core/instance? :args (s/cat :c class? :x any?) :ret boolean?)
+(s/fdef clojure.core/into :args (s/cat :to coll? :from coll?) :ret coll?)
 (s/fdef clojure.core/int? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/integer? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/keyword? :args (s/cat :x any?) :ret boolean?)
