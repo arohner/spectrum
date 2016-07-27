@@ -15,6 +15,7 @@
 
 (declare pred-spec?)
 (declare and-spec?)
+(declare or-spec?)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -126,6 +127,9 @@
   (if (satisfies? FirstRest ps)
     (rest* ps)
     (rest ps)))
+
+(defn second* [ps]
+  (first* (rest* ps)))
 
 (defn regex? [x]
   (and (spect? x) (satisfies? Regex x) (or (:ps x) (:ret x))))
@@ -561,6 +565,9 @@
       (and-spec? v) (when (some (fn [p]
                                   (isa? (spec->class p) cls)) (:forms v))
                       v)
+      (or-spec? v) (when (every? (fn [p]
+                                   (conformy? (conform this p))) (:forms v))
+                     v)
       (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
                                (when (isa? v-class cls)
                                  this))
@@ -758,6 +765,9 @@
   (pretty-str [x]
     (str "#Or[" (str/join ", " (map pretty-str forms)) "]")))
 
+(defn or-spec? [x]
+  (instance? OrSpec x))
+
 (defn or- [ps]
   (map->OrSpec {:forms ps}))
 
@@ -829,7 +839,6 @@
   (parse-coll-of x))
 
 (defmethod parse-spec* 'clojure.spec/nilable [x]
-  (println "parse-spec nilable" x)
   (let [s (parse-spec (second x))]
     (or- [s (parse-spec #'nil?)])))
 
