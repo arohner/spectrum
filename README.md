@@ -37,13 +37,15 @@ Returns a seq of Error defrecords.
 - perfection
 - correctness
 
+## Anti-goals
+
+- requiring 100% spec coverage
+
 In particular, spectrum aims to be fast and usable, and catching bugs. A tool that catches 80% of bugs that you use every day is better than a 100% tool that you don't use. Spectrum will trend towards 100%, but it will never guarantee 100% correctness.
 
 ## Limitations
 
 - It's still very early. It doesn't understand all clojure forms yet, nor all spec annotations. Contributions welcome.
-
-- It only proves things that your specs would have caught, not that the function has no type errors.
 
 - It also proceeds from the assumption that your specs are correct (i.e. no spec errors at runtime). If you're not running clojure.test.spec or not running your unit tests with `instrument`, you're gonna have a bad time.
 
@@ -83,27 +85,61 @@ Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes fu
 
 Where the magic happens. It takes a flow, and performs checks. Returns a seq of ParseError records.
 
+## Transformers
+
+clojure.spec doesn't have logic variables, which means some specs
+aren't as tight as they could be. Consider `map`, which takes a fn of
+one argument of type `X`, and returns a type `Y`, and a collection of
+`X`s, and returns a seq of `Y`s. That's currently impossible to
+express in clojure.spec, the best we can do is specify the return type
+of map as `seq?`, with no reference to `seq of Y`, which is based on
+the return type of the mapping function.
+
+Spectrum introduces spec transformers. They are hooks into the
+checking process. For example,
+
+```clojure
+(ann #'map (fn [fnspec argspec]...))
+```
+ann takes a var, and fn of two arguments, the original fnspec, and the arguments to a particular invocation of the function. The transformer should return an updated fnspec, presumably with the more specific type. In this example, it would `clojure.core/update` the `:ret` spec from `seq?` to `(coll-of y?)`.
+
+### value
+
+In some cases, we can identify the type of an expression at compile time. For example,
+
+(if (int? 3)
+  :foo
+  "bar")
+
+If we didn't know the value of the test, the return spec of the `if` expression would be `(or keyword? string?)`. Using a spec transformer, we can make int? more specific
+
+```
+(ann #'int? (instance-or [Long Integer Short Byte]))
+```
+
+In this case, `instance-or` is a higher-order function returning a
+transformer that checks for the argument being an instance of any of
+the classes. If we know the type of the argument, and it conforms, the
+spec transformer returns `(value true)`. Some expressions, such as
+`if`, recognize value true and will replace the type of the `if`
+expression from `(or keyword? string?)` to just `keyword?`. Similarly,
+returning `(value false)` or `(value nil)` indicates non-conformance,
+and will cause conform to fail.
+
+## Unknown
+
+Spectrum doesn't insist that every var be spec'd immediately. There is
+a specific spec, `unknown` used in places where we don't know type,
+for example as the return value of an un-specced function. Passing
+unknown to a specced function is treated as a different error from a
+'real' type error, for example passing an int to a function expecting
+keyword?. Use configuration, described in the next section, to remove
+unknowns if desired.
+
+
 ## Todo
 
-- flow specs through let
-- hook into require
-- map invoke
-- `(if predicate then else)` forms
 - pre/post post predicates
-
-## Future work
-
-There are things core.typed can prove, that clojure.spec currently
-can't. Spectrum should be able to recognize known
-higher order functions, like `clojure.core/map`. We know the type of
-`map` is `[[X -> Y] (Seq X) -> (Seq Y)]`. That is, map takes a `fn`
-that takes X and returns Y, and a seq of Xs, and returns a seq of
-Y. Currently, the best `clojure.spec` can do is say `:ret (seq-of
-::s/any)`
-
-The current plan is to write spec-transformer functions. These are
-functions that take 1) a var, 2) its existing spec, 3) the spec of the
-arguments and returns an updated spec.
 
 ## License
 
