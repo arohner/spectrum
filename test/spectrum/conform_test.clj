@@ -126,7 +126,10 @@
 
          (c/and-spec [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
 
-         (c/cat- []) [] []))
+         (c/cat- []) [] []
+
+         (c/class-spec clojure.lang.IPersistentMap) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)]) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)])
+         ))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
