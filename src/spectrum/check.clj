@@ -180,12 +180,12 @@
                       (assert (sequential? body))
                       (last body)))
         expr-spec (::flow/ret-spec last-expr)]
-    (if ret-spec
+    (if (and ret-spec (not (c/unknown? ret-spec)))
       (if expr-spec
         (when-not (c/valid-return? ret-spec expr-spec)
           [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or f-var "fn") (c/pretty-str ret-spec) (c/pretty-str expr-spec))} method-a)])
         (println "check-fn-method-return no ret-spec for expression:" (:form last-expr) "@" (flow/a-loc-str last-expr)))
-      (println "check-fn-method-return no ret-spec for fn " f-var))))
+      (println "check-fn-method-return no ret-spec for fn" f-var))))
 
 (defmethod check* :fn [a]
   (concat
@@ -230,11 +230,13 @@
         args-spec (flow/analysis-args->spec a-args)
         call-spec (::flow/args-spec a)]
     (if call-spec
-      (if args-spec
-        (let [valid? (c/valid? call-spec args-spec)]
-          (when-not valid?
-            [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (c/pretty-str args-spec) (c/pretty-str call-spec))} a)]))
-        (println "static-call no arg-spec:" (flow/a-loc-str a)))
+      (if (c/known? call-spec)
+        (if args-spec
+          (let [valid? (c/valid? call-spec args-spec)]
+            (when-not valid?
+              [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (c/pretty-str args-spec) (c/pretty-str call-spec))} a)]))
+          (println "static-call no arg-spec:" (flow/a-loc-str a)))
+        [(new-error {:message (format "Calling Java method %s unknown spec, given %s, possible: %s" (a->java-static-method-name a) (c/pretty-str args-spec) (java-methods-str (:class a) (:method a)))} a)])
       [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (c/pretty-str args-spec) (java-methods-str (:class a) (:method a)))} a)])))
 
 ;; check recur values conform to bindings

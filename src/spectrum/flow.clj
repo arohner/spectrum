@@ -31,6 +31,9 @@
 
 (s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable ::c/spect))
 
+(defn a-loc [a]
+  (select-keys a [:file :line :column]))
+
 (defn a-loc-str
   "A human-formatted string for the file & line of the current analysis"
   [a]
@@ -183,10 +186,10 @@
         (assoc a ::ret-spec (:ret spec))
         (do
           (print-once "warning: no spec for" (:var (:fn a)))
-          (assoc a ::ret-spec (c/unknown (:form a)))))
+          (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
       (do
         (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
-        (assoc a ::ret-spec (c/unknown (:form a)))))))
+        (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))))
 
 (defmethod flow :protocol-invoke [a]
   {:post [(::ret-spec %)]}
@@ -205,10 +208,10 @@
         (assoc a ::ret-spec (:ret spec))
         (do
           (print-once "warning: no spec for" (:var (:fn a)))
-          (assoc a ::ret-spec (c/unknown (:form a)))))
+          (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
       (do
         (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
-        (assoc a ::ret-spec (c/unknown (:form a)))))))
+        (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))))
 
 (s/fdef maybe-strip-meta :args ::analysis :ret ::analysis)
 (defn maybe-strip-meta
@@ -495,7 +498,7 @@
     (do
       (println "destructure failed:" (a-loc-str a) "params are all unknown")
       (mapv (fn [p]
-              (assoc p ::ret-spec (c/unknown (:name p)))) params))))
+              (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
 
 (defmethod flow :fn-method [a]
   ;;{:post [(::ret-spec %)]}
@@ -506,7 +509,7 @@
             (update-in a [:params] destructure-fn-params (:args s) a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
-                                             (assoc p ::ret-spec (c/unknown (:name p)))) params))))]
+                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))]
     (-> a
         (update-in [:body] (fn [body]
                              (flow (with-meta body {:a a})))))))
@@ -537,7 +540,6 @@
 
 (defmethod flow :recur [a]
   {:post [(::ret-spec %)]}
-  (println "flow :recur")
   (let [a (update-in a [:exprs] (fn [exprs]
                                   (mapv (fn [e]
                                           (flow (with-a e a))) exprs)))]
@@ -569,9 +571,7 @@
        (and (c/value? target-ret-spec) (map? (:v target-ret-spec))) (get-in target-ret-spec [:v k])
        (c/keys? target-ret-spec) (or (get-in target-ret-spec [:req-un k])
                                      (get-in target-ret-spec [:opt-un k])))
-     (do
-       (println "warning: unknown keyword invoke:" (:form a) (a-loc-str a))
-       (c/unknown (:form a))))))
+     (c/unknown (:form a) (a-loc a)))))
 
 (defmethod flow :keyword-invoke [a]
   {:post [(::ret-spec %)]}
