@@ -99,7 +99,7 @@
 (defmethod flow :the-var [a]
   {:post [(::ret-spec %)]}
   ;; the-var => (var foo). Returns the actual var
-  (assoc a ::ret-spec (c/parse-spec var?)))
+  (assoc a ::ret-spec (c/parse-spec #'var?)))
 
 (defmethod flow :var [a]
   {:post [(::ret-spec %)]}
