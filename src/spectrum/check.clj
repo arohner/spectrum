@@ -182,11 +182,11 @@
                       (assert (sequential? body))
                       (last body)))
         expr-spec (::flow/ret-spec last-expr)]
-    (if (and ret-spec (not (c/unknown? ret-spec)))
+    (if (and ret-spec (c/known? ret-spec))
       (if expr-spec
         (when-not (c/valid-return? ret-spec expr-spec)
           [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or f-var "fn") (c/pretty-str ret-spec) (c/pretty-str expr-spec))} method-a)])
-        (println "check-fn-method-return no ret-spec for expression:" (:form last-expr) "@" (flow/a-loc-str last-expr)))
+        [(new-error {:message (format "check-fn-method-return no ret-spec for expression:" (:form last-expr))} last-expr)])
       (println "check-fn-method-return no ret-spec for fn" f-var))))
 
 (defmethod check* :fn [a]
