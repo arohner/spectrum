@@ -28,6 +28,14 @@ transformer function: a function taking 2 args: the function's spect, and the Sp
                          (assoc spect :ret (c/value false)))
                        spect))))
 
+(ann #'into (fn [spect args-spect]
+              {:post [(do (println "ann into:" spect args-spect "=>" %) true)]}
+              (let [to (c/first* args-spect)
+                    from (c/second* args-spect)]
+                (if (c/known? to)
+                  (assoc spect :ret to)
+                  spect))))
+
 (defn instance-transformer
   "Returns a spec-transformer for a simple (instance? c x) spec."
   [cls]
