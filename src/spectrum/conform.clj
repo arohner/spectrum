@@ -697,8 +697,7 @@
                     :forms (:forms x)
                     :ps (mapv parse-spec forms)})))
 
-(defmethod parse-spec* 'clojure.spec/alt [x]
-  ;; literal alt form
+(defn parse-literal-alt [x]
   (let [pairs (partition 2 (rest x))
         ks (mapv first pairs)
         forms (mapv second pairs)
@@ -706,6 +705,13 @@
     (map->RegexAlt {:ks ks
                     :forms forms
                     :ps ps})))
+
+(defmethod parse-spec* 'clojure.spec/alt [x]
+  ;; literal alt form
+  (parse-literal-alt x))
+
+(defmethod parse-spec* 'clojure.spec/? [x]
+  (parse-literal-alt x))
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
