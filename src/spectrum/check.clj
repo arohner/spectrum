@@ -7,7 +7,7 @@
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.core-specs]
-            [spectrum.ann]
+            [spectrum.ann :as ann]
             [spectrum.data :as data]
             [spectrum.flow :as flow]
             [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
@@ -19,6 +19,8 @@
 (s/fdef check-error? :args (s/cat :x any?) :ret boolean?)
 (defn check-error? [x]
   (instance? CheckError x))
+
+(ann/ann #'check-error? (ann/instance-transformer CheckError))
 
 (s/fdef map->CheckError :args (s/cat :m (s/keys :req-un [::message])) :ret check-error?)
 
