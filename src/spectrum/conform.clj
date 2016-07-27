@@ -59,16 +59,20 @@
 
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
 
-(defrecord Unknown [form]
+(defrecord Unknown [form file line column]
   Spect
   (conform* [this x]
     false)
   SpectPrettyString
   (pretty-str [x]
-    (str "#Unknown[" (pretty-str form) "]")))
+    (str "#Unknown[" (pretty-str form) (when file
+                                         (str file line column)) "]")))
 
-(defn unknown [form]
-  (map->Unknown {:form form}))
+(defn unknown
+  ([form]
+   (map->Unknown {:form form}))
+  ([form a-loc]
+   (map->Unknown (merge {:form form} a-loc))))
 
 (defn unknown? [x]
   (instance? Unknown x))
