@@ -124,7 +124,9 @@
 
          (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
 
-         (c/and-spec [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)))
+         (c/and-spec [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
+
+         (c/cat- []) [] []))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))

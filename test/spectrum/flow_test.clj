@@ -27,6 +27,9 @@
 ;;        (s/+ integer?) '[{:name x__#0 :variadic? false} {:name xs__#0, :variadic? false}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)} {:name 'xs__#0, :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)}]
 ;;        (s/+ integer?) '[{:name x__#0 :variadic? false} {:name xs__#0, :variadic? true}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)} {:name 'xs__#0, :variadic? true ::flow/ret-spec (c/parse-spec (s/* integer?))}]))
 
+(deftest conforming-java-method
+  (is (flow/get-conforming-java-method clojure.lang.Var 'hasRoot (c/cat- []))))
+
 (deftest java-method-spec
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)))
           :ret
@@ -44,6 +47,9 @@
           c/known?))
 
   (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]))
+          :ret
+          c/known?))
+  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []))
           :ret
           c/known?)))
 
