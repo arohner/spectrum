@@ -31,25 +31,25 @@
   (is (flow/get-conforming-java-method clojure.lang.Var 'hasRoot (c/cat- []))))
 
 (deftest java-method-spec
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)))
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)) {})
           :ret
           (= (c/class-spec Long))))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)))
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)) {})
           :ret
           (= (c/class-spec Double))))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)))
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)) {})
           :ret))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]))
+  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]) {})
           :ret
           c/known?))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]))
+  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]) {})
           :ret
           c/known?))
-  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []))
+  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []) {})
           :ret
           c/known?)))
 

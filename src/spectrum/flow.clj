@@ -351,7 +351,7 @@
 (s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret ::fn-spec)
 (defn get-java-method-spec
   "Return a fake spec for a java interop call"
-  [cls method arg-spec]
+  [cls method arg-spec a]
   (if-let [m (get-conforming-java-method cls method arg-spec)]
     (let [java-args (->> (mapv java-type->spec (:parameter-types m)))
           ret (c/parse-spec (java-type->spec (:return-type m)))]
@@ -360,7 +360,7 @@
                                :ret []})
        :ret (c/parse-spec ret)})
     (do
-      (println "get-java-method-spec: no conforming:" cls method arg-spec "possible:" (mapv :parameter-types (get-java-method cls method)))
+      (println "get-java-method-spec: no conforming:" cls method arg-spec "possible:" (mapv :parameter-types (get-java-method cls method)) (a-loc-str a))
       {:args (c/unknown nil)
        :ret (c/unknown nil)})))
 
@@ -372,7 +372,7 @@
                                  (mapv (fn [arg]
                                          (flow (with-meta arg {:a a}))) args)))
         args-spec (analysis-args->spec (util/zip a :args))
-        spec (get-java-method-spec class method args-spec)]
+        spec (get-java-method-spec class method args-spec a)]
     (when-not (:ret spec)
       (println "flow-java-call: no spec:" class method args-spec))
     (assert (:ret spec))
