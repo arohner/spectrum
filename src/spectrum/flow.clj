@@ -9,6 +9,9 @@
             [spectrum.java :as j]
             [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
 
+(declare recur?)
+(declare find-binding)
+
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
 
 (s/def ::args ::c/spect)
@@ -82,6 +85,27 @@
       (assoc-in a (conj path ::var) (:var a))
       a)))
 
+(defn get-var-fn-spec [v]
+  (c/parse-spec (s/get-spec v)))
+
+(s/fdef var-predicate? :args (s/cat :v var?) :ret boolean?)
+(defn var-predicate?
+  [v]
+  (let [s (get-var-fn-spec v)]
+    (if s
+      (and (-> s :args c/cat-spec?)
+           (-> s :args :ps count (= 1))
+           (-> s :ret (= (c/parse-spec #'boolean?))))
+      false)))
+
+(defn invoke-predicate?
+  "True if the analysis is invoking a predicate"
+  [a]
+  (and (-> a :op (= :invoke))
+       (-> a :fn :op (= :var))
+       (-> a :args count (= 1))
+       (some-> a :fn :var var-predicate?)))
+
 (defmethod flow :default [a]
   (println "TODO" "flow op" (:op a))
   a)
@@ -154,6 +178,15 @@
        (filter (fn [b] (= name (:name b))))
        first))
 
+(defmethod find-binding* :if [a name]
+  (if (and (invoke-predicate? (:test a))
+           (-> a :test :args first :name (= name)))
+    (let [b (find-binding (unwrap-a a) name)]
+      (assert (::ret-spec b))
+      (update-in b [::ret-spec] (fn [s]
+                                  (c/and-spec [s (c/pred-spec (-> a :test :fn :var))]))))
+    nil))
+
 (s/fdef find-binding :args (s/cat :a ::analysis :name symbol?) :ret (s/nilable ::analysis))
 (defn find-binding
   "recursively unwrap a, looking for a :binding for 'name"
@@ -171,9 +204,6 @@
                                 (assert (::ret-spec arg))
                                 (::ret-spec arg)) args)
                     :ret []}))
-
-(defn get-var-fn-spec [v]
-  (c/parse-spec (s/get-spec v)))
 
 (defmethod flow :invoke [a]
   {:post [(::ret-spec %)]}
@@ -229,20 +259,15 @@
     (-> a :expr)
     a))
 
-(s/fdef predicate? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
-(defn var-predicate?
-  "True if :def analysis is a predicate."
-  [a]
-  (when-not (= :def (:op a))
-    (println "var-predicate?:" a))
-  (assert (= :def (:op a)))
-  (let [var-name (:name a)
-        def-val (-> a :init (maybe-strip-meta))]
-    (if (and (re-find #"\?$" (name var-name))
-             (= :fn (:op def-val)))
-      (and (-> def-val :methods (count) (= 1))
-           (= 1 (-> def-val :methods first :params (count))))
-      false)))
+(s/fdef variadic? :args (s/cat :s ::spect) :ret boolean?)
+(defn variadic?
+  "Truthy if this spec will accept unbounded number of args"
+  [s]
+  (if (satisfies? c/FirstRest s)
+    (or (= (dissoc s :ret)
+           (dissoc (c/rest* s) :ret))
+        (some variadic? (:ps s)))
+    false))
 
 (defmethod flow :if [a]
   {:post [(::ret-spec %)]}
@@ -269,8 +294,10 @@
                               else-ret-spec)
                             (if (= then-ret-spec else-ret-spec)
                               then-ret-spec
-                              (c/or- [(-> a :then ::ret-spec)
-                                      (-> a :else ::ret-spec)])))))))
+                              (c/or- (->>
+                                      [(-> a :then ::ret-spec)
+                                       (-> a :else ::ret-spec)]
+                                      (remove recur?)))))))))
 
 (defmethod flow :const [a]
   {:post [(::ret-spec %)]}
@@ -543,6 +570,11 @@
                           (c/parse-spec #'map?)))))
 
 (defrecord Recur [args])
+
+(s/fdef recur? :args (s/cat :x any?) :ret boolean)
+(defn recur? [x]
+  (instance? Recur x))
+
 (defn recur-args [args]
   (map->Recur {:args args}))
 
