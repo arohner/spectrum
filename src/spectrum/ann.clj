@@ -54,7 +54,7 @@
         (if (isa? c cls)
           (assoc spect :ret (c/value true))
           (assoc spect :ret (c/value false)))
-        ::c/invalid))))
+        (c/unknown nil)))))
 
 (defn instance-or
   "spec-transformer for (or (instance? a) (instance? b)...) case. clses is a seq of classes."
@@ -69,7 +69,7 @@
         (if (some (fn [cls] (isa? c cls)) clses)
           (assoc spect :ret (c/value true))
           (assoc spect :ret (c/value false)))
-        ::c/invalid))))
+        (c/unknown nil)))))
 
 (def pred->class
   {#'associative? clojure.lang.Associative
