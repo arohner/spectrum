@@ -163,8 +163,7 @@
     (when-let [a* (unwrap-a a)]
       (recur a* name))))
 
-(s/fdef analysis-args->spec :args (s/cat :a ::analyses) :ret (s/coll-of ::c/spect))
-
+(s/fdef analysis-args->spec :args (s/cat :a ::analyses) :ret ::c/spect)
 (defn analysis-args->spec
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
   [args]
@@ -222,7 +221,7 @@
         (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
         (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))))
 
-(s/fdef maybe-strip-meta :args ::analysis :ret ::analysis)
+(s/fdef maybe-strip-meta :args (s/cat :a ::analysis) :ret ::analysis)
 (defn maybe-strip-meta
   "If a is a :op :with-meta, strip it and return the :expr, or a"
   [a]
