@@ -9,7 +9,7 @@
 
 (check/maybe-load-clojure-builtins)
 
-;;(spec-test/instrument)
+(spec-test/instrument)
 
 (deftest basic
   (is (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x))))))

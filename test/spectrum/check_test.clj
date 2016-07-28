@@ -6,7 +6,7 @@
             [clojure.spec.test :as spec-test]
             [spectrum.check :as st]))
 
-;;(spec-test/instrument)
+(spec-test/instrument)
 
 (defn example-namespaces []
   (find/find-namespaces-in-dir (io/file "test/spectrum/examples")))

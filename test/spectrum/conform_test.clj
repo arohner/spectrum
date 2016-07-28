@@ -1,8 +1,11 @@
 (ns spectrum.conform-test
   (:require [clojure.spec :as s]
+            [clojure.spec.test]
             [clojure.test :refer :all]
             [spectrum.conform :as c])
   (:import clojure.lang.Keyword))
+
+(clojure.spec.test/instrument)
 
 (s/def ::integer integer?)
 (s/def ::string string?)
@@ -45,7 +48,7 @@
       (s/keys :req-un [::even-int])
       (s/cat :args (s/keys :req-un [::integer])))
 
-    (is (-> (s/keys :req-un [::even-int]) :req-un :even-int))))
+    (is (-> (c/parse-spec (s/keys :req-un [::even-int])) :req-un :even-int))))
 
 (deftest conform-works
   (testing "should pass"

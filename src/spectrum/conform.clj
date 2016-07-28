@@ -25,6 +25,9 @@
   (conform* [spec x]
     "True if value x conforms to spec."))
 
+(defn spect? [x]
+  (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
+
 (defprotocol SpectPrettyString
   (pretty-str [spec]))
 
@@ -855,10 +858,11 @@
 (defn keys-spec? [x]
   (instance? KeysSpec x))
 
-(s/fdef keys-spec :args (s/cat :req (s/map-of qualified-keyword? ::spect)
-                               :req-un (s/map-of keyword? ::spect)
-                               :opt (s/map-of qualified-keyword? ::spect)
-                               :opt-un (s/map-of keyword? ::spect)) :ret keys-spec?)
+(s/fdef keys-spec :args (s/cat :req (s/nilable (s/map-of qualified-keyword? ::spect))
+                               :req-un (s/nilable (s/map-of keyword? ::spect))
+                               :opt (s/nilable (s/map-of qualified-keyword? ::spect))
+                               :opt-un (s/nilable (s/map-of keyword? ::spect)))
+        :ret keys-spec?)
 
 (defn keys-spec [req req-un opt opt-un]
   (map->KeysSpec {:req req
@@ -874,7 +878,10 @@
     (cond
       (instance? CollOfSpec x) (when (conformy? (conform s (:s x)))
                                 x)
-      :else false)))
+      :else false))
+  SpecToClass
+  (spec->class [s]
+    (or (class s) clojure.lang.PersistentList)))
 
 (defn parse-coll-of [x]
   (let [args (rest x)
@@ -965,9 +972,6 @@
     Object))
 
 (def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
-
-(defn spect? [x]
-  (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
 
 (defn conform
   "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, not variables that contain values.
