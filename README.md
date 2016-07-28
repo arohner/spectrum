@@ -15,11 +15,18 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 
 ## Usage
 
+Use clojure.spec as normal.
+
 ```clojure
 (require '[spectrum.check :as st])
 
 (st/check 'your.namespace)
 ```
+
+### Requirements
+
+- if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
+- if a predicate is just a simple instance? check, and you use that class in java interop (or deftype/defrecord), you'll need to register it. (ann/ann #'foo? (ann/instance-transformer Foo))
 
 Returns a seq of Error defrecords.
 
@@ -39,7 +46,10 @@ Returns a seq of Error defrecords.
 
 ## Anti-goals
 
-- requiring 100% spec coverage
+- requiring 100% spec coverage. Spectrum will do its best to find
+  errors where it can, even if not everything is spec'd. Note that
+  speccing more is recommended, but we understand other constraints
+  get in the way.
 
 In particular, spectrum aims to be fast and usable, and catching bugs. A tool that catches 80% of bugs that you use every day is better than a 100% tool that you don't use. Spectrum will trend towards 100%, but it will never guarantee 100% correctness.
 
