@@ -21,8 +21,13 @@
 (s/def ::ret-spec ::spec)
 (s/def ::var var?)
 
+(s/def ::file string?)
+(s/def ::line int?)
+(s/def ::column int?)
+(s/def ::env (s/keys :req-un [::file ::line ::column]))
+
 (s/def ::analysis (s/keys :req []
-                          :req-un [::ana.jvm/op ::ana.jvm/form]
+                          :req-un [::ana.jvm/op ::ana.jvm/form ::env]
                           :opt [::var ::args-spec ::ret-spec]))
 
 (s/def ::analysis? (s/nilable ::analysis))
@@ -586,6 +591,13 @@
 
 (defmethod flow :instance-field [a]
   (assoc a ::ret-spec (c/unknown a)))
+
+(defmethod flow :set! [a]
+  (let [a (update-in a [:target] (fn [v]
+                                   (flow (with-a v a))))
+        a (update-in a [:val] (fn [v]
+                                (flow (with-a v a))))])
+  (assoc a ::ret-spec (::ret-spec (:val a))))
 
 (defn analyze+flow [form]
   (flow (ana.jvm/analyze form)))

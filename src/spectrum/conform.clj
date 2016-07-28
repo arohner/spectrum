@@ -1,5 +1,6 @@
 (ns spectrum.conform
   (:require [clojure.spec :as s]
+            [clojure.spec.gen :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
             [spectrum.util :refer (fn-literal? literal? print-once)]
@@ -10,12 +11,14 @@
 (declare valid?)
 (declare parse-spec)
 (declare conform)
+(declare value)
 (declare value?)
 (declare fn-spec?)
-
+(declare spect?)
 (declare pred-spec?)
 (declare and-spec?)
 (declare or-spec?)
+(declare spect-generator)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -33,21 +36,12 @@
   (spec->class [s]
     "If this spec checks for an instance of a class, return it, else nil"))
 
-(extend-protocol SpectPrettyString
-  nil
-  (pretty-str [x]
-    "nil")
-  Object
-  (pretty-str [x]
-    (str x)))
-
 (defn regex-pretty-str [re-name spec]
   (str "#" re-name "[" (str/join ", " (map pretty-str (:ps spec))) "]"))
 
-(defn spect? [x]
-  (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
-
-(s/def ::spect (s/and spect? map?))
+(s/def ::spect (s/with-gen (s/and spect? map?)
+                 (fn []
+                   spect-generator)))
 
 (s/def ::args ::spect)
 (s/def ::ret ::spect)
@@ -79,15 +73,6 @@
 
 (defn known? [x]
   (not (unknown? x)))
-
-;; spec resulting from e.g. bad java interop calls, but we still need a ::spec
-(defrecord Invalid [form]
-  Spect
-  (conform* [this x]
-    false))
-
-(defn invalid [form]
-  (map->Invalid {:form form}))
 
 (defprotocol PredConform
   (pred-conform [this pred-s]
@@ -221,8 +206,8 @@
             ::invalid)))
       ::invalid)))
 
-(extend-protocol Regex
-  nil
+(extend-type nil
+  Regex
   (derivative [spec x]
     regex-reject)
   (empty-regex [spec]
@@ -232,7 +217,15 @@
   (return [this]
     ::s/nil)
   (add-return [this r k]
-    r))
+    r)
+  SpectPrettyString
+  (pretty-str [x]
+    "nil")
+  FirstRest
+  (first* [this]
+    nil)
+  (rest* [this]
+    nil))
 
 (extend-type Object
   Regex
@@ -250,7 +243,10 @@
     this)
   WillAccept
   (will-accept [this]
-    this))
+    this)
+  SpectPrettyString
+  (pretty-str [x]
+    (str x)))
 
 (defn maybe-alt-
   "If both regexes are valid, returns Alt r1 r2, else first non-reject one"
@@ -479,18 +475,22 @@
   (pretty-str [x]
     (str "#Value[" (pretty-str v) "]")))
 
+(s/fdef value :args (s/cat :x any?) :ret value?)
 (defn value
   "spec representing a single value"
   [v]
   (map->Value {:v v}))
 
+(s/fdef value? :args (s/cat :x any?) :ret boolean?)
 (defn value? [s]
   (instance? Value s))
 
+(s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
 (defn valuey? [s]
   "true if s is a value with a truthy value"
   (and (value? s) (boolean (:v s))))
 
+(s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
 (defn conformy?
   "True if the conform result returns anything other than ::invalid or (c/value falsey)"
   [x]
@@ -503,11 +503,11 @@
   [s]
   (if (pred-spec? s)
     (let [fnspec (s/get-spec (:pred s))]
-      (assert fnspec (format "couldn't find spec for: %s %s" (:form s) (class (:form s))))
-      (parse-spec fnspec))
+      (when fnspec
+        (parse-spec fnspec)))
     s))
 
-(s/fdef maybe-transform :args (s/cat :v var? :s ::spect) :ret ::fn-spect)
+(s/fdef maybe-transform :args (s/cat :v var? :fn-spec ::spect :args-spec ::spect) :ret ::fn-spect)
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
   [v fn-spec args-spec]
@@ -525,11 +525,15 @@
   "Check that fnspec, a predicate, returns truthy when called w/ arg. Returns a c/value or c/unknown"
   [fnspec arg]
   (let [s (resolve-pred-spec fnspec)]
-    (let [v (:pred fnspec)
-          ret (:ret (maybe-transform v s arg))]
-      (if (value? ret)
-        ret
-        false))))
+    (if s
+      (let [v (:pred fnspec)
+            ret (:ret (maybe-transform v s arg))]
+        (if (value? ret)
+          ret
+          false))
+      (do
+        (println "conform-spec-ret: ret spec not spec'd" fnspec)
+        (unknown nil)))))
 
 (defrecord PredSpec [pred form]
   Spect
@@ -630,6 +634,9 @@
 (defmethod parse-spec* 'quote [x]
   (parse-spec* (first x)))
 
+(defmethod parse-spec* 'var [x]
+  (parse-spec* (second x)))
+
 (defmethod parse-spec* :clojure.spec/pcat [x]
   (map->RegexCat {:ks (:ks x)
                   :ps (mapv (fn [[form pred]]
@@ -660,6 +667,7 @@
       x
       false)))
 
+(s/fdef fn-spec? )
 (defn fn-spec? [x]
   (instance? FnSpec x))
 
@@ -928,6 +936,11 @@
   spectrum.conform.Unknown
   (spec->class [s]
     Object))
+
+(def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
+
+(defn spect? [x]
+  (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
 
 (defn conform
   "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, not variables that contain values.
