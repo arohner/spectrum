@@ -60,9 +60,13 @@
          #'symbol? (c/value 'foo) (c/value 'foo)
          'integer? 'integer? (c/parse-spec 'integer?)
          #'integer? #'integer? (c/parse-spec #'integer?)
-         'integer? (s/and integer? even?) (c/parse-spec 'integer?)
-         'integer? (s/and integer? even?) (c/parse-spec 'integer?)
+         'integer? (s/and integer? even?) (c/parse-spec (s/and integer? even?))
+         (c/parse-spec #'even?) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)])
+         (c/pred-spec #'even?) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)])
+         (c/parse-spec #'even?) (c/pred-spec #'even?) (c/pred-spec #'even?)
+         (c/pred-spec #'even?) (c/parse-spec #'even?) (c/pred-spec #'even?)
 
+         (c/pred-spec #'int?) (c/pred-spec #'int?) (c/pred-spec #'int?)
          #'number? (c/class-spec Long) (c/value true)
          #'int? (c/class-spec Long) (c/value true)
          (c/class-spec Long) 3 3
@@ -80,6 +84,7 @@
          (s/and integer? even?) 10 10
          (s/and integer? even?) (s/and integer? even?) (c/parse-spec (s/and integer? even?))
          (s/and integer? even?) (s/and integer? even? #(> % 10)) (c/parse-spec (s/and integer? even?))
+         (c/pred-spec #'int?) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)])
          (s/or :int integer? :str string?) "foo" [:str "foo"]
          (s/or :int integer? :str string?) 'string? [:str (c/parse-spec 'string?)]
 
@@ -177,15 +182,11 @@
   (is (instance? spectrum.conform.RegexCat (c/rest* (c/parse-spec (s/+ integer?))))))
 
 
-(deftest spect?-works)
-
-(deftest regex?-works)
+;; (deftest spect->class
+;;   (are [spec cls] (= cls (c/spec->class spec))
+;;     (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) ))
 
 (deftest instance?-transformer
   (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [String (c/parse-spec #'string?)])) :ret :v))
 
   (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [String (c/unknown nil)])) :ret (= (c/parse-spec #'boolean?)))))
-
-;; (s/cat :a int? :b int?)
-;; (s/cat :a int? :b int? :c int?)
-;; (c/rest* (c/parse-spec (s/cat :a (s/+ int?))))

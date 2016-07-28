@@ -3,7 +3,7 @@
             [clojure.spec.gen :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.util :refer (fn-literal? literal? print-once)]
+            [spectrum.util :refer (fn-literal? literal? print-once strip-namespace var-name)]
             [spectrum.data :as data]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)))
@@ -39,6 +39,39 @@
 (defprotocol SpecToClass
   (spec->class [s]
     "If this spec checks for an instance of a class, return it, else nil"))
+
+(defprotocol PredConform
+  (pred-conform [this pred-s]
+    "True if this conforms to the pred spec"))
+
+(defprotocol AndConform
+  (and-conform [this and-s]
+    "True if this spec conforms to the And spec"))
+
+(defprotocol OrConform
+  (or-conform [this or-s]
+    "True if this spec conforms with the Or spec passed in"))
+
+(defprotocol RegexConform
+  (regex-conform [spec seq]
+    "True if this seq conforms to the spec"))
+
+(defprotocol Regex
+  (derivative
+    [spec x]
+    "Given a parsed spec, return the derivative")
+  (empty-regex [this]
+    "The empty pattern for this regex")
+  (accept-nil? [this]
+    "True if it is valid for this pattern to match no data")
+  (return [this]
+    "Given a completed regex parse, return the conform matching value")
+  (add-return [this ret k]
+    "Add ret to the return data of this regex, with optional key k"))
+
+(defprotocol FirstRest
+  (first* [this])
+  (rest* [this]))
 
 (defn regex-pretty-str [re-name spec]
   (str "#" re-name "[" (str/join ", " (map pretty-str (:ps spec))) "]"))
@@ -78,39 +111,6 @@
 (defn known? [x]
   (not (unknown? x)))
 
-(defprotocol PredConform
-  (pred-conform [this pred-s]
-    "True if this conforms to the pred spec"))
-
-(defprotocol AndConform
-  (and-conform [this and-s]
-    "True if this spec conforms to the And spec"))
-
-(defprotocol OrConform
-  (or-conform [this or-s]
-    "True if this spec conforms with the Or spec passed in"))
-
-(defprotocol RegexConform
-  (regex-conform [spec seq]
-    "True if this seq conforms to the spec"))
-
-(defprotocol Regex
-  (derivative
-    [spec x]
-    "Given a parsed spec, return the derivative")
-  (empty-regex [this]
-    "The empty pattern for this regex")
-  (accept-nil? [this]
-    "True if it is valid for this pattern to match no data")
-  (return [this]
-    "Given a completed regex parse, return the conform matching value")
-  (add-return [this ret k]
-    "Add ret to the return data of this regex, with optional key k"))
-
-(defprotocol FirstRest
-  (first* [this])
-  (rest* [this]))
-
 (defn maybe-first* [ps]
   (if (satisfies? FirstRest ps)
     (first* ps)
@@ -148,6 +148,11 @@
     ret)
   WillAccept
   (will-accept [this]
+    nil)
+  FirstRest
+  (first* [this]
+    nil)
+  (rest* [this]
     nil))
 
 (defn accept [x]
@@ -167,6 +172,11 @@
     nil)
   WillAccept
   (will-accept [this]
+    nil)
+  FirstRest
+  (first* [this]
+    nil)
+  (rest* [this]
     nil))
 
 (defn regex-accept? [x]
@@ -448,9 +458,6 @@
 (defmethod parse-spec* :literal [x]
   x)
 
-(defn var-name [^Var v]
-  (symbol (str (.ns v)) (str (.sym v))))
-
 (defn parse-spec [x]
   (cond
     (spect? x) x
@@ -572,7 +579,7 @@
 (s/fdef pred-spec :args (s/cat :v var?) :ret ::spect)
 (defn pred-spec [v]
   (map->PredSpec {:pred v
-                  :form v}))
+                  :form (var-name v)}))
 
 (defn pred-spec? [x]
   (instance? PredSpec x))
@@ -744,8 +751,9 @@
       (literal? x) (and-conform-literal this x)))
   PredConform
   (pred-conform [this pred]
-    (some (fn [s]
-            (conform* pred s)) (:forms this)))
+    (when (some (fn [s]
+                  (conform* pred s)) (:forms this))
+      this))
   AndConform
   (and-conform [this that]
     (let [this-specs (set (:forms this))
@@ -754,7 +762,10 @@
         that)))
   WillAccept
   (will-accept [this]
-    this))
+    this)
+  SpectPrettyString
+  (pretty-str [x]
+    (str "#And[" (str/join ", " (map pretty-str forms)) "]")))
 
 (defn and-spec? [x]
   (instance? AndSpec x))
@@ -802,11 +813,11 @@
   (instance? OrSpec x))
 
 (defn or- [ps]
-  (map->OrSpec {:forms ps}))
+  (if (>= (count ps) 2)
+    (map->OrSpec {:forms ps})
+    (first ps)))
 
-(s/fdef strip-namespace :args (s/cat :k keyword?) :ret simple-keyword?)
-(defn strip-namespace [k]
-  (keyword (name k)))
+
 
 (s/fdef conform-keys-spec :args (s/cat :a spect? :b spect?) :ret (s/or :s spect? :err ::error))
 (defn conform-keys-spec [a b]

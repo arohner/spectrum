@@ -1,5 +1,7 @@
 (ns spectrum.util
-  (:require [clojure.tools.analyzer.jvm :as ana.jvm]))
+  (:require [clojure.tools.analyzer.jvm :as ana.jvm]
+            [clojure.spec :as s])
+  (:import clojure.lang.Var))
 
 (defn literal? [x]
   (let [a (ana.jvm/analyze x)]
@@ -10,6 +12,14 @@
        (= 'fn* (first x))
        (let [a (ana.jvm/analyze x)]
          (= :fn (:op a)))))
+
+(s/fdef var-name :args (s/cat :v var?) :ret symbol?)
+(defn var-name [^Var v]
+  (symbol (str (.ns v)) (str (.sym v))))
+
+(s/fdef strip-namespace :args (s/cat :k keyword?) :ret simple-keyword?)
+(defn strip-namespace [k]
+  (keyword (name k)))
 
 (defn zip
   "Returns (get x key), with x attached as metadata"
