@@ -577,8 +577,8 @@
     (or
      (cond
        (and (c/value? target-ret-spec) (map? (:v target-ret-spec))) (get-in target-ret-spec [:v k])
-       (c/keys? target-ret-spec) (or (get-in target-ret-spec [:req-un k])
-                                     (get-in target-ret-spec [:opt-un k])))
+       (c/keys-spec? target-ret-spec) (or (get-in target-ret-spec [:req-un k])
+                                                    (get-in target-ret-spec [:opt-un k])))
      (c/unknown (:form a) (a-loc a)))))
 
 (defmethod flow :keyword-invoke [a]

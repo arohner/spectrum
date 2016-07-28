@@ -123,3 +123,25 @@
                  spect))))
 
 (ann #'int? (instance-or [Long Integer Short Byte]))
+
+(ann #'select-keys (fn [spect args-spect]
+                     (let [m (c/first* args-spect)
+                           select (c/second* args-spect)]
+                       (if (and (c/keys-spec? m) (c/conform (s/* keyword?) args-spect))
+                         (assoc spect :ret (c/keys-spec (select-keys (:req spect) args-spect)
+                                                        (select-keys (:req-un spect) args-spect)
+                                                        (select-keys (:opt spect) args-spect)
+                                                        (select-keys (:opt-un spect) args-spect)))
+                         spect))))
+
+
+(s/fdef merge-keys :args (s/cat :m1 c/keys-spec? :m2 c/keys-spec?) :ret c/keys-spec?)
+(defn merge-keys [m1 m2]
+  (apply c/keys-spec (for [k [:req :req-un :opt :opt-un]]
+                       (merge (get m1 k) (get m2 k)))))
+
+(ann #'merge (fn [spect args-spect]
+               (assert (c/cat-spec? args-spect))
+               (if (every? c/keys-spec? (:ps args-spect))
+                 (assoc spect :ret (reduce merge-keys (:ps args-spect)))
+                 spect)))

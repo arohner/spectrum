@@ -43,7 +43,9 @@
     (are [spec] (c/spect? (c/parse-spec spec))
       (s/keys :req [::even-int])
       (s/keys :req-un [::even-int])
-      (s/cat :args (s/keys :req-un [::integer])))))
+      (s/cat :args (s/keys :req-un [::integer])))
+
+    (is (-> (s/keys :req-un [::even-int]) :req-un :even-int))))
 
 (deftest conform-works
   (testing "should pass"
@@ -110,6 +112,8 @@
          (s/keys :req [::integer]) {::integer 3} {::integer 3}
 
          (s/keys :req [::integer] :opt-un [::string]) {::integer 3 ::string "foo"} {::integer 3 ::string "foo"}
+
+         (s/keys :req [::integer] :opt-un [::string]) (s/keys :req [::integer ::string]) (c/parse-spec (s/keys :req [::integer ::string]))
 
          (s/cat :args (s/keys :req-un [::integer])) [{:integer 3}] {:args {:integer 3}}
 

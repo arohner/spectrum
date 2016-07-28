@@ -18,6 +18,7 @@
 (declare pred-spec?)
 (declare and-spec?)
 (declare or-spec?)
+(declare keys-spec?)
 (declare spect-generator)
 
 (defprotocol Spect
@@ -315,6 +316,10 @@
         p)))
   (rest* [this]
     (derivative this (parse-spec (will-accept this)))))
+
+(s/fdef cat-spec :args (s/cat :x any?) :ret boolean?)
+(defn cat-spec? [x]
+  (instance? RegexCat x))
 
 (declare map->RegexSeq)
 
@@ -796,6 +801,9 @@
 (defn or- [ps]
   (map->OrSpec {:forms ps}))
 
+(s/fdef strip-namespace :args (s/cat :k keyword?) :ret simple-keyword?)
+(defn strip-namespace [k]
+  (keyword (name k)))
 
 (s/fdef conform-keys-spec :args (s/cat :a spect? :b spect?) :ret (s/or :s spect? :err ::error))
 (defn conform-keys-spec [a b]
@@ -808,14 +816,14 @@
          (every? (fn [[key spec]]
                    (valid? spec (get x key))) (:req this))
          (every? (fn [[key spec]]
-                   (valid? spec (get x (keyword (.getName ^Keyword key))))) (:req-un this))
+                   (valid? spec (get x (strip-namespace key)))) (:req-un this))
          (every? (fn [[key spec]]
                    (if (contains? x key)
                      (valid? spec (get x key))
                      true)) (:opt this))
          (every? (fn [[key spec]]
-                   (if (contains? x (keyword (.getName ^Keyword key)))
-                     (valid? spec (get x (keyword (.getName ^Keyword key))))
+                   (if (contains? x (strip-namespace key))
+                     (valid? spec (get x (strip-namespace key)))
                      true)) (:opt-un this)))
     x))
 
@@ -843,6 +851,23 @@
   (spec->class [this]
     clojure.lang.PersistentHashMap))
 
+(s/fdef keys-spec :args (s/cat :x any?) :ret boolean?)
+(defn keys-spec? [x]
+  (instance? KeysSpec x))
+
+(s/fdef keys-spec :args (s/cat :req (s/map-of qualified-keyword? ::spect)
+                               :req-un (s/map-of keyword? ::spect)
+                               :opt (s/map-of qualified-keyword? ::spect)
+                               :opt-un (s/map-of keyword? ::spect)) :ret keys-spec?)
+
+(defn keys-spec [req req-un opt opt-un]
+  (map->KeysSpec {:req req
+                  :req-un (into {} (map (fn [[k s]]
+                                          [(strip-namespace k) s]) req-un))
+                  :opt opt
+                  :opt-un (into {} (map (fn [[k s]]
+                                          [(strip-namespace k) s]) opt-un))}))
+
 (defrecord CollOfSpec [s kind]
   Spect
   (conform* [this x]
@@ -867,9 +892,6 @@
   (let [s (parse-spec (second x))]
     (or- [s (parse-spec #'nil?)])))
 
-(defn keys? [x]
-  (instance? KeysSpec x))
-
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))
         keys (mapv first pairs)
@@ -878,13 +900,18 @@
                   :forms (mapv parse-spec forms)})))
 
 (defmethod parse-spec* 'clojure.spec/keys [x]
-  (->> (for [[key-type specs] (partition 2 (rest x))]
-         [key-type (into {} (map (fn [spec-name]
-                                   (if-let [s (s/get-spec spec-name)]
-                                     [spec-name (parse-spec (s/form s))]
-                                     (throw (Exception. (format "Could not resolve spec: %s" spec-name))))) specs))])
-       (into {})
-       (map->KeysSpec)))
+  (let [args (->> (rest x)
+                  (partition 2)
+                  (map (fn [[key-type specs]]
+                         [key-type (into {} (map (fn [spec-name]
+                                                   (if-let [s (s/get-spec spec-name)]
+                                                     [spec-name (parse-spec (s/form s))]
+                                                     (throw (Exception. (format "Could not resolve spec: %s" spec-name))))) specs))]))
+                  (into {} ))]
+    (keys-spec (:req args)
+               (:req-un args)
+               (:opt args)
+               (:opt-un args))))
 
 (defmethod parse-spec* 'clojure.spec/conformer [x]
   (value true))
