@@ -11,6 +11,12 @@
 
 (spec-test/instrument)
 
+(def dummy-analysis {:op :invoke
+                     :form '(dummy data)
+                     :env {:file "spectrum.flow-test.clj"
+                           :line 15
+                           :column 1}})
+
 (deftest basic
   (is (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x))))))
 
@@ -31,25 +37,25 @@
   (is (flow/get-conforming-java-method clojure.lang.Var 'hasRoot (c/cat- []))))
 
 (deftest java-method-spec
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)) {})
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)) dummy-analysis)
           :ret
           (= (c/class-spec Long))))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)) {})
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)) dummy-analysis)
           :ret
           (= (c/class-spec Double))))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)) {})
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)) dummy-analysis)
           :ret))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]) {})
+  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]) dummy-analysis)
           :ret
           c/known?))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]) {})
+  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]) dummy-analysis)
           :ret
           c/known?))
-  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []) {})
+  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []) dummy-analysis)
           :ret
           c/known?)))
 
@@ -70,18 +76,25 @@
 
 (s/def ::integer int?)
 
+(defn dummy-binding [name & {:as opts}]
+  (merge
+   {:name name
+    :op :binding
+    :form name}
+   opts))
+
 (deftest arity-conform?
   (testing "should pass"
     (are [spec args] (= true (flow/arity-conform? (c/parse-spec spec) args))
-      (s/cat :a int?) '[a]
-      (s/cat :a int? :b int?) '[a b]
+      (s/cat :a int?) [(dummy-binding 'a)]
+      (s/cat :a int? :b int?) [(dummy-binding 'a) (dummy-binding 'b)]
 
-      (s/cat :a (s/+ int?)) '[a {:name as :variadic? true}]
+      (s/cat :a (s/+ int?)) [(dummy-binding 'a) (dummy-binding 'as :variadic? true)]
 
-      (s/cat :a (s/keys :req [::integer])) '[a]))
+      (s/cat :a (s/keys :req [::integer])) [(dummy-binding 'a)]))
 
   (testing "should fail"
     (are [spec args] (= false (flow/arity-conform? (c/parse-spec spec) args))
-      (s/cat :a int?) '[a b]
-      (s/cat :a int? :b int?) '[a]
-      #'int? '[a])))
+      (s/cat :a int?) [(dummy-binding 'a) (dummy-binding 'b)]
+      (s/cat :a int? :b int?) [(dummy-binding 'a)]
+      #'int? [(dummy-binding 'a)])))

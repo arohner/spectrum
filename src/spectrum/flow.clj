@@ -18,10 +18,8 @@
 (s/def ::ret ::c/spect)
 (s/def ::fn (s/nilable ::c/spect))
 
-(s/def ::fn-spec (s/keys :req-un [::args ::ret ::fn]))
-(s/def ::spec (s/or ::c/spect ::fn-spec))
-(s/def ::args-spec ::spec)
-(s/def ::ret-spec ::spec)
+(s/def ::args-spec ::c/spect)
+(s/def ::ret-spec ::c/spect)
 (s/def ::var var?)
 
 (s/def ::file string?)
@@ -383,17 +381,18 @@
                         (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
              (most-specific))))
 
-(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret ::fn-spec)
+(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect :a ::analysis) :ret c/fn-spec?)
 (defn get-java-method-spec
   "Return a fake spec for a java interop call"
   [cls method arg-spec a]
   (if-let [m (get-conforming-java-method cls method arg-spec)]
     (let [java-args (->> (mapv java-type->spec (:parameter-types m)))
           ret (c/parse-spec (java-type->spec (:return-type m)))]
-      {:args (c/map->RegexCat {:ps (mapv c/parse-spec java-args)
-                               :forms java-args
-                               :ret []})
-       :ret (c/parse-spec ret)})
+      (c/fn-spec (c/map->RegexCat {:ps (mapv c/parse-spec java-args)
+                                   :forms java-args
+                                   :ret []})
+                 (c/parse-spec ret)
+                 nil))
     (do
       (println "get-java-method-spec: no conforming:" cls method arg-spec "possible:" (mapv :parameter-types (get-java-method cls method)) (a-loc-str a))
       {:args (c/unknown nil)

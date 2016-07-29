@@ -186,7 +186,6 @@
   (is (instance? spectrum.conform.RegexSeq (c/rest* (c/parse-spec (s/* integer?)))))
   (is (instance? spectrum.conform.RegexCat (c/rest* (c/parse-spec (s/+ integer?))))))
 
-
 ;; (deftest spect->class
 ;;   (are [spec cls] (= cls (c/spec->class spec))
 ;;     (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) ))
