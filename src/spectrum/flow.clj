@@ -212,7 +212,11 @@
                                  (mapv (fn [arg]
                                          (flow (with-a arg a))) args)))
         spec (when spec
-               (c/maybe-transform v spec (analysis-args->spec (:args a))))]
+               (c/maybe-transform v spec (analysis-args->spec (:args a))))
+        spec (if (and spec v (invoke-predicate? a)
+                      (c/conformy? (c/conform (c/pred-spec v) (-> a :args first ::ret-spec))))
+               (assoc spec :ret (c/value true))
+               spec)]
     (if v
       (if spec
         (let [a (assoc a ::fn-spec spec)]
