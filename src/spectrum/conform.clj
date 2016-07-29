@@ -538,16 +538,16 @@
 (s/fdef conform-spec-ret :args (s/cat :s pred-spec? :arg any?))
 (defn conform-spec-ret
   "Check that fnspec, a predicate, returns truthy when called w/ arg. Returns a c/value or c/unknown"
-  [fnspec arg]
-  (let [s (resolve-pred-spec fnspec)]
+  [pred-spec arg]
+  (let [s (resolve-pred-spec pred-spec)]
     (if s
-      (let [v (:pred fnspec)
+      (let [v (:pred pred-spec)
             ret (:ret (maybe-transform v s arg))]
         (if (value? ret)
           ret
           false))
       (do
-        (println "conform-spec-ret: ret spec not spec'd" fnspec)
+        (println "conform-spec-ret: ret spec not spec'd" pred-spec)
         (unknown nil)))))
 
 (defrecord PredSpec [pred form]
