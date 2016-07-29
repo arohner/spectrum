@@ -581,6 +581,7 @@
   (map->PredSpec {:pred v
                   :form (var-name v)}))
 
+(s/fdef pred-spec? :args (s/cat :x any?) :ret boolean?)
 (defn pred-spec? [x]
   (instance? PredSpec x))
 
@@ -593,10 +594,10 @@
   (conform* [this v]
     (cond
       (and-spec? v) (when (some (fn [p]
-                                  (isa? (spec->class p) cls)) (:forms v))
+                                  (isa? (spec->class p) cls)) (:ps v))
                       v)
       (or-spec? v) (when (every? (fn [p]
-                                   (conformy? (conform this p))) (:forms v))
+                                   (conformy? (conform this p))) (:ps v))
                      v)
       (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
                                (when (isa? v-class cls)
@@ -614,7 +615,7 @@
   AndConform
   (and-conform [this and-s]
     (when (some (fn [p]
-                  (conformy? (conform p this))) (:forms and-s))
+                  (conformy? (conform p this))) (:ps and-s))
       this))
   SpectPrettyString
   (pretty-str [this]
@@ -740,10 +741,10 @@
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
-                  ((:pred f) x)) (:forms and-s))
+                  ((:pred f) x)) (:ps and-s))
     x))
 
-(defrecord AndSpec [forms]
+(defrecord AndSpec [ps]
   Spect
   (conform* [this x]
     (cond
@@ -752,12 +753,12 @@
   PredConform
   (pred-conform [this pred]
     (when (some (fn [s]
-                  (conform* pred s)) (:forms this))
+                  (conform* pred s)) (:ps this))
       this))
   AndConform
   (and-conform [this that]
-    (let [this-specs (set (:forms this))
-          that-specs (set (:forms that))]
+    (let [this-specs (set (:ps this))
+          that-specs (set (:ps that))]
       (when (= that-specs (set/intersection this-specs that-specs))
         that)))
   WillAccept
@@ -765,17 +766,17 @@
     this)
   SpectPrettyString
   (pretty-str [x]
-    (str "#And[" (str/join ", " (map pretty-str forms)) "]")))
+    (str "#And[" (str/join ", " (map pretty-str ps)) "]")))
 
 (defn and-spec? [x]
   (instance? AndSpec x))
 
 (s/fdef and-spec :args (s/cat :forms (s/coll-of ::spect)) :ret ::spect)
 (defn and-spec [x]
-  (let [forms (remove valuey? x)]
+  (let [ps (remove valuey? x)]
     (cond
-      (>= (count forms) 2) (map->AndSpec {:forms forms})
-      :else (first forms))))
+      (>= (count ps) 2) (map->AndSpec {:ps ps})
+      :else (first ps))))
 
 (defmethod parse-spec* 'clojure.spec/and [x]
   (and-spec (mapv parse-spec (rest x))))
@@ -783,9 +784,9 @@
 (defn or-conform-literal [or-s x]
   (some (fn [[k f]]
           (when (conform* f x)
-            [k x])) (map vector (:ks or-s) (:forms or-s))))
+            [k x])) (map vector (:ks or-s) (:ps or-s))))
 
-(defrecord OrSpec [forms]
+(defrecord OrSpec [ps ks]
   Spect
   (conform* [this x]
     (cond
@@ -796,25 +797,25 @@
   (pred-conform [this pred]
     (some (fn [s]
             (when (conform* pred s)
-              s)) (:forms pred)))
+              s)) (:ps pred)))
   OrConform
   (or-conform [this spec]
     (assert (satisfies? OrConform spec))
-    (when (= (set (:forms spec)) (set/intersection (set (:forms spec)) (set (:forms this))))
+    (when (= (set (:ps spec)) (set/intersection (set (:ps spec)) (set (:ps this))))
       this))
   WillAccept
   (will-accept [this]
-    (first forms))
+    (first ps))
   SpectPrettyString
   (pretty-str [x]
-    (str "#Or[" (str/join ", " (map pretty-str forms)) "]")))
+    (str "#Or[" (str/join ", " (map pretty-str ps)) "]")))
 
 (defn or-spec? [x]
   (instance? OrSpec x))
 
 (defn or- [ps]
   (if (>= (count ps) 2)
-    (map->OrSpec {:forms ps})
+    (map->OrSpec {:ps ps})
     (first ps)))
 
 
@@ -915,7 +916,7 @@
         keys (mapv first pairs)
         forms (mapv second pairs)]
     (map->OrSpec {:ks keys
-                  :forms (mapv parse-spec forms)})))
+                  :ps (mapv parse-spec forms)})))
 
 (defmethod parse-spec* 'clojure.spec/keys [x]
   (let [args (->> (rest x)
@@ -971,10 +972,10 @@
     (data/pred->class (:pred s)))
   spectrum.conform.OrSpec
   (spec->class [s]
-    (spec->class-seq (:forms s)))
+    (spec->class-seq (:ps s)))
   spectrum.conform.AndSpec
   (spec->class [s]
-    (spec->class-seq (:forms s)))
+    (spec->class-seq (:ps s)))
   spectrum.conform.ClassSpec
   (spec->class [s]
     (:cls s))
