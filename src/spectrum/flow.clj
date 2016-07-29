@@ -215,11 +215,12 @@
                (c/maybe-transform v spec (analysis-args->spec (:args a))))]
     (if v
       (if spec
-        (if (:ret spec)
-          (assoc a ::ret-spec (:ret spec))
-          (do
-            (print-once "warning: no ret-spec for" (:var (:fn a)))
-            (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
+        (let [a (assoc a ::fn-spec spec)]
+          (if (:ret spec)
+            (assoc a ::ret-spec (:ret spec))
+            (do
+              (print-once "warning: no ret-spec for" (:var (:fn a)))
+              (assoc a ::ret-spec (c/unknown (:form a) (a-loc a))))))
         (do
           (print-once "warning: no spec for" (:var (:fn a)))
           (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
@@ -241,7 +242,8 @@
                (c/maybe-transform v spec (analysis-args->spec (:args a))))]
     (if v
       (if spec
-        (assoc a ::ret-spec (:ret spec))
+        (assoc a ::ret-spec (:ret spec)
+                 ::fn-spec spec)
         (do
           (print-once "warning: no spec for" (:var (:fn a)))
           (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
