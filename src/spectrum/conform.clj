@@ -20,6 +20,7 @@
 (declare or-spec?)
 (declare keys-spec?)
 (declare spect-generator)
+(declare conform-spec-ret)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -535,21 +536,6 @@
       fn-spec*)
     fn-spec))
 
-(s/fdef conform-spec-ret :args (s/cat :s pred-spec? :arg any?))
-(defn conform-spec-ret
-  "Check that fnspec, a predicate, returns truthy when called w/ arg. Returns a c/value or c/unknown"
-  [pred-spec arg]
-  (let [s (resolve-pred-spec pred-spec)]
-    (if s
-      (let [v (:pred pred-spec)
-            ret (:ret (maybe-transform v s arg))]
-        (if (value? ret)
-          ret
-          false))
-      (do
-        (println "conform-spec-ret: ret spec not spec'd" pred-spec)
-        (unknown nil)))))
-
 (defrecord PredSpec [pred form]
   Spect
   (conform* [spec x]
@@ -577,6 +563,21 @@
 (s/fdef pred-spec? :args (s/cat :x any?) :ret boolean?)
 (defn pred-spec? [x]
   (instance? PredSpec x))
+
+(s/fdef conform-spec-ret :args (s/cat :s pred-spec? :arg any?))
+(defn conform-spec-ret
+  "Check that fnspec, a predicate, returns truthy when called w/ arg. Returns a c/value or c/unknown"
+  [pred-spec arg]
+  (let [s (resolve-pred-spec pred-spec)]
+    (if s
+      (let [v (:pred pred-spec)
+            ret (:ret (maybe-transform v s (cat- [arg])))]
+        (if (value? ret)
+          ret
+          false))
+      (do
+        (println "conform-spec-ret: ret spec not spec'd" pred-spec)
+        (unknown nil)))))
 
 ;; Spec representing a java class. Probably won't need to use this
 ;; directly. Used in java interop, and other places where we don't
