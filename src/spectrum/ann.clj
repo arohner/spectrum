@@ -44,7 +44,7 @@
   "Returns a spec-transformer for a simple (instance? c x) spec."
   [cls]
   (fn [spect args-spect]
-    (let [arg (if (c/regex? args-spect)
+    (let [arg (if (satisfies? c/FirstRest args-spect)
                 (c/first* args-spect)
                 args-spect)
           c (if (c/spect? arg)
