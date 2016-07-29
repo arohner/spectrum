@@ -124,14 +124,23 @@
 
 (ann #'int? (instance-or [Long Integer Short Byte]))
 
+(defn get-cat-vals
+  "Given a Cat of Value, return the raw vals"
+  [c]
+  (mapv :v c))
+
 (ann #'select-keys (fn [spect args-spect]
                      (let [m (c/first* args-spect)
                            select (c/second* args-spect)]
-                       (if (and (c/keys-spec? m) (c/conform (s/* keyword?) args-spect))
-                         (assoc spect :ret (c/keys-spec (select-keys (:req spect) args-spect)
-                                                        (select-keys (:req-un spect) args-spect)
-                                                        (select-keys (:opt spect) args-spect)
-                                                        (select-keys (:opt-un spect) args-spect)))
+                       (if (and (c/keys-spec? m)
+                                (c/conform (s/* keyword?) args-spect)
+                                (c/conform (s/* c/value?) args-spect))
+                         (let [vals (get-cat-vals select)]
+                           (let [ret (c/keys-spec (select-keys (:req m) vals)
+                                                  (select-keys (:req-un m) vals)
+                                                  (select-keys (:opt m) vals)
+                                                  (select-keys (:opt-un m) vals))]
+                             (assoc spect :ret ret)))
                          spect))))
 
 
