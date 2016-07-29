@@ -125,6 +125,9 @@
 
          (s/cat :args (s/keys :req-un [::integer])) [{:integer 3}] {:args {:integer 3}}
 
+         #'map? (s/keys :req [::integer]) (c/parse-spec (s/keys :req [::integer]))
+
+         (c/or- [(c/pred-spec #'map?) (c/pred-spec #'associative?)]) (c/keys-spec {} {} {} {}) (c/keys-spec {} {} {} {})
 
          #'ifn? (c/class-spec java.util.concurrent.Callable) (c/parse-spec #'ifn?)
          (s/and fn? ifn?) (c/class-spec java.util.concurrent.Callable) (c/class-spec java.util.concurrent.Callable)

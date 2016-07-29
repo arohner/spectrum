@@ -562,13 +562,6 @@
   (pred-conform [this pred]
     (when (= (:form this) (:form pred))
       this))
-  OrConform
-  (or-conform [this or-s]
-    (some (fn [[k f]]
-            (when (conform* f this)
-              (if k
-                [k this]
-                this))) (map vector (or (:ks or-s) (repeat nil)) (:forms or-s))))
   SpectPrettyString
   (pretty-str [this]
     (str form))
@@ -791,7 +784,11 @@
   (conform* [this x]
     (cond
       (satisfies? OrConform x) (or-conform x this)
-      (literal? x) (or-conform-literal this x)))
+      :else (some (fn [[k p]]
+                    (when (conform* p x)
+                      (if k
+                        [k x]
+                        x))) (mapv vector (or ks (repeat nil)) ps))))
 
   PredConform
   (pred-conform [this pred]
