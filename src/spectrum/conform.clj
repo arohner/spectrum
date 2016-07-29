@@ -680,6 +680,11 @@
 (defn fn-spec? [x]
   (instance? FnSpec x))
 
+(defn fn-spec [args ret fn]
+  (map->FnSpec {:args args
+                :ret ret
+                :fn fn}))
+
 (defmethod parse-spec* 'clojure.spec/fspec [x]
   (let [pairs (->> x rest (partition 2))
         pairs (map (fn [[k p]]
