@@ -890,7 +890,16 @@
       :else false))
   SpecToClass
   (spec->class [s]
-    (or (class s) clojure.lang.PersistentList)))
+    (or (class s) clojure.lang.PersistentList))
+  SpectPrettyString
+  (pretty-str [x]
+    (println "kind:" kind)
+    (let [[open close] (condp = kind
+                         map? ["{" "}"]
+                         vector? ["[" "]"]
+                         set? ["#{" "}"]
+                         ["(" ")"])]
+      (str "#CollOf "open  (pretty-str s)  close))))
 
 (defn parse-coll-of [x]
   (let [args (rest x)
