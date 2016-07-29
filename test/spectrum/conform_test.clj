@@ -144,6 +144,8 @@
          (c/cat- []) [] []
 
          (c/class-spec clojure.lang.IPersistentMap) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)]) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)])
+
+         (c/coll-of-spec (c/pred-spec #'any?)) [(c/value :foo)] [(c/value :foo)]
          ))
 
   (testing "should fail"

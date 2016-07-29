@@ -881,25 +881,40 @@
                   :opt-un (into {} (map (fn [[k s]]
                                           [(strip-namespace k) s]) opt-un))}))
 
+(defn conform-collof-coll [collof x]
+  (when (and (or (nil? (:kind collof))
+                 (= (empty (:kind collof))
+                    (empty x)))
+             (every? (fn [v]
+                       (conformy? (conform (:s collof) v))) x))
+    x))
+
 (defrecord CollOfSpec [s kind]
   Spect
   (conform* [this x]
     (cond
       (instance? CollOfSpec x) (when (conformy? (conform s (:s x)))
-                                x)
+                                 x)
+      (coll? x) (conform-collof-coll this x)
       :else false))
   SpecToClass
   (spec->class [s]
     (or (class s) clojure.lang.PersistentList))
   SpectPrettyString
   (pretty-str [x]
-    (println "kind:" kind)
     (let [[open close] (condp = kind
                          map? ["{" "}"]
                          vector? ["[" "]"]
                          set? ["#{" "}"]
                          ["(" ")"])]
       (str "#CollOf "open  (pretty-str s)  close))))
+
+(defn coll-of-spec
+  ([s]
+   (coll-of-spec s nil))
+  ([s kind]
+   (map->CollOfSpec {:s s
+                     :kind kind})))
 
 (defn parse-coll-of [x]
   (let [args (rest x)
