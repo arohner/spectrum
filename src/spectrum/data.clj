@@ -44,8 +44,12 @@
   "fake analysis data for special clojure.core vars that aren't defined in .clj source"
   []
   (swap! var-analysis assoc #'clojure.core/in-ns {:init {:op :fn
-                                                              :methods [{:variadic? false
-                                                                         :fixed-arity 1}]}})
+                                                         :form '(fake)
+                                                         :env {:file "bogus.clj"
+                                                               :line 1
+                                                               :column 1}
+                                                         :methods [{:variadic? false
+                                                                    :fixed-arity 1}]}})
   nil)
 
 (defn analyze-cache-ns
