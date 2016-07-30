@@ -2,7 +2,8 @@
   (:require [clojure.spec :as s]
             [spectrum.conform :as c]
             [spectrum.data :as data]
-            [spectrum.flow :as flow]))
+            [spectrum.flow :as flow]
+            [spectrum.util :refer (print-once)]))
 
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
@@ -21,13 +22,22 @@
 (ann #'instance? (fn [spect args-spect]
                    (let [c (c/first* args-spect)
                          inst-spec (c/first* (c/rest* args-spect))
-                         inst-cls (c/spec->class inst-spec)]
-                     (assert c)
-                     (if (c/known? inst-spec)
-                       (if (isa? inst-cls c)
-                         (assoc spect :ret (c/value true))
-                         (assoc spect :ret (c/value false)))
-                       spect))))
+                         inst-cls (if (satisfies? c/SpecToClass inst-spec)
+                                    (c/spec->class inst-spec)
+                                    nil)]
+                     (if inst-spec
+                       (if inst-cls
+                         (if (c/known? inst-spec)
+                           (if (isa? inst-cls c)
+                             (assoc spect :ret (c/value true))
+                             (assoc spect :ret (c/value false)))
+                           spect)
+                         (do
+                           (println "Can't spec->class:" inst-spec "Consider using ann/instance-transformer" )
+                           spect))
+                       (do
+                         (print-once "No spec for:" inst-spec)
+                         spect)))))
 
 (ann #'into (fn [spect args-spect]
               (let [to (c/first* args-spect)
