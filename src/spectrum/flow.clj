@@ -281,27 +281,23 @@
               (update-in [:else] (fn [form] (flow (with-a form a)))))
         then-ret-spec (-> a :then ::ret-spec)
         else-ret-spec (-> a :else ::ret-spec)
-        test-ret-spec (-> a :test ::ret-spec)]
-    (when-not test-ret-spec
-      (println "no ::ret-spec on" (-> a :test :op) (-> a :test :form) (a-loc-str a)))
-    (assert test-ret-spec)
-    (when (:test a)
-      (assert then-ret-spec (format "missing then-ret-spec: %s %s %s" (-> a :then :op) (-> a :then :form)
-                                    (a-loc-str a))))
-    (when (:else a)
-      (assert else-ret-spec (format "missing else-ret-spec: %s %s %s" (-> a :else :op) (-> a :else :form)
-                                    (a-loc-str a))))
+        test-ret-spec (-> a :test ::ret-spec)
+        _ (when (:test a)
+            (assert then-ret-spec (format "missing then-ret-spec: %s %s %s" (-> a :then :op) (-> a :then :form)
+                                          (a-loc-str a))))
+        _ (when (:else a)
+            (assert else-ret-spec (format "missing else-ret-spec: %s %s %s" (-> a :else :op) (-> a :else :form)
+                                          (a-loc-str a))))
+        _ (assert test-ret-spec)
+        branch (c/branch test-ret-spec)]
     (-> a
-        (assoc ::ret-spec (if (c/value? test-ret-spec)
-                            (if (:v test-ret-spec)
-                              then-ret-spec
-                              else-ret-spec)
-                            (if (= then-ret-spec else-ret-spec)
-                              then-ret-spec
-                              (c/or- (->>
-                                      [(-> a :then ::ret-spec)
-                                       (-> a :else ::ret-spec)]
-                                      (remove recur?)))))))))
+        (assoc ::ret-spec (condp = branch
+                            :then then-ret-spec
+                            :else else-ret-spec
+                            :ambiguous (c/or- (->>
+                                               [then-ret-spec
+                                                else-ret-spec]
+                                               (remove recur?))))))))
 
 (defmethod flow :const [a]
   {:post [(::ret-spec %)]}

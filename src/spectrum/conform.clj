@@ -74,6 +74,10 @@
   (first* [this])
   (rest* [this]))
 
+(defprotocol Branch
+  (branch [this]
+    "If this spec appears as the test in an if statement, which branch does the if take? Returns :then, :else or :ambiguous"))
+
 (defn regex-pretty-str [re-name spec]
   (str "#" re-name "[" (str/join ", " (map pretty-str (:ps spec))) "]"))
 
@@ -98,7 +102,10 @@
   SpectPrettyString
   (pretty-str [x]
     (str "#Unknown[" (pretty-str form) (when file
-                                         (str file line column)) "]")))
+                                         (str file line column)) "]"))
+  Branch
+  (branch [this]
+    :ambiguous))
 
 (defn unknown
   ([form]
@@ -240,7 +247,10 @@
   (first* [this]
     nil)
   (rest* [this]
-    nil))
+    nil)
+  Branch
+  (branch [this]
+    :else))
 
 (extend-type Object
   Regex
@@ -261,7 +271,10 @@
     this)
   SpectPrettyString
   (pretty-str [x]
-    (str x)))
+    (pr-str x))
+  Branch
+  (branch [this]
+    :ambiguous))
 
 (defn maybe-alt-
   "If both regexes are valid, returns Alt r1 r2, else first non-reject one"
@@ -329,7 +342,10 @@
         (first* p)
         p)))
   (rest* [this]
-    (derivative this (parse-spec (will-accept this)))))
+    (derivative this (parse-spec (will-accept this))))
+  Branch
+  (branch [this]
+    :then))
 
 (s/fdef cat-spec :args (s/cat :x any?) :ret boolean?)
 (defn cat-spec? [x]
@@ -373,7 +389,10 @@
     (derivative this (will-accept this)))
   WillAccept
   (will-accept [this]
-    (will-accept (first ps))))
+    (will-accept (first ps)))
+  Branch
+  (branch [this]
+    :then))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
@@ -431,7 +450,13 @@
     (derivative this (will-accept this)))
   WillAccept
   (will-accept [this]
-    (will-accept (first ps))))
+    (will-accept (first ps)))
+  Branch
+  (branch [this]
+    (let [b (distinct (map branch ps))]
+      (if (= 1 (count b))
+        (first b)
+        :ambiguous))))
 
 (declare new-regex-plus)
 
@@ -489,7 +514,12 @@
       this))
   SpectPrettyString
   (pretty-str [x]
-    (str "#Value[" (pretty-str v) "]")))
+    (str "#Value[" (pretty-str v) "]"))
+  Branch
+  (branch [this]
+    (if v
+      :then
+      :else)))
 
 (s/fdef value :args (s/cat :x any?) :ret value?)
 (defn value
@@ -523,7 +553,7 @@
         (parse-spec fnspec)))
     s))
 
-(s/fdef maybe-transform :args (s/cat :v var? :fn-spec ::spect :args-spec ::spect) :ret ::fn-spect)
+(s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :fn-spec ::spect :args-spec ::spect) :ret ::fn-spect)
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
   [v fn-spec args-spec]
@@ -553,7 +583,14 @@
     (str form))
   WillAccept
   (will-accept [this]
-    pred))
+    pred)
+  Branch
+  (branch [this]
+    (cond
+      (= pred #'boolean?) :ambiguous
+      (= pred #'nil?) :else
+      (= pred #'false?) :else
+      (var? pred) :then)))
 
 (s/fdef pred-spec :args (s/cat :v var?) :ret ::spect)
 (defn pred-spec [v]
@@ -576,7 +613,6 @@
           ret
           false))
       (do
-        (println "conform-spec-ret: ret spec not spec'd" pred-spec)
         (unknown nil)))))
 
 ;; Spec representing a java class. Probably won't need to use this
@@ -616,7 +652,10 @@
     (str cls))
   WillAccept
   (will-accept [this]
-    cls))
+    cls)
+  Branch
+  (branch [this]
+    :then))
 
 (defn class-spec [c]
   (map->ClassSpec {:cls c}))
@@ -765,7 +804,13 @@
     this)
   SpectPrettyString
   (pretty-str [x]
-    (str "#And[" (str/join ", " (map pretty-str ps)) "]")))
+    (str "#And[" (str/join ", " (map pretty-str ps)) "]"))
+  Branch
+  (branch [this]
+    (let [b (distinct (map branch ps))]
+      (if (= 1 (count b))
+        (first b)
+        :ambiguous))))
 
 (defn and-spec? [x]
   (instance? AndSpec x))
@@ -867,7 +912,10 @@
                       (str/join " ")) ")"))
   SpecToClass
   (spec->class [this]
-    clojure.lang.PersistentHashMap))
+    clojure.lang.PersistentHashMap)
+  Branch
+  (branch [this]
+    :then))
 
 (s/fdef keys-spec :args (s/cat :x any?) :ret boolean?)
 (defn keys-spec? [x]
@@ -913,7 +961,10 @@
                          vector? ["[" "]"]
                          set? ["#{" "}"]
                          ["(" ")"])]
-      (str "#CollOf "open  (pretty-str s)  close))))
+      (str "#CollOf "open  (pretty-str s)  close)))
+  Branch
+  (branch [this]
+    :then))
 
 (defn coll-of-spec
   ([s]
