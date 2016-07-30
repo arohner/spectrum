@@ -334,7 +334,9 @@
     (regex-pretty-str "Cat" this))
   WillAccept
   (will-accept [this]
-    (will-accept (first ps)))
+    (if-let [p (first ps)]
+      (will-accept p)
+      nil))
   FirstRest
   (first* [this]
     (let [p (first ps)]

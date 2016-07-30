@@ -187,7 +187,8 @@
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
   (is (instance? spectrum.conform.RegexSeq (c/rest* (c/parse-spec (s/* integer?)))))
-  (is (instance? spectrum.conform.RegexCat (c/rest* (c/parse-spec (s/+ integer?))))))
+  (is (instance? spectrum.conform.RegexCat (c/rest* (c/parse-spec (s/+ integer?)))))
+  (is (nil? (c/rest* (c/cat- [])))))
 
 ;; (deftest spect->class
 ;;   (are [spec cls] (= cls (c/spec->class spec))
