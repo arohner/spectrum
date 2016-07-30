@@ -834,16 +834,16 @@
 (defmethod parse-spec* 'clojure.spec/and [x]
   (and-spec (mapv parse-spec (rest x))))
 
-(defn or-conform-literal [or-s x]
-  (some (fn [[k f]]
-          (when (conform* f x)
-            [k x])) (map vector (:ks or-s) (:ps or-s))))
+(defn or-or-conform [this val]
+  (when (every? (fn [p]
+                  (conform* this p)) (:ps val))
+    val))
 
 (defrecord OrSpec [ps ks]
   Spect
   (conform* [this x]
     (cond
-      (satisfies? OrConform x) (or-conform x this)
+      (instance? OrSpec x) (or-or-conform this x)
       :else (some (fn [[k p]]
                     (when (conform* p x)
                       (if k
@@ -855,11 +855,6 @@
     (some (fn [s]
             (when (conform* pred s)
               s)) (:ps pred)))
-  OrConform
-  (or-conform [this spec]
-    (assert (satisfies? OrConform spec))
-    (when (= (set (:ps spec)) (set/intersection (set (:ps spec)) (set (:ps this))))
-      this))
   WillAccept
   (will-accept [this]
     (first ps))

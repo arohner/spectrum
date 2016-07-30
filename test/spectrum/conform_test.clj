@@ -88,6 +88,8 @@
          (s/or :int integer? :str string?) "foo" [:str "foo"]
          (s/or :int integer? :str string?) 'string? [:str (c/parse-spec 'string?)]
 
+         (c/or- [(c/pred-spec #'seq?) (c/pred-spec #'nil?)]) (c/or- [(c/and-spec [(c/pred-spec #'seq?) (c/pred-spec #'any?)]) (c/pred-spec #'nil?)]) (c/or- [(c/and-spec [(c/pred-spec #'seq?) (c/pred-spec #'any?)]) (c/pred-spec #'nil?)])
+
          (s/* integer?) [] []
          (s/* integer?) [1] [1]
          (s/* integer?) '[integer? integer?] (c/parse-spec '[integer? integer?])
