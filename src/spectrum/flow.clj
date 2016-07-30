@@ -187,10 +187,8 @@
         (if (= :if (:op parent))
           (let [{:keys [test then else]} parent
                 this-expr (cond
-                            (= a test) :test
-                            (= a then) :then
-                            (= a else) :else
-                            :else (assert false))
+                            :else (do
+                                    (assert false)))
                 this (get parent this-expr)]
 
             (if (and (invoke-predicate? test)
@@ -247,9 +245,7 @@
         (do
           (print-once "warning: no spec for" (:var (:fn a)))
           (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
-      (do
-        (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
-        (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))))
+      (assoc a ::ret-spec (c/unknown (:form a) (a-loc a))))))
 
 (defmethod flow :protocol-invoke [a]
   {:post [(::ret-spec %)]}
@@ -542,7 +538,7 @@
         (if (c/accept-nil? spec)
           true
           false)
-        (if-let [spec* (c/derivative spec (c/parse-spec (c/will-accept spec)))]
+        (if-let [spec* (c/rest* spec)]
           (recur spec* (rest args))
           false)))
     false))
@@ -592,16 +588,24 @@
 
 (defmethod flow :map [a]
   {:post [(::ret-spec %)]}
-  (-> a
-      (update-in [:keys] (fn [keys]
-                           (mapv (fn [k]
-                                   (flow (with-a k a))) keys)))
-      (update-in [:vals] (fn [vals]
-                           (mapv (fn [v]
-                                   (flow (with-a v a))) vals)))
-      (assoc ::ret-spec (if (:literal? a)
-                          (c/value (:form a))
-                          (c/parse-spec #'map?)))))
+  (let [a (-> a
+              (update-in [:keys] (fn [keys]
+                                   (mapv (fn [k]
+                                           (flow (with-a k a))) keys)))
+              (update-in [:vals] (fn [vals]
+                                   (mapv (fn [v]
+                                           (flow (with-a v a))) vals))))
+        ret-keys (reduce (fn [ret-keys [k-a v-a]]
+                           (let [k-s (::ret-spec k-a)]
+                             (if (and (c/value? k-s) (keyword? (:v k-s)))
+                               (let [key-type (if (qualified-keyword? (:v k-s))
+                                                :req
+                                                :req-un)]
+                                 (assoc-in ret-keys [key-type (:v k-s)] (::ret-spec v-a)))
+                               ret-keys))) {:req {}
+                                            :req-un {}} (map vector (:keys a) (:vals a)))
+        ret-spec (c/and-spec [(c/pred-spec #'map?) (apply c/keys-spec (concat (vals ret-keys) [{} {}]))])]
+    (assoc a ::ret-spec ret-spec)))
 
 (defrecord Recur [args])
 
