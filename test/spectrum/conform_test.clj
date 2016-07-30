@@ -54,7 +54,7 @@
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))
          'integer? 3 3
-         (s/spec #(< % 10)) 3 3
+         ;;(s/spec #(< % 10)) 3 3
          (c/value 1) (c/value 1) (c/value 1)
 
          #'symbol? (c/value 'foo) (c/value 'foo)
@@ -151,9 +151,10 @@
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
          'integer? "foo"
-         (s/spec #(< % 10)) 12
+         ;;(s/spec #(< % 10)) 12
          'integer? 'keyword?
          'integer? (s/or :int integer? :str string?)
+         'even? (c/unknown nil)
          (s/and integer? even?) 'integer?
          (s/and integer? even?) 13
          (s/and integer? even? #(> % 10)) (s/and integer? even?)

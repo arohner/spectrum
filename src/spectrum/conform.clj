@@ -566,13 +566,22 @@
       fn-spec*)
     fn-spec))
 
+(s/fdef conform-args :args (s/cat :s pred-spec? :x any?) :ret boolean?)
+(defn conform-args?
+  "True if x conforms to the :args of the pred's fn, i.e. it's valid to call the fn with x as args"
+  [pred-spec x]
+  (let [fnspec (resolve-pred-spec pred-spec)]
+    (if fnspec
+      (conformy? (conform (:args fnspec) (cat- [x])))
+      false)))
+
 (defrecord PredSpec [pred form]
   Spect
   (conform* [spec x]
     (cond
       (satisfies? PredConform x) (or (pred-conform x spec) (conform-spec-ret spec x))
       (= x pred) x
-      (literal? x) (when ((:pred spec) x) x)
+      (conform-args? spec x) (when ((:pred spec) x) x)
       :else (conform-spec-ret spec x)))
   PredConform
   (pred-conform [this pred]
