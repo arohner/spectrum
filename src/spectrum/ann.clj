@@ -1,27 +1,24 @@
 (ns spectrum.ann
   (:require [clojure.spec :as s]
             [spectrum.conform :as c]
-            [spectrum.data :as data]))
+            [spectrum.data :as data]
+            [spectrum.flow :as flow]))
 
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
 (s/fdef ann :args (s/cat :v var? :f ::transformer))
 (defn ann
-  "Register a spec transformer. Takes a var, and a transformer function
+  "Register a spec transformer. Takes a var or clojure.reflect.Method, and a transformer function
 
   ransformer function: a function taking 2 args: the function's spect,
   and the Spect for the fn args at this callsite. Returns an updated
-  spec. Updating the :ret is probably a good idea.
-
-  When types can be determined statically, consider returning (c/value true)
-   and (c/value false)
+  spec. This is typically used to make :ret more specific.
 "
   [v f]
   (swap! data/spec-transformers assoc v f)
   nil)
 
 (ann #'instance? (fn [spect args-spect]
-                   {:post [(do (println "ann instance:" spect args-spect "=>" %) true)]}
                    (let [c (c/first* args-spect)
                          inst-spec (c/first* (c/rest* args-spect))
                          inst-cls (c/spec->class inst-spec)]
@@ -114,6 +111,19 @@
   (data/register-pred->class v cls)
   (ann v (instance-transformer cls)))
 
+(ann #'false? (fn [spect args-spect]
+                (let [x (c/first* args-spect)]
+                  (if (c/value? x)
+                    (assoc spect :ret (c/value (= false (:v x))))
+                    spect))))
+
+(ann #'nil? (fn [spect args-spect]
+              (println "ann nil?")
+                (let [x (c/first* args-spect)]
+                  (if (c/value? x)
+                    (assoc spect :ret (c/value (= nil (:v x))))
+                    spect))))
+
 (ann #'not (fn [spect args-spec]
              (let [arg (c/first* args-spec)]
                (if (c/value? arg)
@@ -142,6 +152,14 @@
                                                   (select-keys (:opt-un m) vals))]
                              (assoc spect :ret ret)))
                          spect))))
+
+(ann (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
+     (fn [spect args-spect]
+       (let [x (c/first* args-spect)
+             y (c/second* args-spect)]
+         (if (c/conform x y)
+           (assoc spect :ret (c/value true))
+           spect))))
 
 
 (s/fdef merge-keys :args (s/cat :m1 c/keys-spec? :m2 c/keys-spec?) :ret c/keys-spec?)

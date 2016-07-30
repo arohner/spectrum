@@ -383,6 +383,16 @@
                         (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
              (most-specific))))
 
+(s/fdef get-method! :args (s/cat :cls class? :method symbol? :spec ::c/spect) :ret j/reflect-method?)
+(defn get-method!
+  ""
+  [cls method spec]
+  (let [m (get-conforming-java-method cls method spec)]
+    (if m
+      m
+      (throw (Exception. (format "Couldn't find method: %s %s %s" cls method spec))))))
+
+
 (s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect :a ::analysis) :ret c/fn-spec?)
 (defn get-java-method-spec
   "Return a fake spec for a java interop call"
@@ -408,7 +418,11 @@
                                  (mapv (fn [arg]
                                          (flow (with-meta arg {:a a}))) args)))
         args-spec (analysis-args->spec (util/zip a :args))
-        spec (get-java-method-spec class method args-spec a)]
+        meth (get-conforming-java-method class method args-spec)
+        spec (get-java-method-spec class method args-spec a)
+
+        spec (when spec
+               (c/maybe-transform meth spec (analysis-args->spec (:args a))))]
     (when-not (:ret spec)
       (println "flow-java-call: no spec:" class method args-spec))
     (assert (:ret spec))

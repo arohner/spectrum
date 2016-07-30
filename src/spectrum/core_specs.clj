@@ -20,6 +20,7 @@
 (s/fdef clojure.core/boolean? :args (s/cat :x #(do % true)) :ret boolean?)
 (s/fdef clojure.core/chunked-seq? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/even? :args (s/cat :n integer?) :ret boolean?)
+(s/fdef clojure.core/false? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/fn? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/ifn? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/in-ns :args (s/cat :ns symbol?) :ret namespace?)
