@@ -176,23 +176,42 @@
        (filter (fn [b] (= name (:name b))))
        first))
 
-(defmethod find-binding* :if [a name]
-  (if (and (invoke-predicate? (:test a))
-           (-> a :test :args first :name (= name)))
-    (let [b (find-binding (unwrap-a a) name)]
-      (assert (::ret-spec b))
-      (update-in b [::ret-spec] (fn [s]
-                                  (c/and-spec [s (c/pred-spec (-> a :test :fn :var))]))))
-    nil))
+(defn binding-update-if-specs
+  "Given a :binding, walk up the tree to find all :if predicate tests it contains, and update the spec"
+  [a binding]
+  (loop [a a
+         spec (::ret-spec binding)]
+    (assert spec)
+    (if a
+      (let [parent (unwrap-a a)]
+        (if (= :if (:op parent))
+          (let [{:keys [test then else]} parent
+                this-expr (cond
+                            (= a test) :test
+                            (= a then) :then
+                            (= a else) :else
+                            :else (assert false))
+                this (get parent this-expr)]
+
+            (if (and (invoke-predicate? test)
+                     (-> test :args first :name (= (:name binding))))
+              (if (= this-expr :then)
+                (recur parent (c/and-spec [spec (c/pred-spec (-> test :fn :var))]))
+                (recur parent spec))  ;; TODO add (not pred) to spec here.
+              (recur parent spec)))
+          (recur parent spec)))
+      (assoc binding ::ret-spec spec))))
 
 (s/fdef find-binding :args (s/cat :a ::analysis :name symbol?) :ret (s/nilable ::analysis))
 (defn find-binding
   "recursively unwrap a, looking for a :binding for 'name"
   [a name]
-  (if-let [b (find-binding* a name)]
-    b
-    (when-let [a* (unwrap-a a)]
-      (recur a* name))))
+  (loop [a* a]
+    (when a*
+      (if-let [b (find-binding* a* name)]
+        (binding-update-if-specs a b)
+        (when-let [a* (unwrap-a a*)]
+          (recur a*))))))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::analyses) :ret ::c/spect)
 (defn analysis-args->spec

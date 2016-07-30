@@ -39,3 +39,17 @@
 (defn falsey-2 [x]
   (if (false? false)
     :false))
+
+(s/def ::a int?)
+
+(s/fdef if-binding :args (s/cat :x (s/keys :req-un [::a])) :ret keyword?)
+;; the (seq?) check shouldn't change the type of x during the test, only the branches
+(defn if-binding [x]
+  (if (seq? x)
+    "then"
+    :else))
+
+(s/fdef if-binding-2 :args (s/cat :x any?) :ret (s/or :s seq? :_ nil?))
+(defn if-binding-2 [x]
+  (if (seq? x)
+    x))
