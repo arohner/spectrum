@@ -187,6 +187,9 @@
         (if (= :if (:op parent))
           (let [{:keys [test then else]} parent
                 this-expr (cond
+                            (and (= (:form a) (:form test)) (= (a-loc a) (a-loc test))) :test
+                            (and (= (:form a) (:form then)) (= (a-loc a) (a-loc then))) :then
+                            (and (= (:form a) (:form else)) (= (a-loc a) (a-loc else))) :else
                             :else (do
                                     (assert false)))
                 this (get parent this-expr)]
