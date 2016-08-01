@@ -23,13 +23,6 @@ Use clojure.spec as normal.
 (st/check 'your.namespace)
 ```
 
-### Requirements
-
-- if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
-- if a predicate is just a simple instance? check, and you use that class in java interop (or deftype/defrecord), you'll need to register it. (ann/ann #'foo? (ann/instance-transformer Foo))
-
-Returns a seq of Error defrecords.
-
 ## Goals
 
 - usable
@@ -52,6 +45,29 @@ Returns a seq of Error defrecords.
   get in the way.
 
 In particular, spectrum aims to be fast and usable, and catching bugs. A tool that catches 80% of bugs that you use every day is better than a 100% tool that you don't use. Spectrum will trend towards 100%, but it will never guarantee 100% correctness.
+
+### Requirements
+
+- if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
+- if a predicate is just a simple instance? check, and you use that class in java interop (or deftype/defrecord), you'll need to register it. (ann/ann #'foo? (ann/instance-transformer Foo))
+
+Returns a seq of Error defrecords.
+
+#### Defrecord
+
+If you end up defining a predicate for your defrecord, i.e.
+
+```clojure
+(defrecord Foo ...)
+(defn foo? [x] (instance? Foo x))
+```
+You'll want to add:
+```clojure
+(:require [spectrum.ann :as ann])
+(ann/ann #'foo? (ann/instance-transformer Foo))
+```
+This tells the system that variables w/ spec foo? are of class Foo, which is useful in java interop (i.e. ->Foo and map->Foo).
+
 
 ## Limitations
 
@@ -150,6 +166,23 @@ unknowns if desired.
 ## Todo
 
 - pre/post post predicates
+- java methods are all (or nil?)
+
+## Justification
+
+- because I could
+- working example of types = proofs = predicates
+- why not just use spec by itself?
+ - `instrument` doesn't check return values
+ - `check` works best on pure functions with good generators.
+  - Not all clojure code is pure
+  - Not always easy to write a good generator for all functions (hello, any fn that takes a DB connection)
+  - Not always easy to write a generator w/ 100% coverage
+ - spec doesn't deal with non-fn vars at all
+ - generative testing can be slow
+- to get HN to shut up about how adding a static type system to a dynamic language is impossible
+
+
 
 ## License
 
