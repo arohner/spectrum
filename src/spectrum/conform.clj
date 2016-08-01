@@ -193,7 +193,7 @@
 (extend-protocol Regex
   spectrum.conform.Spect
   (derivative [spec x]
-    (let [v (conform* spec x)]
+    (let [v (conform-compound spec x)]
       (if (and v (or (not (value? v))
                      (and (value? v) (:v v))))
         (map->RegexAccept {:ret x})
