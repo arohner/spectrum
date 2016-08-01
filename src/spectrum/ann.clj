@@ -21,7 +21,7 @@
 
 (ann #'instance? (fn [spect args-spect]
                    (let [c (c/first* args-spect)
-                         inst-spec (c/first* (c/rest* args-spect))
+                         inst-spec (c/second* args-spect)
                          inst-cls (if (satisfies? c/SpecToClass inst-spec)
                                     (c/spec->class inst-spec)
                                     nil)]
@@ -61,7 +61,7 @@
         (if (isa? c cls)
           (assoc spect :ret (c/value true))
           (assoc spect :ret (c/value false)))
-        (c/unknown nil)))))
+        spect))))
 
 (defn instance-or
   "spec-transformer for (or (instance? a) (instance? b)...) case. clses is a seq of classes."

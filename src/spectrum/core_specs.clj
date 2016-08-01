@@ -16,7 +16,7 @@
 (defn reduce? [x]
   (satisfies? clojure.core.protocols/CollReduce x))
 
-(s/fdef clojure.core/any? :args (s/cat :x #(do % true)) :ret boolean?)
+(s/fdef clojure.core/any? :args (s/cat :x (fn [x] (do true))) :ret boolean?)
 (s/fdef clojure.core/boolean? :args (s/cat :x #(do % true)) :ret boolean?)
 (s/fdef clojure.core/chunked-seq? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/even? :args (s/cat :n integer?) :ret boolean?)
@@ -38,4 +38,5 @@
 (s/fdef clojure.core/seq :args (s/cat :coll seqable?) :ret seq?)
 (s/fdef clojure.core/seq? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/string? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/symbol? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/var? :args (s/cat :x any?) :ret boolean?)
