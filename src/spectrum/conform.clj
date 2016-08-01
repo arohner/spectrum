@@ -657,6 +657,16 @@
 (defn class-spec [c]
   (map->ClassSpec {:cls c}))
 
+(s/fdef class-spec :args (s/cat :x any?) :ret boolean?)
+(defn class-spec? [x]
+  (instance? ClassSpec x))
+
+(defn maybe-class [x]
+  (cond
+    (class-spec? x) (:cls x)
+    (class? x) x
+    :else nil))
+
 (defmethod parse-spec* :fn-sym [x]
   (let [v (resolve x)]
     (assert v)

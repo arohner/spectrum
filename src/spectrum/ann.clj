@@ -20,7 +20,7 @@
   nil)
 
 (ann #'instance? (fn [spect args-spect]
-                   (let [c (c/first* args-spect)
+                   (let [c (c/maybe-class (c/first* args-spect))
                          inst-spec (c/second* args-spect)
                          inst-cls (if (satisfies? c/SpecToClass inst-spec)
                                     (c/spec->class inst-spec)
@@ -128,7 +128,6 @@
                     spect))))
 
 (ann #'nil? (fn [spect args-spect]
-              (println "ann nil?")
                 (let [x (c/first* args-spect)]
                   (if (c/value? x)
                     (assoc spect :ret (c/value (= nil (:v x))))
