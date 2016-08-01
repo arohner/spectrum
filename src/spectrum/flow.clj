@@ -83,8 +83,10 @@
       (assoc-in a (conj path ::var) (:var a))
       a)))
 
+(s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable ::c/fn-spect))
 (defn get-var-fn-spec [v]
-  (c/parse-spec (s/get-spec v)))
+  (when-let [s (s/get-spec v)]
+    (c/parse-spec s)))
 
 (s/fdef var-predicate? :args (s/cat :v var?) :ret boolean?)
 (defn var-predicate?
@@ -277,6 +279,7 @@
 (defn maybe-strip-meta
   "If a is a :op :with-meta, strip it and return the :expr, or a"
   [a]
+
   (if (-> a :op (= :with-meta))
     (-> a :expr)
     a))
@@ -425,8 +428,7 @@
                  nil))
     (do
       (println "get-java-method-spec: no conforming:" cls method arg-spec "possible:" (mapv :parameter-types (get-java-method cls method)) (a-loc-str a))
-      {:args (c/unknown nil)
-       :ret (c/unknown nil)})))
+      (c/fn-spec (c/unknown nil) (c/unknown nil) nil))))
 
 (defn flow-java-call
   "Handles both :static-call and :instance-call"
@@ -439,8 +441,9 @@
         meth (get-conforming-java-method class method args-spec)
         spec (get-java-method-spec class method args-spec a)
 
-        spec (when spec
-               (c/maybe-transform meth spec (analysis-args->spec (:args a))))]
+        spec (if (and meth spec (c/known? (:args spec)))
+               (c/maybe-transform meth spec (analysis-args->spec (:args a)))
+               spec)]
     (when-not (:ret spec)
       (println "flow-java-call: no spec:" class method args-spec))
     (assert (:ret spec))
@@ -541,9 +544,13 @@
         (if (c/accept-nil? spec)
           true
           false)
-        (if-let [spec* (c/rest* spec)]
-          (recur spec* (rest args))
-          false)))
+        (let [spec* (c/rest* spec)
+              args* (seq (rest args))]
+          (if (and spec* args*)
+            (recur spec* args*)
+            (if (and (nil? spec*) (nil? args*))
+              true
+              false)))))
     false))
 
 (s/fdef destructure-fn-params :args (s/cat :params ::ana.jvm/bindings :spec ::c/spect :a ::analysis) :ret ::ana.jvm/bindings)

@@ -13,14 +13,21 @@
 (declare conform)
 (declare value)
 (declare value?)
-(declare fn-spec?)
-(declare spect?)
-(declare pred-spec?)
+
 (declare and-spec?)
-(declare or-spec?)
+(declare class-spec?)
+(declare fn-spec?)
 (declare keys-spec?)
+(declare or-spec?)
+(declare pred-spec?)
+(declare spect?)
+
+(declare class-spec)
+(declare keys-spec)
 (declare spect-generator)
 (declare conform-compound)
+(declare maybe-transform-pred)
+(declare conform-args?)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -203,7 +210,7 @@
 (extend-protocol Spect
   spectrum.conform.Regex
   (conform* [spec data]
-    (if (or (nil? data) (coll? data) (spect? data))
+    (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
       (let [[x & xs] (if (:ps data)
                        (:ps data)
                        data)]
@@ -273,10 +280,19 @@
 
 (declare map->RegexCat)
 
-(s/fdef new-regex-cat :args (s/cat :ps (s/nilable coll?) :ks (s/nilable coll?) :fs (s/nilable coll?) :ret coll?) :ret regex?)
+(s/def :cat/ks (s/nilable (s/coll-of keyword?)))
+(s/def :cat/ps (s/coll-of ::spect))
+(s/def :cat/fs (s/nilable coll?))
+(s/def :cat/ret coll?)
+
+(s/fdef map->RegexCat :args (s/cat :x (s/keys :opt-un [:cat/ks :cat/ps :cat/fs] :req-un [:cat/ret])) :ret regex?)
+
+(s/fdef new-regex-cat :args (s/cat :ps (s/nilable (s/coll-of (s/nilable ::spect))) :ks (s/nilable (s/coll-of keyword?)) :fs (s/nilable coll?) :ret coll?) :ret regex?)
 
 (defn new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
-  (if (every? #(not (regex-reject? %)) ps)
+  (if (and ps
+           (every? #(not (regex-reject? %)) ps)
+           (every? identity ps))
     (if (regex-accept? p0)
       (let [ret (conj ret (if k0 {k0 (:ret p0)} (:ret p0)))]
         (if pr
@@ -285,15 +301,15 @@
                           :forms fr
                           :ret ret})
           (accept ret)))
-
       (map->RegexCat {:ps ps
                       :ks ks
                       :forms forms
                       :ret ret}))
     regex-reject))
 
+(s/fdef cat- :args (s/cat :ps (s/coll-of ::spect)))
 (defn cat- [ps]
-  (new-regex-cat ps nil nil []))
+  (new-regex-cat (map parse-spec ps) nil nil []))
 
 (defrecord RegexCat [ps ks forms ret]
   Regex
@@ -332,7 +348,10 @@
         (first* p)
         p)))
   (rest* [this]
-    (derivative this (will-accept this)))
+    (let [dx (derivative this (parse-spec (will-accept this)))]
+      (if (not (regex-accept? dx))
+        dx
+        nil)))
   Branch
   (branch [this]
     :then))
@@ -381,7 +400,7 @@
   (first* [this]
     (first ps))
   (rest* [this]
-    (derivative this (will-accept this)))
+    (derivative this (parse-spec (will-accept this))))
   WillAccept
   (will-accept [this]
     (will-accept (first ps)))
@@ -472,6 +491,7 @@
     (fn-literal? x) :fn-literal
     (and (seq? x) (symbol? (first x))) (first x)
     (coll? x) :coll
+    (class? x) :class
     :else :literal))
 
 (defmulti parse-spec* #'parse-spec*-dispatch)
@@ -480,6 +500,9 @@
   (if (spect? x)
     x
     (value x)))
+
+(defmethod parse-spec* :class [x]
+  (class-spec x))
 
 (defn parse-spec [x]
   (cond
@@ -537,74 +560,19 @@
     (boolean (:v x))
     (not= ::invalid x)))
 
-(defn resolve-pred-spec
-  "If spec is a PredSpec, find and parse its fnspec"
-  [s]
-  (if (pred-spec? s)
-    (let [fnspec (s/get-spec (:pred s))]
-      (when fnspec
-        (parse-spec fnspec)))
-    s))
-
-(s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :fn-spec ::spect :args-spec ::spect) :ret ::fn-spect)
-(defn maybe-transform
-  "apply the var's spec transformer, if applicable"
-  [v fn-spec args-spec]
-  (if-let [t (data/get-transformer v)]
-    (let [_ (when-not (s/valid? ::fn-spect fn-spec)
-              (println "invalid fn-spec:" v fn-spec)
-              (println (s/explain ::fn-spect fn-spec)))
-          _ (assert (s/valid? ::fn-spect fn-spec))
-          fn-spec* (t fn-spec args-spec)]
-      fn-spec*)
-    fn-spec))
-
-(s/fdef maybe-transform-pred :args (s/cat :s pred-spec? :arg (s/nilable? ::spect)))
-(defn maybe-transform-pred
-  "maybe-transform the pred-spec, return its updated :ret, or nil"
-  [pred-spec arg]
-  (let [s (resolve-pred-spec pred-spec)]
-    (if s
-      (let [v (:pred pred-spec)
-            ret (:ret s)
-            ret* (:ret (maybe-transform v s (cat- [arg])))]
-        (if (not= ret ret*)
-          ret*
-          nil))
-      nil)))
-
-(s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
-(defn any-spec?
-  "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
-  [pred-spec]
-  (-> pred-spec :form (= '(clojure.core/fn [x] (do true)))))
-
-(s/fdef conform-args :args (s/cat :s pred-spec? :x any?) :ret boolean?)
-(defn conform-args?
-  "True if x conforms to the :args of the pred's fn, i.e. it's valid to call the fn with x as args"
-  [pred-spec x]
-  (if (any-spec? pred-spec)
-    true
-    (let [fnspec (resolve-pred-spec pred-spec)]
-      (if fnspec
-        (if fnspec
-          (conformy? (conform (:args fnspec) (cat- [x])))
-          false)
-        (println "no fnspec for:" pred-spec)))))
-
 (defrecord PredSpec [pred form]
   Spect
   (conform* [spec x]
     (let [ret (maybe-transform-pred spec x)]
       (cond
         ret ret
-        (instance? PredSpec x) (when (= (:form spec) (:form x))
-                                 spec)
+        (pred-spec? x) (when (= (:form spec) (:form x))
+             spec)
         (and (value? x) (conform-args? spec x)) (when ((:pred spec) (:v x))
                                                   x)
-        (instance? ClassSpec x) (when-let [pred-class (spec->class spec)]
-                                  (when (isa? pred-class (:cls x))
-                                    x)))))
+        (class-spec? x) (when-let [pred-class (spec->class spec)]
+                          (when (isa? pred-class (:cls x))
+                            x)))))
   SpectPrettyString
   (pretty-str [this]
     (str form))
@@ -627,6 +595,61 @@
 (s/fdef pred-spec? :args (s/cat :x any?) :ret boolean?)
 (defn pred-spec? [x]
   (instance? PredSpec x))
+
+(defn resolve-pred-spec
+  "If spec is a PredSpec, find and parse its fnspec"
+  [s]
+  (if (pred-spec? s)
+    (let [fnspec (s/get-spec (:pred s))]
+      (when fnspec
+        (parse-spec fnspec)))
+    s))
+
+(s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :fn-spec ::spect :args-spec ::spect) :ret ::fn-spect)
+(defn maybe-transform
+  "apply the var's spec transformer, if applicable"
+  [v fn-spec args-spec]
+  (if-let [t (data/get-transformer v)]
+    (let [_ (when-not (s/valid? ::fn-spect fn-spec)
+              (println "invalid fn-spec:" v fn-spec)
+              (println (s/explain ::fn-spect fn-spec)))
+          _ (assert (s/valid? ::fn-spect fn-spec))
+          fn-spec* (t fn-spec args-spec)]
+      fn-spec*)
+    fn-spec))
+
+(s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
+(defn any-spec?
+  "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
+  [pred-spec]
+  (-> pred-spec :form (= '(clojure.core/fn [x] (do true)))))
+
+(s/fdef conform-args :args (s/cat :s pred-spec? :x any?) :ret boolean?)
+(defn conform-args?
+  "True if x conforms to the :args of the pred's fn, i.e. it's valid to call the fn with x as args"
+  [pred-spec x]
+  (if (any-spec? pred-spec)
+    true
+    (let [fnspec (resolve-pred-spec pred-spec)]
+      (if fnspec
+        (if fnspec
+          (conformy? (conform (:args fnspec) (cat- [x])))
+          false)
+        (println "no fnspec for:" pred-spec)))))
+
+(s/fdef maybe-transform-pred :args (s/cat :s pred-spec? :arg (s/nilable ::spect)))
+(defn maybe-transform-pred
+  "maybe-transform the pred-spec, return its updated :ret, or nil"
+  [pred-spec arg]
+  (let [s (resolve-pred-spec pred-spec)]
+    (if s
+      (let [v (:pred pred-spec)
+            ret (:ret s)
+            ret* (:ret (maybe-transform v s (cat- [arg])))]
+        (if (not= ret ret*)
+          ret*
+          nil))
+      nil)))
 
 ;; Spec representing a java class. Probably won't need to use this
 ;; directly. Used in java interop, and other places where we don't
@@ -1111,12 +1134,14 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 (defn valid? [spec x]
   (conformy? (conform spec x)))
 
+(s/fdef valid-invoke? :args (s/cat :s fn-spec? :args ::spect) :ret boolean?)
 (defn valid-invoke?
   "check that fnspec can be invoked w/ args"
   [spec args]
   (assert (fn-spec? spec))
   (conformy? (conform (:args spec) args)))
 
+(s/fdef valid-return? :args (s/cat :s ::spect :args ::spect) :ret boolean?)
 (defn valid-return?
   "True if spec conforms, as a return value. Conform must return truthy c/value"
   [spec args]

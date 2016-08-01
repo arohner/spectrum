@@ -68,14 +68,13 @@
    (filter identity)
    (doall)))
 
-(s/fdef get-var-analysis :args (s/cat :v var?) :ret ::flow/analysis?)
+(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::flow/analysis?))
 (defn get-var-analysis
   "Return the fn analysis for a var"
   [v]
-  (-> @data/var-analysis
-      (get v)
-      :init
-      flow/maybe-strip-meta))
+  (some-> data/get-var-analysis
+          :init
+          flow/maybe-strip-meta))
 
 (s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
 (defn var-analysis?
@@ -109,8 +108,9 @@
     (when-not valid?
       (wrong-number-args-error f a))))
 
+(s/fdef check-invoke-fn-spec :args (s/cat :v var? :s c/fn-spec? :a ::flow/analysis))
 (defn check-invoke-fn-spec
-  [name s a]
+  [v s a]
   (let [a-args (zip a :args)
         args-spec (flow/analysis-args->spec a-args)
         valid? (c/valid-invoke? s args-spec)]
@@ -128,7 +128,7 @@
       (when va
         (check-invoke-fn-arity (get-var-analysis v) a))
       (if-let [s (flow/get-var-fn-spec v)]
-        (check-invoke-fn-spec (str v) s a)
+        (check-invoke-fn-spec v s a)
         (print-once "check-invoke-var: no spec for" v))]
      (filter identity))))
 
