@@ -79,14 +79,6 @@
                  (fn []
                    spect-generator)))
 
-(s/def ::args ::spect)
-(s/def ::ret ::spect)
-(s/def ::fn ::spect)
-
-(s/def ::fn-spect #'fn-spec?)
-
-(s/def ::error #(= % ::invalid))
-
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
 
 (defrecord Unknown [form file line column]
@@ -131,17 +123,17 @@
 (defn regex? [x]
   (and (spect? x) (satisfies? Regex x) (or (:ps x) (:ret x))))
 
-(declare regex-accept)
-(declare regex-reject)
+(declare accept)
+(declare reject)
 
 (declare map->RegexAlt)
 
-(defrecord RegexAccept [ret]
+(defrecord Accept [ret]
   Regex
   (derivative [spec x]
-    regex-reject)
+    reject)
   (empty-regex [spec]
-    regex-accept)
+    accept)
   (accept-nil? [this]
     true)
   (return [this]
@@ -158,14 +150,14 @@
     nil))
 
 (defn accept [x]
-  (map->RegexAccept {:ret x}))
+  (map->Accept {:ret x}))
 
-(defrecord RegexReject []
+(defrecord Reject []
   Regex
   (derivative [spec x]
     nil)
   (empty-regex [spec]
-    regex-reject)
+    reject)
   (accept-nil? [this]
     false)
   (return [this]
@@ -181,22 +173,22 @@
   (rest* [this]
     nil))
 
-(defn regex-accept? [x]
-  (instance? RegexAccept x))
+(defn accept? [x]
+  (instance? Accept x))
 
-(defn regex-reject? [x]
-  (instance? RegexReject x))
+(defn reject? [x]
+  (instance? Reject x))
 
-(def regex-reject (map->RegexReject {}))
+(def reject (map->Reject {}))
 
 (extend-protocol Regex
   spectrum.conform.Spect
   (derivative [spec x]
     (if (valid? spec x)
-      (map->RegexAccept {:ret x})
-      regex-reject))
+      (map->Accept {:ret x})
+      reject))
   (empty-regex [this]
-    regex-reject)
+    reject)
   (accept-nil? [this]
     false)
   (return [this]
@@ -223,9 +215,9 @@
 (extend-type nil
   Regex
   (derivative [spec x]
-    regex-reject)
+    reject)
   (empty-regex [spec]
-    regex-reject)
+    reject)
   (accept-nil? [this]
     false)
   (return [this]
@@ -249,9 +241,9 @@
   (derivative [spec x]
     (if (= spec x)
       (accept x)
-      regex-reject))
+      reject))
   (empty-regex [spec]
-    regex-reject)
+    reject)
   (accept-nil? [this]
     false)
   (return [this]
@@ -271,9 +263,9 @@
 (defn maybe-alt-
   "If both regexes are valid, returns Alt r1 r2, else first non-reject one"
   [r1 r2]
-  (if (and r1 r2 (not (regex-reject? r1)) (not (regex-reject? r2)))
+  (if (and r1 r2 (not (reject? r1)) (not (reject? r2)))
     (map->RegexAlt {:ps [r1 r2]})
-    (first (remove regex-reject? [r1 r2]))))
+    (first (remove reject? [r1 r2]))))
 
 (declare map->RegexCat)
 
@@ -288,9 +280,9 @@
 
 (defn new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
   (if (and ps
-           (every? #(not (regex-reject? %)) ps)
+           (every? #(not (reject? %)) ps)
            (every? identity ps))
-    (if (regex-accept? p0)
+    (if (accept? p0)
       (let [ret (conj ret (if k0 {k0 (:ret p0)} (:ret p0)))]
         (if pr
           (map->RegexCat {:ps pr
@@ -302,7 +294,7 @@
                       :ks ks
                       :forms forms
                       :ret ret}))
-    regex-reject))
+    reject))
 
 (s/fdef cat- :args (s/cat :ps (s/coll-of ::spect)))
 (defn cat- [ps]
@@ -318,7 +310,7 @@
                (new-regex-cat (cons (derivative p0 x) pr) ks forms ret)
                (if (accept-nil? p0)
                  (derivative (new-regex-cat pr kr fr (add-return p0 ret k0)) x)
-                 regex-reject)))]
+                 reject)))]
       v))
 
   (accept-nil? [this]
@@ -346,7 +338,7 @@
         p)))
   (rest* [this]
     (let [dx (derivative this (parse-spec (will-accept this)))]
-      (if (not (regex-accept? dx))
+      (if (not (accept? dx))
         dx
         nil)))
   Branch
@@ -361,12 +353,11 @@
 (defn cat-spec [ks ps]
   (new-regex-cat ps ks nil []))
 
-
 (declare map->RegexSeq)
 
 (defn new-regex-seq [ps ret splice forms]
-  (if (every? #(not (regex-reject? %)) ps)
-    (if (regex-accept? (first ps))
+  (if (every? #(not (reject? %)) ps)
+    (if (accept? (first ps))
       (map->RegexSeq {:ps (vec (rest ps))
                       :forms forms
                       :ret ((fnil conj []) ret (:ret (first ps)))
@@ -375,7 +366,7 @@
                       :forms forms
                       :ret ret
                       :splice splice}))
-    regex-reject))
+    reject))
 
 (defrecord RegexSeq [ps ks forms splice ret]
   Regex
@@ -415,12 +406,12 @@
     [(seq (filter f ps)) ks forms]))
 
 (defn new-regex-alt [ps ks forms]
-  (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(not (regex-reject? %)))]
+  (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(not (reject? %)))]
     (when ps
       (let [ret (map->RegexAlt {:ps ps :ks ks :forms forms})]
         (if (nil? pr)
           (if k1
-            (if (regex-accept? p1)
+            (if (accept? p1)
               (do
                 (accept [k1 (:ret p1)]))
               ret)
@@ -551,11 +542,10 @@
 
 (s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
 (defn conformy?
-  "True if the conform result returns anything other than ::invalid or (c/value falsey)"
+  "True if the conform result returns anything other than ::invalid or reject"
   [x]
-  (if (value? x)
-    (boolean (:v x))
-    (not= ::invalid x)))
+  (and (not= ::invalid x)
+       (not (reject? x))))
 
 (defrecord PredSpec [pred form]
   Spect
@@ -602,16 +592,12 @@
         (parse-spec fnspec)))
     s))
 
-(s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :fn-spec ::spect :args-spec ::spect) :ret ::fn-spect)
+(s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :fn-spec fn-spec? :args-spec ::spect) :ret fn-spec?)
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
   [v fn-spec args-spec]
   (if-let [t (data/get-transformer v)]
-    (let [_ (when-not (s/valid? ::fn-spect fn-spec)
-              (println "invalid fn-spec:" v fn-spec)
-              (println (s/explain ::fn-spect fn-spec)))
-          _ (assert (s/valid? ::fn-spect fn-spec))
-          fn-spec* (t fn-spec args-spec)]
+    (let [fn-spec* (t fn-spec args-spec)]
       fn-spec*)
     fn-spec))
 
@@ -630,7 +616,7 @@
     (let [fnspec (resolve-pred-spec pred-spec)]
       (if fnspec
         (if fnspec
-          (conformy? (conform (:args fnspec) (cat- [x])))
+          (valid? (:args fnspec) (cat- [x]))
           false)
         (println "no fnspec for:" pred-spec)))))
 
@@ -736,7 +722,7 @@
                   :ret (:ret x)}))
 
 (defmethod parse-spec* :clojure.spec/accept [x]
-  (map->RegexAccept {:ret (:ret x)}))
+  (accept (:ret x)))
 
 (defmethod parse-spec* 'clojure.spec/cat [x]
   (let [pairs (->> x rest (partition 2))
@@ -756,7 +742,7 @@
       x
       false)))
 
-(s/fdef fn-spec? )
+(s/fdef fn-spec? :args (s/cat :x any?) :ret boolean?)
 (defn fn-spec? [x]
   (instance? FnSpec x))
 
@@ -941,14 +927,14 @@
                  (= (empty (:kind collof))
                     (empty x)))
              (every? (fn [v]
-                       (conformy? (conform (:s collof) v))) x))
+                       (valid? (:s collof) v)) x))
     x))
 
 (defrecord CollOfSpec [s kind]
   Spect
   (conform* [this x]
     (cond
-      (instance? CollOfSpec x) (when (conformy? (conform s (:s x)))
+      (instance? CollOfSpec x) (when (valid? s (:s x))
                                  x)
       (coll? x) (conform-collof-coll this x)
       :else false))
@@ -1136,10 +1122,10 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
   "check that fnspec can be invoked w/ args"
   [spec args]
   (assert (fn-spec? spec))
-  (conformy? (conform (:args spec) args)))
+  (valid? (:args spec) args))
 
 (s/fdef valid-return? :args (s/cat :s ::spect :args ::spect) :ret boolean?)
 (defn valid-return?
   "True if spec conforms, as a return value. Conform must return truthy c/value"
   [spec args]
-  (conformy? (conform spec args)))
+  (valid? spec args))

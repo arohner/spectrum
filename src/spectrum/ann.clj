@@ -30,7 +30,7 @@
                          (if (c/known? inst-spec)
                            (if (isa? inst-cls c)
                              (assoc spect :ret (c/value true))
-                             (assoc spect :ret (c/value false)))
+                             (assoc spect :ret c/reject))
                            spect)
                          (do
                            (println "Can't spec->class:" inst-spec "Consider using ann/instance-transformer" )
@@ -60,7 +60,7 @@
       (if c
         (if (isa? c cls)
           (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
+          (assoc spect :ret c/reject))
         spect))))
 
 (defn instance-or
@@ -75,7 +75,7 @@
       (if c
         (if (some (fn [cls] (isa? c cls)) clses)
           (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
+          (assoc spect :ret c/reject))
         (c/unknown nil)))))
 
 (def pred->class
