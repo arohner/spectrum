@@ -72,7 +72,7 @@
 (defn get-var-analysis
   "Return the fn analysis for a var"
   [v]
-  (some-> data/get-var-analysis
+  (some-> (data/get-var-analysis v)
           :init
           flow/maybe-strip-meta))
 
