@@ -202,12 +202,3 @@
 
   (is (= (c/pred-spec #'int?) (c/first* (c/parse-spec (s/cat :x int?)))))
   (is (nil? (c/rest* (c/parse-spec (s/cat :x int?))))))
-
-;; (deftest spect->class
-;;   (are [spec cls] (= cls (c/spec->class spec))
-;;     (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) ))
-
-(deftest instance?-transformer
-  (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [(c/class-spec String) (c/parse-spec #'string?)])) :ret :v))
-
-  (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [(c/class-spec String) (c/unknown nil)])) :ret (= (c/parse-spec #'boolean?)))))

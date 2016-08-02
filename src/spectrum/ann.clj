@@ -179,3 +179,22 @@
                (if (every? c/keys-spec? (:ps args-spect))
                  (assoc spect :ret (reduce merge-keys (:ps args-spect)))
                  spect)))
+
+(ann (flow/get-method! clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
+     (fn [spect args-spect]
+       (let [coll (c/first* args-spect)
+             key (c/second* args-spect)
+             ret (cond
+                   (and (c/keys-spec? coll) (c/value? key)) (or (c/keys-get coll (:v key)) (c/pred-spec #'any?))
+                   :else (:ret spect))]
+         (assoc spect :ret ret))))
+
+(ann (flow/get-method! clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)]))
+     (fn [spect args-spect]
+       (let [coll (c/first* args-spect)
+             key (c/second* args-spect)
+             not-found (c/nth* args-spect 2)
+             ret (cond
+                   (and (c/keys-spec? coll) (c/value? key)) (or (c/keys-get coll key) not-found)
+                   :else (:ret spect))]
+         (assoc spect :ret ret))))

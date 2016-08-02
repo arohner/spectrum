@@ -118,6 +118,13 @@
 (defn second* [ps]
   (first* (rest* ps)))
 
+(defn nth* [ps i]
+  (if (and (seq ps) (not (neg-int? i)))
+    (if (= 0 i)
+      (first* ps)
+      (recur (rest* ps) (dec i)))
+    nil))
+
 (s/fdef regex? :args (s/cat :x any?) :ret boolean?)
 
 (defn regex? [x]
@@ -922,6 +929,13 @@
                   :opt opt
                   :opt-un (into {} (map (fn [[k s]]
                                           [(strip-namespace k) s]) opt-un))}))
+
+(s/fdef keys-get :args (s/cat :ks keys-spec? :key keyword?) :ret (s/nilable any?))
+(defn keys-get
+  "clojure.core/get, for key-spec"
+  [ks key]
+  (some (fn [key-type]
+          (get-in ks [key-type key])) [:req :req-un :opt :opt-un]))
 
 (defn conform-collof-coll [collof x]
   (when (and (or (nil? (:kind collof))
