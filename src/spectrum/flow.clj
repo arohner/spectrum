@@ -3,6 +3,7 @@
             [clojure.reflect :as reflect]
             [clojure.set :as set]
             [clojure.spec :as s]
+            [clojure.spec.gen :as gen]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.data :as data]
@@ -21,16 +22,13 @@
 
 (s/def ::args-spec ::c/spect)
 (s/def ::ret-spec ::c/spect)
-(s/def ::var var?)
-
-(s/def ::file string?)
-(s/def ::line int?)
-(s/def ::column int?)
-(s/def ::env (s/keys :req-un [::file ::line ::column]))
+(s/def ::var (s/with-gen (s/spec var?)
+               (fn []
+                 (gen/elements [#'int? #'println #'str]))))
 
 (s/def ::analysis (s/keys :req []
-                          :req-un [::ana.jvm/op ::ana.jvm/form ::env]
-                          :opt [::var ::args-spec ::ret-spec]))
+                          :req-un [::ana.jvm/op ::ana.jvm/form]
+                          :opt [::var ::args-spec ::ret-spec ::ana.jvm/env]))
 
 (s/def ::analysis? (s/nilable ::analysis))
 
@@ -84,7 +82,7 @@
       (assoc-in a (conj path ::var) (:var a))
       a)))
 
-(s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable ::c/fn-spect))
+(s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable c/fn-spec?))
 (defn get-var-fn-spec [v]
   (when-let [s (s/get-spec v)]
     (c/parse-spec s)))
