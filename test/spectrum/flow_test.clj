@@ -98,3 +98,19 @@
       (s/cat :a int?) [(dummy-binding 'a) (dummy-binding 'b)]
       (s/cat :a int? :b int?) [(dummy-binding 'a)]
       #'int? [(dummy-binding 'a)])))
+
+(deftest var-predicate
+  (testing "truthy"
+    (are [v] (flow/var-predicate? v)
+      #'int?
+      #'string?
+      #'false?
+      #'nil?
+      #'boolean?))
+  (testing "falsey"
+    (are [v] (not (flow/var-predicate? v))
+      #'not
+      #'boolean
+      #'print
+      #'int
+      #'str)))

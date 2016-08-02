@@ -7,7 +7,8 @@
             [spectrum.conform :as c]
             [spectrum.data :as data]
             [spectrum.java :as j]
-            [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
+            [spectrum.util :as util :refer (zip with-a unwrap-a print-once)])
+  (:import clojure.lang.Var))
 
 (declare recur?)
 (declare find-binding)
@@ -88,6 +89,11 @@
   (when-let [s (s/get-spec v)]
     (c/parse-spec s)))
 
+(defn var-named-predicate?
+  "True if the var's name looks like a predicate"
+  [v]
+  (boolean (re-find #"\?$" (name (.sym ^Var v)))))
+
 (s/fdef var-predicate? :args (s/cat :v var?) :ret boolean?)
 (defn var-predicate?
   [v]
@@ -95,7 +101,8 @@
     (if s
       (and (-> s :args c/cat-spec?)
            (-> s :args :ps count (= 1))
-           (-> s :ret (= (c/parse-spec #'boolean?))))
+           (-> s :ret (= (c/parse-spec #'boolean?)))
+           (var-named-predicate? v))
       false)))
 
 (defn invoke-predicate?
