@@ -10,6 +10,7 @@
 (s/def ::integer integer?)
 (s/def ::string string?)
 (s/def ::even-int (s/and integer? even?))
+(s/def ::foo string?)
 
 (deftest parse-spec-works
   (testing "returns Spect"
@@ -49,7 +50,14 @@
       (s/cat :args (s/keys :req-un [::integer]))
       {::integer 3})
 
-    (is (-> (c/parse-spec (s/keys :req-un [::even-int])) :req-un :even-int))))
+    (is (-> (c/parse-spec (s/keys :req-un [::even-int])) :req-un :even-int)))
+  (testing "fn-spec"
+    (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?) :ret boolean?))]
+      (is (= [(c/pred-spec #'string?)]) (:args fs))
+      (is (= (c/pred-spec #'boolean?)) (:ret fs)))
+
+    (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?)))]
+      (is (nil? (:ret fs))))))
 
 (deftest conform-works
   (testing "should pass"
@@ -127,6 +135,8 @@
          (s/keys :req [::integer] :opt-un [::string]) {::integer 3 ::string "foo"} (c/parse-spec {::integer 3 ::string "foo"})
 
          (s/keys :req [::integer] :opt-un [::string]) (s/keys :req [::integer ::string]) (c/parse-spec (s/keys :req [::integer ::string]))
+
+         (s/keys :req [::integer]) (s/keys :req [::integer] :opt-un [::foo]) (c/parse-spec (s/keys :req [::integer] :opt-un [::foo]))
 
          (s/cat :args (s/keys :req-un [::integer])) [{:integer 3}] {:args (c/keys-spec {} {::integer (c/value 3)} {} {})}
 

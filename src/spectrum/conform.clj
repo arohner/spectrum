@@ -762,7 +762,8 @@
 (defmethod parse-spec* 'clojure.spec/fspec [x]
   (let [pairs (->> x rest (partition 2))
         pairs (map (fn [[k p]]
-                     [k (parse-spec p)]) pairs)
+                     (when p
+                       [k (parse-spec p)])) pairs)
         args (into {} pairs)]
     (map->FnSpec args)))
 
