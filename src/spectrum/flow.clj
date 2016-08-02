@@ -28,7 +28,8 @@
 
 (s/def ::analysis (s/keys :req []
                           :req-un [::ana.jvm/op ::ana.jvm/form]
-                          :opt [::var ::args-spec ::ret-spec ::ana.jvm/env]))
+                          :opt [::var ::args-spec ::ret-spec]
+                          :opt-un [::ana.jvm/env]))
 
 (s/def ::analysis? (s/nilable ::analysis))
 
