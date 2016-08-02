@@ -265,7 +265,7 @@
     this)
   SpectPrettyString
   (pretty-str [x]
-    (pr-str x))
+    (str x))
   Branch
   (branch [this]
     :ambiguous))
@@ -825,7 +825,7 @@
     this)
   SpectPrettyString
   (pretty-str [x]
-    (str "#And[" (str/join ", " (map pretty-str ps)) "]"))
+    (format "#And[%s]" (str/join ", " (map pretty-str ps))))
   Branch
   (branch [this]
     (let [b (distinct (map branch ps))]
@@ -859,7 +859,7 @@
     (first ps))
   SpectPrettyString
   (pretty-str [x]
-    (str "#Or[" (str/join ", " (map pretty-str ps)) "]")))
+    (format "#Or[%s]" (str/join ", " (map pretty-str ps)))))
 
 (defn or-spec? [x]
   (instance? OrSpec x))
@@ -897,14 +897,17 @@
     this)
   SpectPrettyString
   (pretty-str [this]
-    (str "(keys " (->> [:req :req-un :opt :opt-un]
-                      (map (fn [k]
-                             [k (get this k)]))
-                      (filter (fn [[k v]]
-                                v))
-                      (map (fn [[k v]]
-                             (str k (vec (keys v)))))
-                      (str/join " ")) ")"))
+    (format "(keys %s)" (->> [:req :req-un :opt :opt-un]
+                             (map (fn [k]
+                                    [k (get this k)]))
+                             (filter (fn [[k v]]
+                                       v))
+                             (map (fn [[key-type key-preds]]
+                                    (format "%s{%s}" key-type (->> key-preds
+                                                                   (map (fn [[k v]]
+                                                                          (format "%s %s" k (pretty-str v))))
+                                                                   (str/join " " )))))
+                             (str/join " "))))
   SpecToClass
   (spec->class [this]
     clojure.lang.PersistentHashMap)

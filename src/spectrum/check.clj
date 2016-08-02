@@ -115,7 +115,7 @@
         args-spec (flow/analysis-args->spec a-args)
         valid? (c/valid-invoke? s args-spec)]
     (when-not valid?
-      (new-error {:message (format "Function %s cannot be called with args %s. Expected %s" name (c/pretty-str args-spec) (c/pretty-str (-> s :args)))} a))))
+      (new-error {:message (format "invoke of %s does not conform. expected %s, got %s. " v (c/pretty-str (-> s :args)) (c/pretty-str args-spec))} a))))
 
 (defn check-invoke-var [a]
   (let [v (-> a :fn :var)
