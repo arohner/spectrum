@@ -225,6 +225,16 @@
                                 (::ret-spec arg)) args)
                     :ret []}))
 
+(defn invoke-spec [v spec args-spec]
+  (let [s* (c/maybe-transform v spec args-spec)
+        transformed? (not= spec s*)]
+    (if transformed?
+      s*
+      (if (and spec v (var-predicate? v)
+               (c/valid? (c/pred-spec v) (c/first* args-spec)))
+        (assoc spec :ret (c/value true))
+        spec))))
+
 (defmethod flow :invoke [a]
   {:post [(::ret-spec %)]}
   (let [v (-> a :fn :var)
@@ -234,11 +244,7 @@
                                  (mapv (fn [arg]
                                          (flow (with-a arg a))) args)))
         spec (when spec
-               (c/maybe-transform v spec (analysis-args->spec (:args a))))
-        spec (if (and spec v (invoke-predicate? a)
-                      (c/conformy? (c/conform (c/pred-spec v) (-> a :args first ::ret-spec))))
-               (assoc spec :ret (c/conform (c/pred-spec v) (-> a :args first ::ret-spec)))
-               spec)]
+               (invoke-spec v spec (analysis-args->spec (:args a))))]
     (if v
       (if spec
         (let [a (assoc a ::fn-spec spec)]
@@ -412,7 +418,6 @@
     (if m
       m
       (throw (Exception. (format "Couldn't find method: %s %s %s" cls method spec))))))
-
 
 (s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect :a ::analysis) :ret c/fn-spec?)
 (defn get-java-method-spec

@@ -171,7 +171,10 @@
   (first* [this]
     nil)
   (rest* [this]
-    nil))
+    nil)
+  Branch
+  (branch [this]
+    :else))
 
 (defn accept? [x]
   (instance? Accept x))
@@ -570,8 +573,6 @@
   (branch [this]
     (cond
       (= pred #'boolean?) :ambiguous
-      (= pred #'nil?) :else
-      (= pred #'false?) :else
       (var? pred) :then)))
 
 (s/fdef pred-spec :args (s/cat :v var?) :ret ::spect)
@@ -591,6 +592,24 @@
       (when fnspec
         (parse-spec fnspec)))
     s))
+
+(defrecord FnSpec [args ret fn]
+  Spect
+  (conform* [this x]
+    (if (and (fn-spec? x)
+             (conform (:args this) (:args x))
+             (conform (:ret this) (:ret x)))
+      x
+      false)))
+
+(s/fdef fn-spec? :args (s/cat :x any?) :ret boolean?)
+(defn fn-spec? [x]
+  (instance? FnSpec x))
+
+(defn fn-spec [args ret fn]
+  (map->FnSpec {:args args
+                :ret ret
+                :fn fn}))
 
 (s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :fn-spec fn-spec? :args-spec ::spect) :ret fn-spec?)
 (defn maybe-transform
@@ -732,24 +751,6 @@
                     :ps (mapv parse-spec ps)
                     :forms ps
                     :ret {}})))
-
-(defrecord FnSpec [args ret fn]
-  Spect
-  (conform* [this x]
-    (if (and (fn-spec? x)
-             (conform (:args this) (:args x))
-             (conform (:ret this) (:ret x)))
-      x
-      false)))
-
-(s/fdef fn-spec? :args (s/cat :x any?) :ret boolean?)
-(defn fn-spec? [x]
-  (instance? FnSpec x))
-
-(defn fn-spec [args ret fn]
-  (map->FnSpec {:args args
-                :ret ret
-                :fn fn}))
 
 (defmethod parse-spec* 'clojure.spec/fspec [x]
   (let [pairs (->> x rest (partition 2))
