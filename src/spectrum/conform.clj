@@ -30,7 +30,8 @@
 
 (defprotocol Spect
   (conform* [spec x]
-    "True if value x conforms to spec."))
+    "True if value x conforms to spec.")
+  (explain* [spec path via in x]))
 
 (defn spect? [x]
   (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
@@ -55,6 +56,7 @@
   (derivative
     [spec x]
     "Given a parsed spec, return the derivative")
+  (re-explain* [spec path via in x])
   (empty-regex [this]
     "The empty pattern for this regex")
   (accept-nil? [this]
@@ -206,21 +208,38 @@
   (add-return [this ret k]
     nil))
 
+(defn re-conform [spec data]
+  (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
+    (let [[x & xs] (if (:ps data)
+                     (:ps data)
+                     data)]
+      (if (empty? data)
+        (if (accept-nil? spec)
+          (return spec)
+          ::invalid)
+        (if-let [dp (derivative spec x)]
+          (recur dp xs)
+          ::invalid)))
+    ::invalid))
+
+(defn re-explain [spec path via in data]
+  (loop [spec spec
+         [x & xr :as data] data
+         i 0]
+    (if (empty? data)
+      (if (accept-nil? spec)
+        nil
+        [{:path path :via via :in in :reason (format "insufficient input. Empty input but re expects: %s" spec) :i i}])
+      (if-let [dp (derivative spec x)]
+        (recur dp xr (inc i))
+        (re-explain* spec path via (conj in i) data)))))
+
 (extend-protocol Spect
   spectrum.conform.Regex
   (conform* [spec data]
-    (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
-      (let [[x & xs] (if (:ps data)
-                       (:ps data)
-                       data)]
-        (if (empty? data)
-          (if (accept-nil? spec)
-            (return spec)
-            ::invalid)
-          (if-let [dp (derivative spec x)]
-            (recur dp xs)
-            ::invalid)))
-      ::invalid)))
+    (re-conform spec data))
+  (explain* [spec path via in x]
+    (re-explain spec path via in x)))
 
 (extend-type nil
   Regex
@@ -322,6 +341,24 @@
                  (derivative (new-regex-cat pr kr fr (add-return p0 ret k0)) x)
                  reject)))]
       v))
+
+  (re-explain* [spec path via in x]
+    (let [pkfs (map vector
+                    ps
+                    (or (seq ks) (repeat nil))
+                    (or (seq forms) (repeat nil)))
+          [pred k form] (if (= 1 (count pkfs))
+                          (first pkfs)
+                          (first (remove (fn [[p]] (accept-nil? p)) pkfs)))
+          path (if k (conj path k) path)]
+      (if (and (empty? x) (not pred))
+        [{:path path
+          :reason "Insufficient input"
+          :pred pred
+          :val ()
+          :via via
+          :in in}]
+        (explain* pred path via in x))))
 
   (accept-nil? [this]
     (every? accept-nil? ps))
@@ -570,6 +607,9 @@
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? pred-class (:cls x))
                             x)))))
+  (explain* [spec path via in x]
+    (when (not (valid? spec x))
+      [{:path path :pred form :val x :via via :in in}]))
   SpectPrettyString
   (pretty-str [this]
     (str form))
@@ -607,7 +647,10 @@
              (conform (:args this) (:args x))
              (conform (:ret this) (:ret x)))
       x
-      false)))
+      false))
+  (explain* [spec path via in x]
+    (when-not (valid? spec x)
+      [{:path path :pred spec :val x :via via :in in}])))
 
 (s/fdef fn-spec? :args (s/cat :x any?) :ret boolean?)
 (defn fn-spec? [x]
@@ -889,10 +932,28 @@
                           true)))))
     x))
 
+(defn explain-keys [{:keys [req req-un] :as spec} path via in x]
+  (if-not (conform (pred-spec #'keys-spec?) x)
+    [{:path path :pred 'map? :val x :via via :in in}]
+    (->>
+     (concat (mapv (fn [[key spec]]
+                     [key spec (get-in x [:req key])]) req)
+             (mapv (fn [[key spec]]
+                     [key spec (get-in x [:req (strip-namespace key)])]) req-un)
+             (mapv (fn [[key spec]]
+                     [key spec (get-in x [:req key])]) (:opt x))
+             (mapv (fn [[key spec]]
+                     [key spec (get-in x [:req (strip-namespace key)])]) (:opt-un x)))
+     (mapv (fn [[key spec val]]
+             (when-not (valid? spec val)
+               (explain* spec (conj path key) via in val)))))))
+
 (defrecord KeysSpec [req req-un opt opt-un]
   Spect
   (conform* [this x]
     (conform-keys this x))
+  (explain* [spec path via in x]
+    (explain-keys spec path via in x))
   WillAccept
   (will-accept [this]
     this)
@@ -1019,11 +1080,6 @@
 (defmethod parse-spec* 'clojure.spec/conformer [x]
   (value true))
 
-(defn parse-fn-spec [s]
-  {:args (-> s :args parse-spec)
-   :ret (-> s :ret parse-spec)
-   :fn (-> s :fn parse-spec)})
-
 (extend-protocol Spect
   clojure.spec.Spec
   (conform* [spec x]
@@ -1148,3 +1204,11 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
   "True if spec conforms, as a return value. Conform must return truthy c/value"
   [spec args]
   (valid? spec args))
+
+(defn explain-data [spec x]
+  (explain* spec [] [] [] x))
+
+(defn explain-out [data])
+
+(defn explain [spec args]
+  (explain-data spec args))
