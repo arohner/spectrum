@@ -187,7 +187,8 @@
          (s/keys :req [::integer] :opt [::string]) {::integer 3 ::string 5} ;; should fail because string doesn't conform
          (s/keys :req [::integer] :opt [::string]) {::string "foo"}
 
-         (s/coll-of int?) (s/coll-of string?))))
+         (s/coll-of int?) (s/coll-of string?)
+         (c/pred-spec #'string?) (c/or- [(c/class-spec Number) (c/value :foo)]))))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))

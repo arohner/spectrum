@@ -1083,27 +1083,27 @@
 
 (defmethod conform-compound :and-and [spec args]
   (when (every? (fn [p]
-                  (conform-compound p args)) (:ps spec))
+                  (conformy? (conform-compound p args))) (:ps spec))
     args))
 
 (defmethod conform-compound :or-or [spec args]
   (when (every? (fn [arg]
-                  (conform-compound spec arg)) (:ps args))
+                  (conformy? (conform-compound spec arg))) (:ps args))
     args))
 
 (defmethod conform-compound :spec-and [spec args]
   (when (every? (fn [p]
-                  (conform-compound p args)) (:ps spec))
+                  (conformy? (conform-compound p args))) (:ps spec))
     args))
 
 (defmethod conform-compound :args-and [spec args]
   (when (some (fn [arg]
-                (conform-compound spec arg)) (:ps args))
+                (conformy? (conform-compound spec arg))) (:ps args))
     args))
 
 (defmethod conform-compound :args-or [spec args]
   (when (every? (fn [arg]
-                  (conform-compound spec arg)) (:ps args))
+                  (conformy? (conform-compound spec arg))) (:ps args))
     args))
 
 (defmethod conform-compound :simple [spec args]
