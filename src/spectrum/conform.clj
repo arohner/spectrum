@@ -25,7 +25,6 @@
 (declare class-spec)
 (declare keys-spec)
 (declare spect-generator)
-(declare conform-compound)
 (declare maybe-transform-pred)
 (declare conform-args?)
 
@@ -193,11 +192,9 @@
 (extend-protocol Regex
   spectrum.conform.Spect
   (derivative [spec x]
-    (let [v (conform-compound spec x)]
-      (if (and v (or (not (value? v))
-                     (and (value? v) (:v v))))
-        (map->RegexAccept {:ret x})
-        regex-reject)))
+    (if (valid? spec x)
+      (map->RegexAccept {:ret x})
+      regex-reject))
   (empty-regex [this]
     regex-reject)
   (accept-nil? [this]
@@ -828,7 +825,7 @@
 (defrecord AndSpec [ps]
   Spect
   (conform* [this x]
-    (conform-compound this x))
+    (conform this x))
   WillAccept
   (will-accept [this]
     this)
@@ -859,7 +856,7 @@
   Spect
   (conform* [this x]
     (some (fn [[k p]]
-            (when (conform-compound p x)
+            (when (valid? p x)
               (if k
                 [k x]
                 x))) (mapv vector (or ks (repeat nil)) ps)))
@@ -1083,27 +1080,27 @@
 
 (defmethod conform-compound :and-and [spec args]
   (when (every? (fn [p]
-                  (conformy? (conform-compound p args))) (:ps spec))
+                  (valid? p args)) (:ps spec))
     args))
 
 (defmethod conform-compound :or-or [spec args]
   (when (every? (fn [arg]
-                  (conformy? (conform-compound spec arg))) (:ps args))
+                  (valid? spec arg)) (:ps args))
     args))
 
 (defmethod conform-compound :spec-and [spec args]
   (when (every? (fn [p]
-                  (conformy? (conform-compound p args))) (:ps spec))
+                  (valid? p args)) (:ps spec))
     args))
 
 (defmethod conform-compound :args-and [spec args]
   (when (some (fn [arg]
-                (conformy? (conform-compound spec arg))) (:ps args))
+                (valid? spec arg)) (:ps args))
     args))
 
 (defmethod conform-compound :args-or [spec args]
   (when (every? (fn [arg]
-                  (conformy? (conform-compound spec arg))) (:ps args))
+                  (valid? spec arg)) (:ps args))
     args))
 
 (defmethod conform-compound :simple [spec args]

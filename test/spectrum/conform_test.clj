@@ -135,7 +135,6 @@
          (c/or- [(c/pred-spec #'map?) (c/pred-spec #'associative?)]) (c/keys-spec {} {} {} {}) (c/keys-spec {} {} {} {})
 
          (c/class-spec java.util.concurrent.Callable) #'ifn? (c/parse-spec #'ifn?)
-         (s/and fn? ifn?) (c/class-spec java.util.concurrent.Callable) (c/class-spec java.util.concurrent.Callable)
 
          (c/class-spec java.util.concurrent.Callable) (s/and fn? ifn?) (c/parse-spec (s/and fn? ifn?))
 
@@ -153,7 +152,9 @@
          (c/class-spec clojure.lang.IPersistentMap) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)]) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)])
 
          (c/coll-of-spec (c/pred-spec #'any?)) [(c/value :foo)] [(c/value :foo)]
-         ))
+
+         (c/class-spec Object) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
+         (c/class-spec Object) (c/value nil) (c/value nil)))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
