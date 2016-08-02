@@ -154,7 +154,8 @@
          (c/coll-of-spec (c/pred-spec #'any?)) [(c/value :foo)] [(c/value :foo)]
 
          (c/class-spec Object) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
-         (c/class-spec Object) (c/value nil) (c/value nil)))
+         (c/class-spec Object) (c/value nil) (c/value nil)
+         (c/cat- [(c/class-spec Object) (c/class-spec Object)]) [(c/pred-spec #'nil?) (c/value nil)] [(c/pred-spec #'nil?) (c/value nil)]))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))

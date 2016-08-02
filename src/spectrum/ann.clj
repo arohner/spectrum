@@ -128,7 +128,7 @@
                     spect))))
 
 (ann #'nil? (fn [spect args-spect]
-                (let [x (c/first* args-spect)]
+              (let [x (c/first* args-spect)]
                   (if (c/value? x)
                     (assoc spect :ret (c/value (= nil (:v x))))
                     spect))))
@@ -136,9 +136,7 @@
 (ann #'not (fn [spect args-spec]
              (let [arg (c/first* args-spec)]
                (if (c/value? arg)
-                 (if (:v arg)
-                   (assoc spect :ret (c/value false))
-                   (assoc spect :ret (c/value true)))
+                 (assoc spect :ret (c/value (not (:v arg))))
                  spect))))
 
 (ann #'int? (instance-or [Long Integer Short Byte]))

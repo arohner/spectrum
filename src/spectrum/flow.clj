@@ -237,7 +237,7 @@
                (c/maybe-transform v spec (analysis-args->spec (:args a))))
         spec (if (and spec v (invoke-predicate? a)
                       (c/conformy? (c/conform (c/pred-spec v) (-> a :args first ::ret-spec))))
-               (assoc spec :ret (c/value true))
+               (assoc spec :ret (c/conform (c/pred-spec v) (-> a :args first ::ret-spec)))
                spec)]
     (if v
       (if spec
@@ -348,7 +348,7 @@
     (if (not= (c/unknown? arg-spec))
       (if (c/valid? s arg-spec)
         (assoc a ::ret-spec (c/value true))
-        (assoc a ::ret-spec (c/value false)))
+        (assoc a ::ret-spec c/reject))
       (assoc a ::ret-spec (c/parse-spec #'boolean?)))))
 
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
@@ -358,7 +358,7 @@
   (let [spec (c/cat- (mapv java-type->spec method-types))
         argv (-> arg-spec :ps)]
     (assert argv)
-    (c/conform spec argv)))
+    (c/valid? spec argv)))
 
 (s/def ::reflect-name symbol?)
 (s/def ::reflect-return-type ::j/java-type)
@@ -401,7 +401,7 @@
   (let [ms (get-java-method cls method)]
     (some->> (get-java-method cls method)
              (filterv (fn [m]
-                        (not= ::c/invalid (compatible-java-method? arg-spec (:parameter-types m)))))
+                        (compatible-java-method? arg-spec (:parameter-types m))))
              (most-specific))))
 
 (s/fdef get-method! :args (s/cat :cls class? :method symbol? :spec ::c/spect) :ret j/reflect-method?)
