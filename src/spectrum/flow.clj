@@ -296,7 +296,7 @@
     (-> a :expr)
     a))
 
-(s/fdef variadic? :args (s/cat :s ::spect) :ret boolean?)
+(s/fdef variadic? :args (s/cat :s c/spect?) :ret boolean?)
 (defn variadic?
   "Truthy if this spec will accept unbounded number of args"
   [s]
@@ -628,32 +628,45 @@
         ret-spec (c/and-spec [(c/pred-spec #'map?) (apply c/keys-spec (concat (vals ret-keys) [{} {}]))])]
     (assoc a ::ret-spec ret-spec)))
 
-(defrecord Recur [args])
+(defrecord RecurForm [args])
 
-(s/fdef recur? :args (s/cat :x any?) :ret boolean)
+(defrecord ThrowForm [exception])
+
+(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
 (defn recur? [x]
-  (instance? Recur x))
+  (instance? RecurForm x))
 
-(defn recur-args [args]
-  (map->Recur {:args args}))
+(defn recur-form [args]
+  (map->RecurForm {:args args}))
+
+(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
+(defn throwable? [x]
+  (instance? Throwable x))
+
+(s/fdef throw? :args (s/cat :x throwable?) :ret boolean?)
+(defn throw? [x]
+  (instance? ThrowForm x))
+
+(s/fdef throw-form :args (s/cat :e throwable?) :ret throw?)
+(defn throw-form [e]
+  (map->ThrowForm {:exception e}))
 
 (defmethod flow :recur [a]
   {:post [(::ret-spec %)]}
   (let [a (update-in a [:exprs] (fn [exprs]
                                   (mapv (fn [e]
                                           (flow (with-a e a))) exprs)))]
-    (assoc a ::ret-spec (recur-args (analysis-args->spec (:exprs a))))))
-
-(defrecord Throw [args])
-
-(defn throw-args [args]
-  (map->Throw {:args args}))
+    (assoc a ::ret-spec (recur-form (analysis-args->spec (:exprs a))))))
 
 (defmethod flow :throw [a]
   {:post [(::ret-spec %)]}
   (let [a (update-in a [:exception] (fn [e]
                                       (flow (with-a e a))))]
-    (assoc a ::ret-spec (recur-args (:exception a)))))
+    (assoc a ::ret-spec (throw-form (:exception a)))))
+
+(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
+(defn control-flow? [x]
+  (or (throw? x) (recur? x)))
 
 (defn keyword-invoke-ret-spec
   [a]

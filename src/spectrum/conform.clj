@@ -524,6 +524,7 @@
     (symbol? x) :fn-sym
     (var? x) :var
     (fn-literal? x) :fn-literal
+    (keyword? x) :keyword
     (and (seq? x) (symbol? (first x))) (first x)
     (coll? x) :coll
     (class? x) :class
@@ -545,14 +546,17 @@
     (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
     (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
     (= ::s/nil x) ::s/nil
-    (and (keyword? x)) (parse-spec* (#'s/the-spec x))
-    (#'s/named? x) (parse-spec* (s/spec x))
     (s/spec? x) (parse-spec* (s/form x))
     (s/regex? x) (parse-spec* x)
     :else (parse-spec* x)))
 
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
+
+(defmethod parse-spec* :keyword [x]
+  (if (and (qualified-keyword? x) (s/get-spec x))
+    (parse-spec (s/get-spec x))
+    (value x)))
 
 (defrecord Value [v]
   Spect
@@ -1016,7 +1020,8 @@
     (cond
       (instance? CollOfSpec x) (when (valid? s (:s x))
                                  x)
-      (coll? x) (conform-collof-coll this x)
+      (value? x) (conform-collof-coll this (:v x))
+      (and (known? x) (coll? x)) (conform-collof-coll this x)
       :else false))
   SpecToClass
   (spec->class [s]

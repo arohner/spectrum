@@ -50,6 +50,7 @@
       (s/cat :args (s/keys :req-un [::integer]))
       {::integer 3})
 
+    (is (= 3 (-> {::integer 3} c/parse-spec :req ::integer)))
     (is (-> (c/parse-spec (s/keys :req-un [::even-int])) :req-un :even-int)))
   (testing "fn-spec"
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?) :ret boolean?))]
@@ -163,6 +164,8 @@
 
          (c/coll-of-spec (c/pred-spec #'any?)) [(c/value :foo)] [(c/value :foo)]
 
+         (c/coll-of-spec (c/pred-spec #'int?)) [] []
+
          (c/class-spec Object) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
          (c/class-spec Object) (c/value nil) (c/value nil)
          (c/cat- [(c/class-spec Object) (c/class-spec Object)]) [(c/pred-spec #'nil?) (c/value nil)] [(c/pred-spec #'nil?) (c/value nil)]))
@@ -200,7 +203,9 @@
          (s/keys :req [::integer] :opt [::string]) {::string "foo"}
 
          (s/coll-of int?) (s/coll-of string?)
-         (c/pred-spec #'string?) (c/or- [(c/class-spec Number) (c/value :foo)]))))
+         (c/pred-spec #'string?) (c/or- [(c/class-spec Number) (c/value :foo)])
+         (c/coll-of-spec (c/pred-spec #'int?)) (c/unknown '(mapv flow as))
+         (c/coll-of-spec (c/pred-spec #'int?)) nil)))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
