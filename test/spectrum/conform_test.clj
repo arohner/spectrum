@@ -50,7 +50,7 @@
       (s/cat :args (s/keys :req-un [::integer]))
       {::integer 3})
 
-    (is (= 3 (-> {::integer 3} c/parse-spec :req ::integer)))
+    (is (= (c/value 3) (-> {::integer 3} c/parse-spec :req ::integer)))
     (is (-> (c/parse-spec (s/keys :req-un [::even-int])) :req-un :even-int)))
   (testing "fn-spec"
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?) :ret boolean?))]

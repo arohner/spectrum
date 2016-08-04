@@ -1,5 +1,6 @@
 (ns spectrum.ann-test
   (:require [clojure.test :refer :all]
+            [clojure.spec :as s]
             [spectrum.conform :as c]))
 
 (deftest instance?-transformer
