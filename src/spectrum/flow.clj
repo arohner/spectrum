@@ -624,7 +624,7 @@
     s))
 
 (defmethod flow :fn-method [a]
-  ;;{:post [(::ret-spec %)]}
+  {:post [(::ret-spec %)]}
   (let [v (-> a meta :a ::var)
         s (when v
             (get-var-fn-spec v))
