@@ -148,7 +148,7 @@
       :fn (check-invoke-fn-literal a)
       :map (check-invoke-map a)
       :local (check-invoke-local a)
-      (println "unknown invoke expr" a))))
+      (println "unknown invoke expr" (:form a) (:op a)))))
 
 (defmethod check* :do [a]
   (some->>
