@@ -28,3 +28,12 @@
                             (re-find #"^spectrum\.examples\.bad." (name sym)))))]
     (testing (str "testing: " ns)
       (is (seq (st/check ns))))))
+
+(def self-checking-nses ['spectrum.conform
+                         'spectrum.flow
+                         'spectrum.check])
+(deftest test-self
+  (doseq [ns self-checking-nses]
+    (testing (str "testing: " ns)
+      ;; currently only testing for non-explosion. Testing for no errors is on the roadmap!
+      (st/check ns))))
