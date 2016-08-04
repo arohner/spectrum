@@ -46,6 +46,33 @@
   (let [{{:keys [file line column]} :env} a]
     (str "file " file " line " line " col " column)))
 
+(defrecord RecurForm [args])
+
+(defrecord ThrowForm [exception])
+
+(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
+(defn recur? [x]
+  (instance? RecurForm x))
+
+(defn recur-form [args]
+  (map->RecurForm {:args args}))
+
+(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
+(defn throwable? [x]
+  (instance? Throwable x))
+
+(s/fdef throw? :args (s/cat :x throwable?) :ret boolean?)
+(defn throw? [x]
+  (instance? ThrowForm x))
+
+(s/fdef throw-form :args (s/cat :e throwable?) :ret throw?)
+(defn throw-form [e]
+  (map->ThrowForm {:exception e}))
+
+(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
+(defn control-flow? [x]
+  (or (throw? x) (recur? x)))
+
 (s/fdef flow-dispatch :args (s/cat :a ::analysis) :ret keyword?)
 (defn flow-dispatch [a]
   (assert (:op a))
@@ -329,8 +356,7 @@
                             :else else-ret-spec
                             :ambiguous (c/or- (->>
                                                [then-ret-spec
-                                                else-ret-spec]
-                                               (remove recur?))))))))
+                                                else-ret-spec])))))))
 
 (defmethod flow :const [a]
   {:post [(::ret-spec %)]}
@@ -586,6 +612,17 @@
       (mapv (fn [p]
               (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
 
+
+(defn strip-control-flow
+  "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
+  [s]
+  (if (satisfies? c/Compound s)
+    (->> s
+         (c/remove* (fn [p]
+                      (control-flow? p)))
+         (c/map* strip-control-flow))
+    s))
+
 (defmethod flow :fn-method [a]
   ;;{:post [(::ret-spec %)]}
   (let [v (-> a meta :a ::var)
@@ -595,10 +632,10 @@
             (update-in a [:params] destructure-fn-params (:args s) a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
-                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))]
-    (-> a
-        (update-in [:body] (fn [body]
-                             (flow (with-meta body {:a a})))))))
+                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
+        a (update-in a [:body] (fn [body]
+                                 (flow (with-meta body {:a a}))))]
+    (assoc a ::ret-spec (strip-control-flow (::ret-spec (:body a))))))
 
 (defmethod flow :vector [a]
   {:post [(::ret-spec %)]}
@@ -628,29 +665,6 @@
         ret-spec (c/and-spec [(c/pred-spec #'map?) (apply c/keys-spec (concat (vals ret-keys) [{} {}]))])]
     (assoc a ::ret-spec ret-spec)))
 
-(defrecord RecurForm [args])
-
-(defrecord ThrowForm [exception])
-
-(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
-(defn recur? [x]
-  (instance? RecurForm x))
-
-(defn recur-form [args]
-  (map->RecurForm {:args args}))
-
-(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
-(defn throwable? [x]
-  (instance? Throwable x))
-
-(s/fdef throw? :args (s/cat :x throwable?) :ret boolean?)
-(defn throw? [x]
-  (instance? ThrowForm x))
-
-(s/fdef throw-form :args (s/cat :e throwable?) :ret throw?)
-(defn throw-form [e]
-  (map->ThrowForm {:exception e}))
-
 (defmethod flow :recur [a]
   {:post [(::ret-spec %)]}
   (let [a (update-in a [:exprs] (fn [exprs]
@@ -663,10 +677,6 @@
   (let [a (update-in a [:exception] (fn [e]
                                       (flow (with-a e a))))]
     (assoc a ::ret-spec (throw-form (:exception a)))))
-
-(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
-(defn control-flow? [x]
-  (or (throw? x) (recur? x)))
 
 (defn keyword-invoke-ret-spec
   [a]

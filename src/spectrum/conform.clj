@@ -22,6 +22,7 @@
 (declare pred-spec?)
 (declare spect?)
 
+(declare or-spec)
 (declare class-spec)
 (declare keys-spec)
 (declare spect-generator)
@@ -32,6 +33,19 @@
   (conform* [spec x]
     "True if value x conforms to spec.")
   (explain* [spec path via in x]))
+
+(defprotocol Compound
+  (map- [spec f])
+  (filter- [spec f]))
+
+(defn map* [f spec]
+  (map- spec f))
+
+(defn filter* [f spec]
+  (filter- spec f))
+
+(defn remove* [f spec]
+  (filter- spec (complement f)))
 
 (defn spect? [x]
   (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
@@ -907,7 +921,18 @@
     (first ps))
   SpectPrettyString
   (pretty-str [x]
-    (format "#Or[%s]" (str/join ", " (map pretty-str ps)))))
+    (format "#Or[%s]" (str/join ", " (map pretty-str ps))))
+  Compound
+  (map- [this f]
+    (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
+                   (map (fn [[k p]]
+                          [k (f p)])))]
+      (or-spec (map first kps) (map second kps))))
+  (filter- [this f]
+    (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
+                   (filter (fn [[k p]]
+                             (f p))))]
+      (or-spec (map first kps) (map second kps)))))
 
 (defn or-spec? [x]
   (instance? OrSpec x))
@@ -916,6 +941,10 @@
   (if (>= (count ps) 2)
     (map->OrSpec {:ps ps})
     (first ps)))
+
+(defn or-spec [ks ps]
+  (map->OrSpec {:ks ks
+                :ps ps}))
 
 (defn conform-keys [this x]
   (when (and
