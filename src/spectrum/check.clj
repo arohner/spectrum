@@ -174,15 +174,15 @@
 
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
-        f-var (::flow/var f)
-        ret-spec (:ret (flow/get-var-fn-spec f-var))
+        v (::flow/var f)
+        ret-spec (:ret (flow/get-var-fn-spec v))
         body (-> method-a :body)
         last-expr (if (map? body)
                     body
                     (do
                       (assert (sequential? body))
                       (last body)))
-        expr-spec (::flow/ret-spec last-expr)]
+        expr-spec (::flow/ret-spec method-a)]
     (when (and ret-spec (c/known? ret-spec))
       (if expr-spec
         (when-not (c/valid-return? ret-spec expr-spec)
