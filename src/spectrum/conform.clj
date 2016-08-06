@@ -618,8 +618,9 @@
     (let [ret (maybe-transform-pred spec x)]
       (cond
         ret ret
+        (= #'any? pred) x
         (pred-spec? x) (when (= (:form spec) (:form x))
-             spec)
+                         spec)
         (and (value? x) (conform-args? spec x)) (when ((:pred spec) (:v x))
                                                   x)
         (class-spec? x) (when-let [pred-class (spec->class spec)]
