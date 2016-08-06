@@ -164,8 +164,13 @@
      (fn [spect args-spect]
        (let [x (c/first* args-spect)
              y (c/second* args-spect)]
-         (if (c/conform x y)
-           (assoc spect :ret (c/value true))
+         (if (or
+              (and (c/value? x) (c/value? y) (= (:v x) (:v y)))
+              (and (c/valid? (c/pred-spec #'nil?) x) (c/valid? (c/pred-spec #'nil?) y))
+              (and (c/valid? (c/pred-spec #'false?) x) (c/valid? (c/pred-spec #'false?) y)))
+           (do
+             (println "identical:" x y "=>" true)
+             (assoc spect :ret (c/value true)))
            spect))))
 
 
