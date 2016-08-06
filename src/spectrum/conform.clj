@@ -6,7 +6,8 @@
             [spectrum.util :refer (fn-literal? literal? print-once strip-namespace var-name)]
             [spectrum.data :as data]
             [spectrum.java :as j])
-  (:import (clojure.lang Var Keyword)))
+  (:import (clojure.lang Var Keyword)
+           java.io.Writer))
 
 (declare valid?)
 (declare parse-spec)
@@ -21,6 +22,8 @@
 (declare or-spec?)
 (declare pred-spec?)
 (declare spect?)
+(declare unknown?)
+(declare regex?)
 
 (declare or-spec)
 (declare class-spec)
@@ -49,9 +52,6 @@
 
 (defn spect? [x]
   (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
-
-(defprotocol SpectPrettyString
-  (pretty-str [spec]))
 
 (defprotocol WillAccept
   (will-accept [spec]
@@ -88,8 +88,7 @@
   (branch [this]
     "If this spec appears as the test in an if statement, which branch does the if take? Returns :then, :else or :ambiguous"))
 
-(defn regex-pretty-str [re-name spec]
-  (str "#" re-name "[" (str/join ", " (map pretty-str (:ps spec))) "]"))
+
 
 (s/def ::spect (s/with-gen (s/and spect? map?)
                  (fn []
@@ -101,10 +100,6 @@
   Spect
   (conform* [this x]
     false)
-  SpectPrettyString
-  (pretty-str [x]
-    (str "#Unknown[" (pretty-str form) (when file
-                                         (str file line column)) "]"))
   Branch
   (branch [this]
     :ambiguous))
@@ -267,9 +262,6 @@
     ::s/nil)
   (add-return [this r k]
     r)
-  SpectPrettyString
-  (pretty-str [x]
-    "nil")
   FirstRest
   (first* [this]
     nil)
@@ -296,9 +288,6 @@
   WillAccept
   (will-accept [this]
     this)
-  SpectPrettyString
-  (pretty-str [x]
-    (str x))
   Branch
   (branch [this]
     :ambiguous))
@@ -383,9 +372,6 @@
       (if (empty? ret)
         r
         (conj r (if k {k ret} ret)))))
-  SpectPrettyString
-  (pretty-str [this]
-    (regex-pretty-str "Cat" this))
   WillAccept
   (will-accept [this]
     (if-let [p (first ps)]
@@ -442,9 +428,6 @@
       (if (empty? ret)
         r
         ((if splice into conj) r (if k {k ret} ret)))))
-  SpectPrettyString
-  (pretty-str [this]
-    (regex-pretty-str "Seq" this))
   FirstRest
   (first* [this]
     (first ps))
@@ -452,7 +435,7 @@
     (derivative this (parse-spec (will-accept this))))
   WillAccept
   (will-accept [this]
-    (will-accept (first ps)))
+               (will-accept (first ps)))
   Branch
   (branch [this]
     :then))
@@ -503,9 +486,6 @@
       (if (= ret ::s/nil)
         r
         (conj r (if {k ret} ret)))))
-  SpectPrettyString
-  (pretty-str [this]
-    (regex-pretty-str "Alt" this))
   FirstRest
   (first* [this]
     (first ps))
@@ -581,9 +561,6 @@
   SpecToClass
   (spec->class [this]
     (class (:v this)))
-  SpectPrettyString
-  (pretty-str [x]
-    (str "#Value[" (pretty-str v) "]"))
   Branch
   (branch [this]
     (if v
@@ -886,9 +863,6 @@
   WillAccept
   (will-accept [this]
     this)
-  SpectPrettyString
-  (pretty-str [x]
-    (format "#And[%s]" (str/join ", " (map pretty-str ps))))
   Branch
   (branch [this]
     (let [b (distinct (map branch ps))]
@@ -920,9 +894,6 @@
   WillAccept
   (will-accept [this]
     (first ps))
-  SpectPrettyString
-  (pretty-str [x]
-    (format "#Or[%s]" (str/join ", " (map pretty-str ps))))
   Compound
   (map- [this f]
     (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
@@ -991,19 +962,6 @@
   WillAccept
   (will-accept [this]
     this)
-  SpectPrettyString
-  (pretty-str [this]
-    (format "(keys %s)" (->> [:req :req-un :opt :opt-un]
-                             (map (fn [k]
-                                    [k (get this k)]))
-                             (filter (fn [[k v]]
-                                       v))
-                             (map (fn [[key-type key-preds]]
-                                    (format "%s{%s}" key-type (->> key-preds
-                                                                   (map (fn [[k v]]
-                                                                          (format "%s %s" k (pretty-str v))))
-                                                                   (str/join " " )))))
-                             (str/join " "))))
   SpecToClass
   (spec->class [this]
     clojure.lang.PersistentHashMap)
@@ -1056,14 +1014,6 @@
   SpecToClass
   (spec->class [s]
     (or (class s) clojure.lang.PersistentList))
-  SpectPrettyString
-  (pretty-str [x]
-    (let [[open close] (condp = kind
-                         map? ["{" "}"]
-                         vector? ["[" "]"]
-                         set? ["#{" "}"]
-                         ["(" ")"])]
-      (str "#CollOf "open  (pretty-str s)  close)))
   Branch
   (branch [this]
     :then))
@@ -1247,3 +1197,56 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
 (defn explain [spec args]
   (explain-data spec args))
+
+(defmethod print-method Unknown [spec ^Writer w]
+  (let [{:keys [file line column]} spec]
+    (.write w (str "#Unknown[" (print-str (:form spec)) (when file
+                                                          (str file line column)) "]"))))
+
+(defn regex-print-method [re-name spec ^Writer writer]
+  (.write writer (str "#" re-name "[" (str/join ", " (map print-str (:ps spec))) "]")))
+
+(defmethod print-method RegexCat [v ^Writer w]
+  (regex-print-method "Cat" v w))
+
+(defmethod print-method RegexSeq [v ^Writer w]
+  (regex-print-method "Seq" v w))
+
+(defmethod print-method RegexAlt [v ^Writer w]
+  (regex-print-method "Alt" v w))
+
+(defmethod print-method Value [v ^Writer w]
+  (.write w (format "#Value[%s]" (print-str (:v v)))))
+
+(defmethod print-method PredSpec [v ^Writer w]
+  (.write w (format "#Pred[%s]" (print-str (:form v)))))
+
+(defmethod print-method ClassSpec [v ^Writer w]
+  (.write w (format "#Class[%s]" (print-str (:cls v)))))
+
+(defmethod print-method AndSpec [v ^Writer w]
+  (.write w (format "#And[%s]" (str/join ", " (map print-str (:ps v))))))
+
+(defmethod print-method OrSpec [v ^Writer w]
+  (.write w (format "#Or[%s]" (str/join ", " (map print-str (:ps v))))))
+
+(defmethod print-method KeysSpec [spec ^Writer w]
+  (.write w (format "#Keys{%s}" (->> [:req :req-un :opt :opt-un]
+                                          (map (fn [k]
+                                                 [k (get spec k)]))
+                                          (filter (fn [[k v]]
+                                                    v))
+                                          (map (fn [[key-type key-preds]]
+                                                 (format "%s{%s}" key-type (->> key-preds
+                                                                                (map (fn [[k v]]
+                                                                                       (format "%s %s" k (print-str v))))
+                                                                                (str/join " " )))))
+                                          (str/join " ")))))
+
+(defmethod print-method CollOfSpec [spec ^Writer w]
+  (.write w (let [[open close] (condp = (:kind spec)
+                                      map? ["{" "}"]
+                                      vector? ["[" "]"]
+                                      set? ["#{" "}"]
+                                      ["(" ")"])]
+              (str "#CollOf "open  (print-str (:s spec))  close))))

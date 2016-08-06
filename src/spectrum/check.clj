@@ -115,7 +115,7 @@
         args-spec (flow/analysis-args->spec a-args)
         valid? (c/valid-invoke? s args-spec)]
     (when-not valid?
-      (new-error {:message (format "invoke of %s does not conform. expected %s, got %s. " v (c/pretty-str (-> s :args)) (c/pretty-str args-spec))} a))))
+      (new-error {:message (format "invoke of %s does not conform. expected %s, got %s. " v (print-str (-> s :args)) (print-str args-spec))} a))))
 
 (defn check-invoke-var [a]
   (let [v (-> a :fn :var)
@@ -186,7 +186,7 @@
     (when (and ret-spec (c/known? ret-spec))
       (if expr-spec
         (when-not (c/valid-return? ret-spec expr-spec)
-          [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or f-var "fn") (c/pretty-str ret-spec) (c/pretty-str expr-spec))} method-a)])
+          [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or v "fn") (print-str ret-spec) (print-str expr-spec))} method-a)])
         [(new-error {:message (format "check-fn-method-return no ret-spec for expression:" (:form last-expr))} last-expr)]))))
 
 (defmethod check* :fn [a]
@@ -208,7 +208,7 @@
     (assert params)
     (when args-spec
       (when-not (flow/arity-conform? args-spec params)
-        [(new-error {:message (format "fn spec doesn't match arity: %s, %s vs. %s" f-var (params-str a) (c/pretty-str args-spec))} a)]))))
+        [(new-error {:message (format "fn spec doesn't match arity: %s, %s vs. %s" f-var (params-str a) (print-str args-spec))} a)]))))
 
 (defmethod check* :fn-method [a]
   (let [body (zip a :body)]
@@ -236,9 +236,9 @@
         (if args-spec
           (let [valid? (c/valid? call-spec args-spec)]
             (when-not valid?
-              [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (c/pretty-str args-spec) (c/pretty-str call-spec))} a)]))
+              [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (print-str args-spec) (print-str call-spec))} a)]))
           (println "static-call no arg-spec:" (flow/a-loc-str a)))
-        [(new-error {:message (format "Calling Java method %s unknown spec, given %s, possible: %s" (a->java-static-method-name a) (c/pretty-str args-spec) (java-methods-str (:class a) (:method a)))} a)])
-      [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (c/pretty-str args-spec) (java-methods-str (:class a) (:method a)))} a)])))
+        [(new-error {:message (format "Calling Java method %s unknown spec, given %s, possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a)])
+      [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a)])))
 
 ;; check recur values conform to bindings
