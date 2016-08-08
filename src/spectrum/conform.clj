@@ -218,39 +218,6 @@
   (add-return [this ret k]
     nil))
 
-(defn re-conform [spec data]
-  (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
-    (let [[x & xs] (if (:ps data)
-                     (:ps data)
-                     data)]
-      (if (empty? data)
-        (if (accept-nil? spec)
-          (return spec)
-          ::invalid)
-        (if-let [dp (derivative spec x)]
-          (recur dp xs)
-          ::invalid)))
-    ::invalid))
-
-(defn re-explain [spec path via in data]
-  (loop [spec spec
-         [x & xr :as data] data
-         i 0]
-    (if (empty? data)
-      (if (accept-nil? spec)
-        nil
-        [{:path path :via via :in in :reason (format "insufficient input. Empty input but re expects: %s" spec) :i i}])
-      (if-let [dp (derivative spec x)]
-        (recur dp xr (inc i))
-        (re-explain* spec path via (conj in i) data)))))
-
-(extend-protocol Spect
-  spectrum.conform.Regex
-  (conform* [spec data]
-    (re-conform spec data))
-  (explain* [spec path via in x]
-    (re-explain spec path via in x)))
-
 (extend-type nil
   Regex
   (derivative [spec x]
@@ -583,6 +550,11 @@
   "true if s is a value with a truthy value"
   (and (value? s) (boolean (:v s))))
 
+(defn maybe-strip-value [x]
+  (if (value? x)
+    (:v x)
+    x))
+
 (s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
 (defn conformy?
   "True if the conform result returns anything other than ::invalid or reject"
@@ -767,8 +739,8 @@
 (defn parse-spec-seq [x]
   (let [v (mapv parse-spec* x)]
     (if (list? x)
-      (list* v)
-      (into (or (empty x) []) v))))
+      (value (list* v))
+      (value (into (or (empty x) []) v)))))
 
 (defn parse-spec-map [x]
   (let [state (reduce (fn [state [k v]]
@@ -1125,6 +1097,40 @@
   spectrum.conform.Unknown
   (spec->class [s]
     Object))
+
+(defn re-conform [spec data]
+  (let [data (maybe-strip-value data)]
+    (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
+      (let [[x & xs] (if (:ps data)
+                       (:ps data)
+                       data)]
+        (if (empty? data)
+          (if (accept-nil? spec)
+            (return spec)
+            ::invalid)
+          (if-let [dp (derivative spec x)]
+            (recur dp xs)
+            ::invalid)))
+      ::invalid)))
+
+(defn re-explain [spec path via in data]
+  (loop [spec spec
+         [x & xr :as data] data
+         i 0]
+    (if (empty? data)
+      (if (accept-nil? spec)
+        nil
+        [{:path path :via via :in in :reason (format "insufficient input. Empty input but re expects: %s" spec) :i i}])
+      (if-let [dp (derivative spec x)]
+        (recur dp xr (inc i))
+        (re-explain* spec path via (conj in i) data)))))
+
+(extend-protocol Spect
+  spectrum.conform.Regex
+  (conform* [spec data]
+    (re-conform spec data))
+  (explain* [spec path via in x]
+    (re-explain spec path via in x)))
 
 (def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
 

@@ -25,7 +25,8 @@
          (s/and #(> % 10))
          (s/and integer? #(> % 10))
          (s/nilable int?)
-         (s/coll-of ::integer)))
+         (s/coll-of ::integer)
+         '[integer? integer?]))
 
   (testing "nil"
     (= ::s/nil (c/parse-spec ::s/nil)))
@@ -41,7 +42,7 @@
 
   (testing "literals"
     (is (= (c/value 3) (c/parse-spec 3)))
-    (is (every? #(satisfies? c/Spect %) (c/parse-spec '[integer? integer?]))))
+    (is (c/value? (c/parse-spec '[integer? integer?]))))
 
   (testing "keys"
     (are [spec] (c/spect? (c/parse-spec spec))
@@ -108,7 +109,7 @@
 
          (s/* integer?) [] []
          (s/* integer?) [1] [(c/value 1)]
-         (s/* integer?) '[integer? integer?] (c/parse-spec '[integer? integer?])
+         (s/* integer?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?)]) [(c/pred-spec #'integer?) (c/pred-spec #'integer?)]
 
          (s/alt :int integer? :str string?) ["foo"] [:str (c/value "foo")]
 
@@ -121,7 +122,7 @@
          (s/? integer?) [] nil
          (s/? integer?) [1] (c/value 1)
 
-         (s/+ integer?) '[integer? integer?] (c/parse-spec '[integer? integer?])
+         (s/+ integer?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?)]) [(c/pred-spec #'integer?) (c/pred-spec #'integer?)]
 
          (s/* (s/alt :int integer? :str string?)) ["foo" 3] [[:str (c/value "foo")] [:int (c/value 3)]]
 
@@ -172,7 +173,8 @@
 
          (c/class-spec Object) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
          (c/class-spec Object) (c/value nil) (c/value nil)
-         (c/cat- [(c/class-spec Object) (c/class-spec Object)]) [(c/pred-spec #'nil?) (c/value nil)] [(c/pred-spec #'nil?) (c/value nil)]))
+         (c/cat- [(c/class-spec Object) (c/class-spec Object)]) [(c/pred-spec #'nil?) (c/value nil)] [(c/pred-spec #'nil?) (c/value nil)]
+         (c/pred-spec #'coll?) [1 2 :foo] (c/parse-spec [1 2 :foo])))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
