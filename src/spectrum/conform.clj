@@ -604,9 +604,6 @@
   (explain* [spec path via in x]
     (when (not (valid? spec x))
       [{:path path :pred form :val x :via via :in in}]))
-  SpectPrettyString
-  (pretty-str [this]
-    (str form))
   WillAccept
   (will-accept [this]
     pred)
@@ -716,9 +713,6 @@
       (literal? v) (when (isa? cls (class v))
                      v)
       :else false))
-  SpectPrettyString
-  (pretty-str [this]
-    (str cls))
   WillAccept
   (will-accept [this]
     cls)
