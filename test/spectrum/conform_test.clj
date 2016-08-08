@@ -221,3 +221,20 @@
 
   (is (= (c/pred-spec #'int?) (c/first* (c/parse-spec (s/cat :x int?)))))
   (is (nil? (c/rest* (c/parse-spec (s/cat :x int?))))))
+
+(deftest truthyness
+  (are [s expected] (= expected (c/truthyness s))
+    (c/pred-spec #'boolean?) :ambiguous
+    (c/pred-spec #'any?) :ambiguous
+    (c/class-spec Boolean) :ambiguous
+
+    (c/pred-spec #'integer?) :truthy
+    (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) :truthy
+
+    (c/pred-spec #'false?) :falsey
+    (c/pred-spec #'true?) :truthy
+
+    (c/value true) :truthy
+    (c/value false) :falsey
+    (c/class-spec Integer) :truthy
+    ))

@@ -84,11 +84,9 @@
   (first* [this])
   (rest* [this]))
 
-(defprotocol Branch
-  (branch [this]
-    "If this spec appears as the test in an if statement, which branch does the if take? Returns :then, :else or :ambiguous"))
-
-
+(defprotocol Truthyness
+  (truthyness [this]
+    "The truthyness of this spec, if it appeared in an `if`. Returns :truthy, :falsey or :ambiguous"))
 
 (s/def ::spect (s/with-gen (s/and spect? map?)
                  (fn []
@@ -100,8 +98,8 @@
   Spect
   (conform* [this x]
     false)
-  Branch
-  (branch [this]
+  Truthyness
+  (truthyness [this]
     :ambiguous))
 
 (defn unknown
@@ -190,9 +188,9 @@
     nil)
   (rest* [this]
     nil)
-  Branch
-  (branch [this]
-    :else))
+  Truthyness
+  (truthyness [this]
+    :falsey))
 
 (defn accept? [x]
   (instance? Accept x))
@@ -267,9 +265,9 @@
     nil)
   (rest* [this]
     nil)
-  Branch
-  (branch [this]
-    :else))
+  Truthyness
+  (truthyness [this]
+    :falsey))
 
 (extend-type Object
   Regex
@@ -288,8 +286,8 @@
   WillAccept
   (will-accept [this]
     this)
-  Branch
-  (branch [this]
+  Truthyness
+  (truthyness [this]
     :ambiguous))
 
 (defn maybe-alt-
@@ -388,9 +386,9 @@
       (if (not (accept? dx))
         dx
         nil)))
-  Branch
-  (branch [this]
-    :then))
+  Truthyness
+  (truthyness [this]
+    :truthy))
 
 (s/fdef cat-spec? :args (s/cat :x any?) :ret boolean?)
 (defn cat-spec? [x]
@@ -436,9 +434,9 @@
   WillAccept
   (will-accept [this]
                (will-accept (first ps)))
-  Branch
-  (branch [this]
-    :then))
+  Truthyness
+  (truthyness [this]
+    :truthy))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
@@ -494,9 +492,9 @@
   WillAccept
   (will-accept [this]
     (will-accept (first ps)))
-  Branch
-  (branch [this]
-    (let [b (distinct (map branch ps))]
+  Truthyness
+  (truthyness [this]
+    (let [b (distinct (map truthyness ps))]
       (if (= 1 (count b))
         (first b)
         :ambiguous))))
@@ -561,11 +559,11 @@
   SpecToClass
   (spec->class [this]
     (class (:v this)))
-  Branch
-  (branch [this]
+  Truthyness
+  (truthyness [this]
     (if v
-      :then
-      :else)))
+      :truthy
+      :falsey)))
 
 (s/fdef value :args (s/cat :x any?) :ret value?)
 (defn value
@@ -612,11 +610,14 @@
   WillAccept
   (will-accept [this]
     pred)
-  Branch
-  (branch [this]
-    (cond
-      (= pred #'boolean?) :ambiguous
-      (var? pred) :then)))
+  Truthyness
+  (truthyness [this]
+    (condp = pred
+      #'boolean? :ambiguous
+      #'false? :falsey
+      #'nil? :falsey
+      #'any? :ambiguous
+      :truthy)))
 
 (s/fdef pred-spec :args (s/cat :v var?) :ret ::spect)
 (defn pred-spec [v]
@@ -721,9 +722,12 @@
   WillAccept
   (will-accept [this]
     cls)
-  Branch
-  (branch [this]
-    :then))
+  Truthyness
+  (truthyness [this]
+    (condp = (:cls this)
+      Boolean :ambiguous
+      nil :falsey
+      :truthy)))
 
 (defn class-spec [c]
   (map->ClassSpec {:cls c}))
@@ -863,9 +867,9 @@
   WillAccept
   (will-accept [this]
     this)
-  Branch
-  (branch [this]
-    (let [b (distinct (map branch ps))]
+  Truthyness
+  (truthyness [this]
+    (let [b (distinct (map truthyness ps))]
       (if (= 1 (count b))
         (first b)
         :ambiguous))))
@@ -965,9 +969,9 @@
   SpecToClass
   (spec->class [this]
     clojure.lang.PersistentHashMap)
-  Branch
-  (branch [this]
-    :then))
+  Truthyness
+  (truthyness [this]
+    :truthy))
 
 (s/fdef keys-spec :args (s/cat :x any?) :ret boolean?)
 (defn keys-spec? [x]
@@ -1014,9 +1018,9 @@
   SpecToClass
   (spec->class [s]
     (or (class s) clojure.lang.PersistentList))
-  Branch
-  (branch [this]
-    :then))
+  Truthyness
+  (truthyness [this]
+    :truthy))
 
 (defn coll-of-spec
   ([s]

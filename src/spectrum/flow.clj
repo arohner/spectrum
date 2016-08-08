@@ -276,8 +276,9 @@
         a (update-in a [:args] (fn [args]
                                  (mapv (fn [arg]
                                          (flow (with-a arg a))) args)))
+        args-spec (analysis-args->spec (:args a))
         spec (when spec
-               (invoke-spec v spec (analysis-args->spec (:args a))))]
+               (invoke-spec v spec args-spec))]
     (if v
       (if spec
         (let [a (assoc a ::fn-spec spec)]
@@ -349,11 +350,11 @@
             (assert else-ret-spec (format "missing else-ret-spec: %s %s %s" (-> a :else :op) (-> a :else :form)
                                           (a-loc-str a))))
         _ (assert test-ret-spec)
-        branch (c/branch test-ret-spec)]
+        truthyness (c/truthyness test-ret-spec)]
     (-> a
-        (assoc ::ret-spec (condp = branch
-                            :then then-ret-spec
-                            :else else-ret-spec
+        (assoc ::ret-spec (condp = truthyness
+                            :truthy then-ret-spec
+                            :falsey else-ret-spec
                             :ambiguous (c/or- (->>
                                                [then-ret-spec
                                                 else-ret-spec])))))))
