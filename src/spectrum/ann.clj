@@ -121,25 +121,43 @@
   (data/register-pred->class v cls)
   (ann v (instance-transformer cls)))
 
+(ann #'int? (instance-or [Long Integer Short Byte]))
+
+(defn maybe-convert-value
+  "If the spect checks for a single value, i.e. nil? false?, return the value instead"
+  [s]
+  (if (c/pred-spec? s)
+    (condp = (:pred s)
+      #'nil? (c/value nil)
+      #'false? (c/value false)
+      #'true? (c/value true)
+      s)
+    s))
+
 (ann #'false? (fn [spect args-spect]
-                (let [x (c/first* args-spect)]
+                (let [x (c/first* args-spect)
+                      x (maybe-convert-value x)]
                   (if (c/value? x)
-                    (assoc spect :ret (c/value (= false (:v x))))
+                    (assoc spect :ret (if (= false (:v x))
+                                        (c/value true)
+                                        c/reject))
                     spect))))
 
 (ann #'nil? (fn [spect args-spect]
-              (let [x (c/first* args-spect)]
+              (let [x (c/first* args-spect)
+                    x (maybe-convert-value x)]
                   (if (c/value? x)
-                    (assoc spect :ret (c/value (= nil (:v x))))
+                    (assoc spect :ret (if (= nil (:v x))
+                                        (c/value true)
+                                        c/reject))
                     spect))))
 
 (ann #'not (fn [spect args-spec]
-             (let [arg (c/first* args-spec)]
-               (if (c/value? arg)
+             (let [x (c/first* args-spec)
+                   x (maybe-convert-value x)]
+               (if (c/value? x)
                  (assoc spect :ret (c/value (not (:v arg))))
                  spect))))
-
-(ann #'int? (instance-or [Long Integer Short Byte]))
 
 (defn get-cat-vals
   "Given a Cat of Value, return the raw vals"
@@ -163,14 +181,18 @@
 (ann (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
      (fn [spect args-spect]
        (let [x (c/first* args-spect)
-             y (c/second* args-spect)]
-         (if (or
-              (and (c/value? x) (c/value? y) (= (:v x) (:v y)))
-              (and (c/valid? (c/pred-spec #'nil?) x) (c/valid? (c/pred-spec #'nil?) y))
-              (and (c/valid? (c/pred-spec #'false?) x) (c/valid? (c/pred-spec #'false?) y)))
-           (do
-             (println "identical:" x y "=>" true)
-             (assoc spect :ret (c/value true)))
+             y (c/second* args-spect)
+             x (maybe-convert-value x)
+             y (maybe-convert-value y)
+             ret (cond
+                   (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
+                                                     (c/value true)
+                                                     c/reject)
+                   (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
+                        (not= (c/truthyness x) (c/truthyness y))) c/reject)]
+
+         (if ret
+           (assoc spect :ret ret)
            spect))))
 
 

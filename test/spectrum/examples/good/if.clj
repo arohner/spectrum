@@ -17,6 +17,12 @@
   (if x
     "truthy"))
 
+(s/fdef booly :args (s/cat :x boolean?) :ret (s/or :k keyword? :s string?))
+(defn booly [x]
+  (if x
+    "then"
+    :else))
+
 (s/fdef falsey :args (s/cat :x false?) :ret keyword?)
 (defn falsey [x]
   (if (false? x)
@@ -52,3 +58,44 @@
 (defn if-binding-2 [x]
   (if (seq? x)
     x))
+
+(s/fdef unknown :ret (s/or :k keyword? :s string?))
+(defn unknown [x]
+  (if (nil? x)
+    :then
+    "else"))
+
+(s/fdef class-spec :args (s/cat :x any?) :ret (s/or :k keyword? :s string?))
+(defn class-spec [x]
+  (if (boolean x)
+    :then
+    "else"))
+
+
+;; intentionally unknown fn
+(defn unk [x]
+  x)
+
+(s/fdef or-unknown :ret (s/or :k keyword? :s string?))
+(defn or-unknown []
+  (if (->> (unk))
+    :then
+    "else"))
+
+(s/fdef truthy-pred-nil :args (s/cat :x integer?) :ret string?)
+(defn truthy-pred-nil [x]
+  (if (nil? x)
+    :then
+    "else"))
+
+(s/fdef and-truthy :args (s/cat :x (s/and integer? even?)) :ret string?)
+(defn and-truthy [x]
+  (if (nil? x)
+    :then
+    "else"))
+
+(s/fdef dependent-preds :args (s/cat :x even?) :ret keyword?)
+(defn dependent-preds [x]
+  (if (integer? x)
+    :then
+    "else"))
