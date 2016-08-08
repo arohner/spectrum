@@ -406,7 +406,10 @@
                (will-accept (first ps)))
   Truthyness
   (truthyness [this]
-    :truthy))
+    :truthy)
+  SpecToClass
+  (spec->class [this]
+    clojure.lang.ISeq))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
