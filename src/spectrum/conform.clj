@@ -41,6 +41,9 @@
   (map- [spec f])
   (filter- [spec f]))
 
+(defprotocol DependentSpecs
+  (dependent-specs* [spec]))
+
 (defn map* [f spec]
   (map- spec f))
 
@@ -594,7 +597,10 @@
       (cond
         ret ret
         (= #'any? pred) x
-        (pred-spec? x) (when (= (:form spec) (:form x))
+        (pred-spec? x) (when (or (= pred (:pred x))
+                                 (and (satisfies? DependentSpecs x)
+                                      (some (fn [px]
+                                              (= pred (:pred px))) (dependent-specs* x))))
                          spec)
         (and (value? x) (conform-args? spec x)) (when ((:pred spec) (:v x))
                                                   x)
@@ -634,6 +640,24 @@
         (parse-spec fnspec)))
     s))
 
+(s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
+(defn any-spec?
+  "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
+  [pred-spec]
+  (-> pred-spec :form (= '(clojure.core/fn [x] (do true)))))
+
+(extend-protocol DependentSpecs
+  PredSpec
+  (dependent-specs* [this]
+    (loop [ret #{}
+           spec this]
+      (let [spec-fn (resolve-pred-spec spec)
+            spec-arg (-> spec-fn :args (first*))]
+        (if (and spec-fn (not (any-spec? spec-arg)))
+          (do
+            (recur (conj ret spec-arg) spec-arg))
+          ret)))))
+
 (defrecord FnSpec [args ret fn]
   Spect
   (conform* [this x]
@@ -663,12 +687,6 @@
     (let [fn-spec* (t fn-spec args-spec)]
       fn-spec*)
     fn-spec))
-
-(s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
-(defn any-spec?
-  "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
-  [pred-spec]
-  (-> pred-spec :form (= '(clojure.core/fn [x] (do true)))))
 
 (s/fdef conform-args :args (s/cat :s pred-spec? :x any?) :ret boolean?)
 (defn conform-args?
@@ -858,6 +876,9 @@
   Spect
   (conform* [this x]
     (conform this x))
+  DependentSpecs
+  (dependent-specs* [spec]
+    (apply set/union (map dependent-specs* ps)))
   WillAccept
   (will-accept [this]
     this)
@@ -889,6 +910,9 @@
               (if k
                 [k x]
                 x))) (mapv vector (or ks (repeat nil)) ps)))
+  DependentSpecs
+  (dependent-specs* [spec]
+    (apply set/intersection (map dependent-specs* ps)))
   WillAccept
   (will-accept [this]
     (first ps))
