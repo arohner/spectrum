@@ -59,7 +59,9 @@
       (is (= (c/pred-spec #'boolean?)) (:ret fs)))
 
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?)))]
-      (is (nil? (:ret fs))))))
+      (is (nil? (:ret fs)))))
+  (testing "seq-of"
+    (is (= (c/pred-spec #'seqable?) (first (:ps (c/parse-spec '(clojure.spec/* clojure.core/seqable?))))))))
 
 (deftest conform-works
   (testing "should pass"

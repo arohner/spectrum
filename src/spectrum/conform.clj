@@ -794,7 +794,7 @@
         args (into {} pairs)]
     (map->FnSpec args)))
 
-(defn parse-seq [x]
+(defmethod parse-spec* :clojure.spec/rep [x]
   (let [forms (if (vector? (:forms x))
                 (:forms x)
                 [(:forms x)])
@@ -806,10 +806,23 @@
                     :splice (:splice x)})))
 
 (defmethod parse-spec* :clojure.spec/rep [x]
-  (parse-seq x))
+  (let [forms (if (vector? (:forms x))
+                (:forms x)
+                [(:forms x)])
+        preds (mapv parse-spec forms)]
+    (map->RegexSeq {:ks (:ks x)
+                    :ps preds
+                    :forms forms
+                    :ret []
+                    :splice (:splice x)})))
 
 (defmethod parse-spec* 'clojure.spec/* [x]
-  (parse-seq x))
+  (let [forms (rest x)
+        ps (map parse-spec forms)]
+    (map->RegexSeq {:ps ps
+                    :forms forms
+                    :ret []
+                    :splice false})))
 
 (defmethod parse-spec* :clojure.spec/alt [x]
   ;; evaled alt
