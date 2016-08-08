@@ -49,6 +49,7 @@
       (s/keys :req [::even-int])
       (s/keys :req-un [::even-int])
       (s/cat :args (s/keys :req-un [::integer]))
+      (s/merge (s/keys :req-un [::integer]) (s/keys :req-un [::even-int]))
       {::integer 3})
 
     (is (= (c/value 3) (-> {::integer 3} c/parse-spec :req ::integer)))

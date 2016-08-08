@@ -963,6 +963,9 @@
              (when-not (valid? spec val)
                (explain* spec (conj path key) via in val)))))))
 
+(defn merge-keys [ks]
+  (map->KeysSpec (apply merge-with merge ks)))
+
 (defrecord KeysSpec [req req-un opt opt-un]
   Spect
   (conform* [this x]
@@ -1071,6 +1074,9 @@
                (:req-un args)
                (:opt args)
                (:opt-un args))))
+
+(defmethod parse-spec* 'clojure.spec/merge [x]
+  (merge-keys (map parse-spec (rest x))))
 
 (defmethod parse-spec* 'clojure.spec/conformer [x]
   (value true))
