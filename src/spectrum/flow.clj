@@ -643,7 +643,7 @@
   (let [a (update-in a [:items] (fn [items]
                                   (mapv (fn [i]
                                           (flow (with-a i a))) items)))]
-    (assoc a ::ret-spec (mapv ::ret-spec (:items a)))))
+    (assoc a ::ret-spec (c/value (mapv ::ret-spec (:items a))))))
 
 (defmethod flow :map [a]
   {:post [(::ret-spec %)]}
