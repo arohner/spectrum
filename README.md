@@ -10,7 +10,7 @@ It's like core.typed, but it relies on clojure.spec annotations.
 
 Kind-of. It finds errors at compile time, and predicates kind of look like types. So sure.
 
-![Proving contracts ahead of time](https://pbs.twimg.com/media/CjcVSAVUYAIBY3Z.jpg)
+![Proving contracts ahead of time](https://pbs.twimg.com/media/CphGpB5VUAAJyGL.jpg)
 
 
 ## Usage
