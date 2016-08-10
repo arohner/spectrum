@@ -654,14 +654,23 @@
                 :ret ret
                 :fn fn}))
 
-(s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :fn-spec fn-spec? :args-spec ::spect) :ret fn-spec?)
+(s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :args-spec ::spect) :ret (s/nilable fn-spec?))
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
-  [v fn-spec args-spec]
-  (if-let [t (data/get-transformer v)]
-    (let [fn-spec* (t fn-spec args-spec)]
-      fn-spec*)
-    fn-spec))
+  [v args-spec]
+  (when-let [fn-spec (parse-spec (s/get-spec v))]
+    (if-let [t (data/get-transformer v)]
+      (let [fn-spec* (t fn-spec args-spec)]
+        fn-spec*)
+      fn-spec)))
+
+(defn maybe-transform-method
+  "apply the java method transformer, if applicable"
+  [meth spec args-spec]
+  (if-let [t (data/get-transformer meth)]
+    (let [spec* (t spec args-spec)]
+      spec*)
+    spec))
 
 (s/fdef conform-args :args (s/cat :s pred-spec? :x any?) :ret boolean?)
 (defn conform-args?
@@ -684,7 +693,7 @@
     (if s
       (let [v (:pred pred-spec)
             ret (:ret s)
-            ret* (:ret (maybe-transform v s (cat- [arg])))]
+            ret* (:ret (maybe-transform v (cat- [arg])))]
         (if (not= ret ret*)
           ret*
           nil))

@@ -256,7 +256,7 @@
                     :ret []}))
 
 (defn invoke-spec [v spec args-spec]
-  (let [s* (c/maybe-transform v spec args-spec)
+  (let [s* (c/maybe-transform v args-spec)
         transformed? (not= spec s*)]
     (if transformed?
       s*
@@ -300,7 +300,7 @@
                                  (mapv (fn [arg]
                                          (flow (with-a arg a))) args)))
         spec (when spec
-               (c/maybe-transform v spec (analysis-args->spec (:args a))))]
+               (c/maybe-transform v (analysis-args->spec (:args a))))]
     (if v
       (if spec
         (assoc a ::ret-spec (:ret spec)
@@ -477,7 +477,7 @@
         spec (get-java-method-spec class method args-spec a)
 
         spec (if (and meth spec (c/known? (:args spec)))
-               (c/maybe-transform meth spec (analysis-args->spec (:args a)))
+               (c/maybe-transform-method meth spec (analysis-args->spec (:args a)))
                spec)]
     (when-not (:ret spec)
       (println "flow-java-call: no spec:" class method args-spec))

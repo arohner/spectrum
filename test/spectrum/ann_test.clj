@@ -6,6 +6,7 @@
             [clojure.test.check.clojure-test :refer (defspec)]
             [clojure.spec :as s]
             [clojure.spec.gen :as spec-gen]
+            [clojure.spec.test]
             [spectrum.conform :as c]
             [spectrum.flow :as flow]
             [spectrum.flow-test :as flow-test])
@@ -15,15 +16,17 @@
                              AndSpec
                              OrSpec)))
 
-(deftest instance?-transformer
-  (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [(c/class-spec String) (c/parse-spec #'string?)])) :ret :v))
+(clojure.spec.test/instrument)
 
-  (is (-> (c/maybe-transform #'instance? (c/parse-spec (s/get-spec #'instance?)) (c/cat- [(c/class-spec String) (c/unknown nil)])) :ret (= (c/parse-spec #'boolean?)))))
+(deftest instance?-transformer
+  (is (-> (c/maybe-transform #'instance? (c/cat- [(c/class-spec String) (c/parse-spec #'string?)])) :ret :v))
+
+  (is (-> (c/maybe-transform #'instance? (c/cat- [(c/class-spec String) (c/unknown nil)])) :ret (= (c/parse-spec #'boolean?)))))
 
 (defn transform-identical [args]
-  (c/maybe-transform (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
-                     (flow/get-java-method-spec clojure.lang.Util 'identical args flow-test/dummy-analysis)
-                     args ))
+  (c/maybe-transform-method (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
+                            (flow/get-java-method-spec clojure.lang.Util 'identical args flow-test/dummy-analysis)
+                            args))
 
 (deftest identical
   (testing "true"
