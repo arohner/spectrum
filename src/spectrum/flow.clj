@@ -163,7 +163,9 @@
 (defmethod flow :var [a]
   {:post [(::ret-spec %)]}
   ;; :var => the value the var holds
-  (assoc a ::ret-spec (c/value @(:var a))))
+  (assoc a ::ret-spec (if-let [s (get-var-fn-spec (:var a))]
+                        s
+                        (c/value @(:var a)))))
 
 (defmethod flow :with-meta [a]
   {:post [(::ret-spec %)]}
