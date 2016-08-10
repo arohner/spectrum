@@ -26,10 +26,7 @@
                (fn []
                  (gen/elements [#'int? #'println #'str]))))
 
-(s/def ::analysis (s/keys :req []
-                          :req-un [::ana.jvm/op ::ana.jvm/form]
-                          :opt [::var ::args-spec ::ret-spec]
-                          :opt-un [::ana.jvm/env]))
+(s/def ::analysis (s/merge ::ana.jvm/analysis (s/keys :opt [::var ::args-spec ::ret-spec])))
 
 (s/def ::analysis? (s/nilable ::analysis))
 
@@ -78,7 +75,7 @@
   (assert (:op a))
   (:op a))
 
-(s/fdef flow :args (s/cat :a ::analysis) :ret ::analysis)
+(s/fdef flow :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis)
 
 (defmulti flow
   "Given an analysis, walk and update-in the the analysis attaching ::args-spec and ::ret-spec to values"
