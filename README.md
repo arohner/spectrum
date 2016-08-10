@@ -12,16 +12,12 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 
 ![Proving contracts ahead of time](https://pbs.twimg.com/media/CphGpB5VUAAJyGL.jpg)
 
+## Current Status
 
-## Usage
-
-Use clojure.spec as normal.
-
-```clojure
-(require '[spectrum.check :as st])
-
-(st/check 'your.namespace)
-```
+Developer Preview. I'm now convinced it's theoretically sound, and
+*most* of the core language semantics are done. The main thing it
+needs now is polish and more precise specs for complicated functions,
+like `map`, `filter`, `update-in`, etc.
 
 ## Goals
 
@@ -44,18 +40,30 @@ Use clojure.spec as normal.
   speccing more is recommended, but we understand other constraints
   get in the way.
 
-In particular, spectrum aims to be fast and usable, and catching bugs. A tool that catches 80% of bugs that you use every day is better than a 100% tool that you don't use. Spectrum will trend towards 100%, but it will never guarantee 100% correctness.
+In particular, spectrum aims to be fast and usable, and catching
+bugs. A tool that catches 80% of bugs that you use every day is better
+than a 100% tool that you don't use. Spectrum will converge on 100%,
+but won't guarantee 100% correctness for a while.
+
+## Usage
+
+Use clojure.spec as normal. Then, at the repl or during tests:
+
+```clojure
+(require '[spectrum.check :as check])
+
+(check/check 'your.namespace)
+```
+
+Returns a seq of Error defrecords.
 
 ### Requirements
 
 - if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
-- if a predicate is just a simple instance? check, and you use that class in java interop (or deftype/defrecord), you'll need to register it. (ann/ann #'foo? (ann/instance-transformer Foo))
 
-Returns a seq of Error defrecords.
+#### Defrecord / instance?
 
-#### Defrecord
-
-If you end up defining a predicate for your defrecord, i.e.
+If you define a Java class, and a simple `instance?` predicate for your class, i.e.
 
 ```clojure
 (defrecord Foo ...)
@@ -66,7 +74,7 @@ You'll want to add:
 (:require [spectrum.ann :as ann])
 (ann/ann #'foo? (ann/instance-transformer Foo))
 ```
-This tells the system that variables w/ spec foo? are of class Foo, which is useful in java interop (i.e. ->Foo and map->Foo).
+This tells the system that expressions tagged  w/ spec `#'foo?` are of class `Foo`, which is useful in java interop, both Java methods that take foo, and the Foo constructors: (`->Foo` and `map->Foo`).
 
 
 ## Limitations
@@ -101,11 +109,26 @@ Returns a defrecord, containing the parsed spec. This is basically a reimplement
 (c/conform (s/+ integer?) '[integer? integer?])
 ```
 
-`c/conform` behaves the same as `s/conform`, except it works on literals and specs (i.e. the things we have access to at compile time)
+`c/conform` behaves the same as `s/conform`, except it works on literals and specs (i.e. the things we have access to at compile time). For now, the best documentation is the tests, `test/spectrum/conform_test.clj`. Spectrum conform will have 100% coverage of clojure.spec, but isn't done yet.
+
+In the code, these are called `spect` rather than `spec`, just to differentiate the implementation. Spects convey exactly the same information, but are more data-driven. Spects are just defrecords, so it's easy to assoc, dissoc, merge, etc types.
 
 ### spectrum.flow
 
-Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes function parameters and let bindings, and updates the analyzer output with the appropriate specs, to make checking simpler. The main thing it's responsible for is adding `::flow/args-spec` and `::flow/ret-spec` to every expression.
+Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes function parameters and let bindings, and updates the analyzer output with the appropriate specs, to make checking simpler. The main thing it's responsible for is adding `::flow/ret-spec`, and any other useful annotations to every expression. For example:
+
+```clojure
+(s/fdef foo :args (s/cat :x int?) :ret int?)
+(defn foo [x]
+  (let [y (inc x)]
+    y))
+```
+
+Because foo has a spec, we destructure the arguments vector, and
+assign the spec `#'int?` to `x`. In the `let`, we identify inc takes
+an integer (handwaving here) and returns an int, and so assign `y` the
+spec `int?`. Finally, the `y` in the body has the same spec as the y
+in the `let`.
 
 ### spectrum.check
 
@@ -116,7 +139,7 @@ Where the magic happens. It takes a flow, and performs checks. Returns a seq of 
 clojure.spec doesn't have logic variables, which means some specs
 aren't as tight as they could be. Consider `map`, which takes a fn of
 one argument of type `X`, and returns a type `Y`, and a collection of
-`X`s, and returns a seq of `Y`s. That's currently impossible to
+`X`s, and returns a seq of `Y`s ([X->Y] [X]->[Y]). That's currently impossible to
 express in clojure.spec, the best we can do is specify the return type
 of map as `seq?`, with no reference to `seq of Y`, which is based on
 the return type of the mapping function.
@@ -127,17 +150,33 @@ checking process. For example,
 ```clojure
 (ann #'map (fn [fnspec argspec]...))
 ```
-ann takes a var, and fn of two arguments, the original fnspec, and the arguments to a particular invocation of the function. The transformer should return an updated fnspec, presumably with the more specific type. In this example, it would `clojure.core/update` the `:ret` spec from `seq?` to `(coll-of y?)`.
+
+ann takes a var, and a fn of two arguments, the original fnspec, and
+the arguments to a particular invocation of the function. The
+transformer should return an updated fnspec, presumably with the more
+specific type. In this example, it would `clojure.core/update` the
+`:ret` spec from `seq?` to `(coll-of y?)`. Since map also requires the
+input type of `f` match the type of the seq passed in, we can
+similarly update the expected type of the collection. Transforming
+happens before conforming, so if the type becomes more strict, that
+new value will be used in the conform.
 
 ### value
 
 In some cases, we can identify the type of an expression at compile time. For example,
 
-(if (int? 3)
-  :foo
-  "bar")
+```
+(s/fdef foo :args (s/cat :x int?) :ret keyword?)
+(defn foo [x]
+  (if (int? x)
+    :foo
+    "bar"))
 
-If we didn't know the value of the test, the return spec of the `if` expression would be `(or keyword? string?)`. Using a spec transformer, we can make int? more specific
+If we didn't know the value of the test, the return spec of the `if`
+expression would be `(or keyword? string?)`. The type for `int?` is
+`any? -> boolean?`, which normally means we couldn't predict which
+branch to take.  Using a spec transformer, we can make int? more
+specific
 
 ```
 (ann #'int? (instance-or [Long Integer Short Byte]))
@@ -145,12 +184,16 @@ If we didn't know the value of the test, the return spec of the `if` expression 
 
 In this case, `instance-or` is a higher-order function returning a
 transformer that checks for the argument being an instance of any of
-the classes. If we know the type of the argument, and it conforms, the
-spec transformer returns `(value true)`. Some expressions, such as
-`if`, recognize value true and will replace the type of the `if`
-expression from `(or keyword? string?)` to just `keyword?`. Similarly,
-returning `(value false)` or `(value nil)` indicates non-conformance,
-and will cause conform to fail.
+the specified classes. If we know the type of the argument passed to
+`int?` at compile time, and it conforms, the spec transformer returns
+`(value true)`. `value` is a spec unique to spect, which indicates a
+literal value. `(value true)` represents this expression will always
+return true, rather than boolean?, which could indicate true or false.
+
+Some expressions, such as `if`, recognize value true and will replace
+the type of the `if` expression from `(or keyword? string?)` to just
+`keyword?`. Similarly, returning `(value false)` or `(value nil)` will
+cause the code to take the else branch.
 
 ## Unknown
 
@@ -162,26 +205,36 @@ unknown to a specced function is treated as a different error from a
 keyword?. Use configuration, described in the next section, to remove
 unknowns if desired.
 
+The return value of un-spec'd functions is `unknown`, and in general,
+unknown does not conform to any spec except `any?`.
+
 
 ## Todo
 
 - pre/post post predicates
 - java methods are all (or nil?)
+- `updating` the type of variables in a recur
+- s/def, but for non-fn vars
+
 
 ## Justification
 
 - because I could
 - working example of types = proofs = predicates
+- this is extra checking on top of spec, not a replacement for it
+- to get HN to shut up about how adding a static type system to a dynamic language is impossible
 - why not just use spec by itself?
  - `instrument` doesn't check return values
  - `check` works best on pure functions with good generators.
   - Not all clojure code is pure
   - Not always easy to write a good generator for all functions (hello, any fn that takes a DB connection)
   - Not always easy to write a generator w/ 100% coverage
- - spec doesn't deal with non-fn vars at all
+ - spec doesn't deal with non-fn vars at all (binding, alter-var-root, set!, etc)
  - generative testing can be slow
-- to get HN to shut up about how adding a static type system to a dynamic language is impossible
 
+## Downsides
+
+- spectrum is 'viral'. Once you start checking, it encourages you to write specs for everything
 
 
 ## License
