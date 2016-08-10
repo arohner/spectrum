@@ -117,13 +117,16 @@
 (defn known? [x]
   (not (unknown? x)))
 
+(defn first-rest? [x]
+  (satisfies? FirstRest x))
+
 (defn maybe-first* [ps]
-  (if (satisfies? FirstRest ps)
+  (if (first-rest? ps)
     (first* ps)
     (first ps)))
 
 (defn maybe-rest* [ps]
-  (if (satisfies? FirstRest ps)
+  (if (first-rest? ps)
     (rest* ps)
     (rest ps)))
 
