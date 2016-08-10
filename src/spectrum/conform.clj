@@ -612,7 +612,10 @@
   (if (pred-spec? s)
     (let [fnspec (s/get-spec (:pred s))]
       (when fnspec
-        (parse-spec fnspec)))
+        (let [fnspec (parse-spec fnspec)]
+          (if (var? (:pred s))
+            (assoc fnspec :var (:pred s))
+            fnspec))))
     s))
 
 (s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)

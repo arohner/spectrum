@@ -110,7 +110,7 @@
 (s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable c/fn-spec?))
 (defn get-var-fn-spec [v]
   (when-let [s (s/get-spec v)]
-    (c/parse-spec s)))
+    (assoc (c/parse-spec s) :var v)))
 
 (defn var-named-predicate?
   "True if the var's name looks like a predicate"
