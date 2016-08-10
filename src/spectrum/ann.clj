@@ -156,7 +156,7 @@
              (let [x (c/first* args-spec)
                    x (maybe-convert-value x)]
                (if (c/value? x)
-                 (assoc spect :ret (c/value (not (:v arg))))
+                 (assoc spect :ret (c/value (not (:v x))))
                  spect))))
 
 (defn get-cat-vals
@@ -168,9 +168,10 @@
                      (let [m (c/first* args-spect)
                            select (c/second* args-spect)]
                        (if (and (c/keys-spec? m)
-                                (c/conform (s/* keyword?) args-spect)
-                                (c/conform (s/* c/value?) args-spect))
-                         (let [vals (get-cat-vals select)]
+                                (c/value? select)
+                                (coll? (:v select))
+                                (every? (fn [v] (c/conform #'keyword? v)) (:v select)))
+                         (let [vals (get-cat-vals (:v select))]
                            (let [ret (c/keys-spec (select-keys (:req m) vals)
                                                   (select-keys (:req-un m) vals)
                                                   (select-keys (:opt m) vals)
