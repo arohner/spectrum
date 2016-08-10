@@ -117,6 +117,7 @@
     (when-not valid?
       (new-error {:message (format "invoke of %s does not conform. expected %s, got %s. " v (print-str (-> s :args)) (print-str args-spec))} a))))
 
+(s/fdef check-invoke-var :args (s/cat :a ::flow/analysis) :ret ::check-errors)
 (defn check-invoke-var [a]
   (let [v (-> a :fn :var)
         va (get-var-analysis v)]

@@ -1024,6 +1024,11 @@
   SpecToClass
   (spec->class [s]
     (or (class s) clojure.lang.PersistentList))
+  FirstRest
+  (first* [this]
+    s)
+  (rest* [this]
+    this)
   Truthyness
   (truthyness [this]
     :truthy))
