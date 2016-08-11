@@ -211,6 +211,8 @@ unknown does not conform to any spec except `any?`.
 
 ## Todo
 
+- 100% coverage of all types returned by the analyzer
+- 100% spec coverage
 - pre/post post predicates
 - java methods are all (or nil?)
 - `updating` the type of variables in a recur
