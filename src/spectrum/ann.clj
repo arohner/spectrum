@@ -226,3 +226,57 @@
                    (and (c/keys-spec? coll) (c/value? key)) (or (c/keys-get coll key) not-found)
                    :else (:ret spect))]
          (assoc spect :ret ret))))
+
+(ann #'coll? (fn [spect args-spect]
+               (let [x (c/first* args-spect)]
+                 (if (c/cat-spec? x)
+                   (assoc spect :ret (c/value true))
+                   spect))))
+
+(def transducer-fn-spec (c/fn-spec nil nil nil))
+
+(ann #'identity (fn [spect args-spect]
+                  (assoc spect :ret (c/first* args-spect))))
+
+(defn empty-seq?
+  "True if this spect represents the empty seq, or a value that (seq x) would return nil on"
+  [s]
+  (or (c/valid? (c/value []) s)
+      (c/valid? (c/value nil) s)
+      (c/valid? (c/pred-spec #'nil?) s)))
+
+(s/fdef map-fn :args (s/cat :s c/fn-spec? :args ::c/spect) :ret c/fn-spec?)
+(defn map-fn [spect args-spect]
+  (let [f (c/first* args-spect)
+        colls (c/rest* args-spect)
+        _ (assert (c/cat-spec? colls))
+        colls (:ps colls)]
+    (let [invoke-args (cond
+                        (every? c/first-rest? colls) (c/cat- (map c/first* colls))
+                        (every? c/value? colls) (let [colls (map :v colls)]
+                                                            (when (seq colls)
+                                                              (c/cat- (map (fn [p] (c/value (first (:v p)))) colls))))
+                        :else (c/unknown args-spect))]
+      (if (every? (fn [c] (not (empty-seq? c))) colls)
+        (if (c/valid? (:args f) invoke-args)
+          (if-let [v (:var f)]
+            (assoc spect :ret (c/coll-of-spec (:ret (c/maybe-transform v invoke-args))))
+            spect)
+          (assoc spect :ret c/reject))
+        (assoc spect :ret (c/value []))))))
+
+;; [[X->Y] [X] -> [Y]]
+(ann #'map (fn [spect args-spect]
+             (if (= 1 (flow/cat-count args-spect))
+               (assoc spect :ret transducer-fn-spec)
+               (let [f (c/first* args-spect)
+                     colls (c/rest* args-spect)
+                     _ (assert (c/cat-spec? colls))
+                     coll-count (count (:ps colls))]
+                 (if (pos? coll-count)
+                   (cond
+                     (c/fn-spec? f) (map-fn spect args-spect)
+                     :else (do
+                             (println "ann map don't know how to check:" f)
+                             spect))
+                   (assoc spect :ret (c/value (list))))))))

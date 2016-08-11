@@ -46,3 +46,19 @@
       (c/cat- [(c/pred-spec #'false?) (c/class-spec Boolean)])
       (c/cat- [(c/pred-spec #'boolean?) (c/pred-spec #'boolean?)])
       (c/cat- [(c/pred-spec #'boolean?) (c/value true)]))))
+
+(deftest map-tests
+  (testing "equals"
+    (are [args expected] (= expected (:ret (c/maybe-transform #'map args)))
+      (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
+      (c/cat- [(c/get-var-fn-spec #'identity) (c/pred-spec #'nil?)]) (c/value [])
+      (c/cat- [(c/get-var-fn-spec #'identity) (c/coll-of-spec (c/pred-spec #'keyword?))]) (c/coll-of-spec (c/pred-spec #'keyword?))
+
+      (c/cat- [(c/get-var-fn-spec #'vector) (c/value [(c/value 1) (c/value :foo)])]) (c/coll-of-spec (c/pred-spec #'vector?))
+      ))
+
+  (testing "fail"
+    (are [args] (= c/reject (:ret (c/maybe-transform #'map args)))
+      (c/cat- [(c/get-var-fn-spec #'inc) (c/value [(c/value :foo)])])
+      (c/cat- [(c/get-var-fn-spec #'inc) (c/coll-of-spec (c/pred-spec #'keyword?))])
+      )))

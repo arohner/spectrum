@@ -320,11 +320,21 @@
 (defn variadic?
   "Truthy if this spec will accept unbounded number of args"
   [s]
-  (if (satisfies? c/FirstRest s)
+  (if (and (c/first-rest? s) (c/regex? s))
     (or (= (dissoc s :ret)
            (dissoc (c/rest* s) :ret))
         (some variadic? (:ps s)))
     false))
+
+(defn cat-count
+  "If the spect is a non-variadic cat, the number of args it needs. Returns nil when variadic"
+  [s]
+  (when-not (variadic? s)
+    (loop [ret 0
+           s s]
+      (if s
+        (recur (inc ret) (c/rest* s))
+        ret))))
 
 (defmethod flow :if [a]
   {:post [(::ret-spec %)]}
