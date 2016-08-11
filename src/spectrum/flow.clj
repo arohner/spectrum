@@ -252,12 +252,18 @@
 
 (defn invoke-spec [v spec args-spec]
   (let [s* (c/maybe-transform v args-spec)
-        transformed? (not= spec s*)]
+        transformed? (not= spec s*)
+        conf (c/conform spec args-spec)]
     (if transformed?
       s*
-      (if (and spec v (var-predicate? v)
+      (if (and (var-predicate? v)
                (c/valid? (c/pred-spec v) (c/first* args-spec)))
-        (assoc spec :ret (c/value true))
+        (let [c (c/conform (c/pred-spec v) (c/first* args-spec))
+              t (c/truthyness c)]
+          (if (not= :ambiguous t)
+            (assoc spec :ret (if (= t :truthy)
+                               (c/value true)
+                               (c/value false)))))
         spec))))
 
 (defmethod flow :invoke [a]
