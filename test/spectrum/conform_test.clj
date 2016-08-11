@@ -243,3 +243,7 @@
     (c/value false) :falsey
     (c/class-spec Integer) :truthy
     ))
+
+(deftest dependendent-specs
+  (are [s expected] (= expected (c/dependent-specs* s))
+    (c/pred-spec #'even?) #{(c/pred-spec #'integer?) (c/pred-spec #'any?)}))

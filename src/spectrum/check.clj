@@ -128,7 +128,7 @@
         (new-error {:message (format "attempt to call non-fn var: %s" (:form a))} a))
       (when va
         (check-invoke-fn-arity (get-var-analysis v) a))
-      (if-let [s (flow/get-var-fn-spec v)]
+      (if-let [s (c/get-var-fn-spec v)]
         (check-invoke-fn-spec v s a)
         (print-once "check-invoke-var: no spec for" v))]
      (filter identity))))
@@ -176,7 +176,7 @@
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
         v (::flow/var f)
-        ret-spec (:ret (flow/get-var-fn-spec v))
+        ret-spec (:ret (c/get-var-fn-spec v))
         body (-> method-a :body)
         last-expr (if (map? body)
                     body

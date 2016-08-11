@@ -578,7 +578,7 @@
         (pred-spec? x) (when (or (= pred (:pred x))
                                  (and (satisfies? DependentSpecs x)
                                       (some (fn [px]
-                                              (= pred (:pred px))) (dependent-specs* x))))
+                                              (= spec px)) (dependent-specs* x))))
                          spec)
         (and (value? x) (conform-args? spec x)) (when ((:pred spec) (:v x))
                                                   x)
