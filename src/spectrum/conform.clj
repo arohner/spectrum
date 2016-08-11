@@ -351,7 +351,7 @@
   FirstRest
   (first* [this]
     (let [p (first ps)]
-      (if (satisfies? FirstRest p)
+      (if (and (and (first-rest? p) (regex? p)))
         (first* p)
         p)))
   (rest* [this]
@@ -660,11 +660,16 @@
                 :ret ret
                 :fn fn}))
 
+(s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable fn-spec?))
+(defn get-var-fn-spec [v]
+  (when-let [s (s/get-spec v)]
+    (assoc (parse-spec s) :var v)))
+
 (s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :args-spec ::spect) :ret (s/nilable fn-spec?))
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
   [v args-spec]
-  (when-let [fn-spec (parse-spec (s/get-spec v))]
+  (when-let [fn-spec (get-var-fn-spec v)]
     (if-let [t (data/get-transformer v)]
       (let [fn-spec* (t fn-spec args-spec)]
         fn-spec*)

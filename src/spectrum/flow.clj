@@ -32,8 +32,6 @@
 
 (s/def ::analyses (s/coll-of ::analysis))
 
-(s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable ::c/spect))
-
 (defn a-loc [a]
   (select-keys a [:file :line :column]))
 
@@ -107,11 +105,6 @@
       (assoc-in a (conj path ::var) (:var a))
       a)))
 
-(s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable c/fn-spec?))
-(defn get-var-fn-spec [v]
-  (when-let [s (s/get-spec v)]
-    (assoc (c/parse-spec s) :var v)))
-
 (defn var-named-predicate?
   "True if the var's name looks like a predicate"
   [v]
@@ -120,7 +113,7 @@
 (s/fdef var-predicate? :args (s/cat :v var?) :ret boolean?)
 (defn var-predicate?
   [v]
-  (let [s (get-var-fn-spec v)]
+  (let [s (c/get-var-fn-spec v)]
     (if s
       (and (-> s :args c/cat-spec?)
            (-> s :args :ps count (= 1))
@@ -163,7 +156,7 @@
 (defmethod flow :var [a]
   {:post [(::ret-spec %)]}
   ;; :var => the value the var holds
-  (assoc a ::ret-spec (if-let [s (get-var-fn-spec (:var a))]
+  (assoc a ::ret-spec (if-let [s (c/get-var-fn-spec (:var a))]
                         s
                         (c/value @(:var a)))))
 
@@ -271,7 +264,7 @@
   {:post [(::ret-spec %)]}
   (let [v (-> a :fn :var)
         spec (when v
-               (get-var-fn-spec v))
+               (c/get-var-fn-spec v))
         a (update-in a [:args] (fn [args]
                                  (mapv (fn [arg]
                                          (flow (with-a arg a))) args)))
@@ -295,7 +288,7 @@
   {:post [(::ret-spec %)]}
   (let [v (-> a :fn :var)
         spec (when v
-               (get-var-fn-spec v))
+               (c/get-var-fn-spec v))
         a (update-in a [:target] (fn [t]
                                    (flow (with-a t a))))
         a (update-in a [:args] (fn [args]
@@ -507,12 +500,12 @@
     (assert (var? (:var a))))
 
   (condp = (:op a)
-    :var (get-var-fn-spec (:var a))))
+    :var (c/get-var-fn-spec (:var a))))
 
 (defn assoc-invoke-var [a]
   (let [v (-> a :fn :var)
         _ (assert v)
-        s (get-var-fn-spec v)]
+        s (c/get-var-fn-spec v)]
     (if s
       (assoc a
              ::args-spec (:args s)
@@ -627,7 +620,7 @@
   {:post [(::ret-spec %)]}
   (let [v (-> a meta :a ::var)
         s (when v
-            (get-var-fn-spec v))
+            (c/get-var-fn-spec v))
         a (if s
             (update-in a [:params] destructure-fn-params (:args s) a)
             (update-in a [:params] (fn [params]
