@@ -171,6 +171,7 @@ In some cases, we can identify the type of an expression at compile time. For ex
   (if (int? x)
     :foo
     "bar"))
+```
 
 If we didn't know the value of the test, the return spec of the `if`
 expression would be `(or keyword? string?)`. The type for `int?` is
