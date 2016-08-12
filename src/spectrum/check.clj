@@ -64,9 +64,7 @@
    (ana.jvm/analyze-ns ns)
    (map flow/flow)
    (mapcat check*)
-   (doall)
-   (filter identity)
-   (doall)))
+   (filter identity)))
 
 (s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::flow/analysis?))
 (defn get-var-analysis

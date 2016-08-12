@@ -63,7 +63,7 @@ Returns a seq of Error defrecords.
 
 #### Defrecord / instance?
 
-If you define a Java class, and a simple `instance?` predicate for your class, i.e.
+If you have a predicate that is just a simple simple `instance?` check for a class, i.e.
 
 ```clojure
 (defrecord Foo ...)
@@ -74,7 +74,7 @@ You'll want to add:
 (:require [spectrum.ann :as ann])
 (ann/ann #'foo? (ann/instance-transformer Foo))
 ```
-This tells the system that expressions tagged  w/ spec `#'foo?` are of class `Foo`, which is useful in java interop, both Java methods that take foo, and the Foo constructors: (`->Foo` and `map->Foo`).
+This tells the system that expressions tagged  w/ spec `#'foo?` are of class `Foo`, which is useful in java interop, both for Java methods that take Foo, and defrecord constructors: (`->Foo` and `map->Foo`).
 
 
 ## Limitations
@@ -109,13 +109,26 @@ Returns a defrecord, containing the parsed spec. This is basically a reimplement
 (c/conform (s/+ integer?) '[integer? integer?])
 ```
 
-`c/conform` behaves the same as `s/conform`, except it works on literals and specs (i.e. the things we have access to at compile time). For now, the best documentation is the tests, `test/spectrum/conform_test.clj`. Spectrum conform will have 100% coverage of clojure.spec, but isn't done yet.
+`c/conform` behaves the same as `s/conform`, except it works on
+literals and specs (i.e. the things we have access to at compile
+time). For now, the best documentation is the tests,
+`test/spectrum/conform_test.clj`. Spectrum conform will have 100%
+coverage of clojure.spec, but isn't done yet. If you encounter a spec
+that spectrum can't conform, please file a bug.
 
-In the code, these are called `spect` rather than `spec`, just to differentiate the implementation. Spects convey exactly the same information, but are more data-driven. Spects are just defrecords, so it's easy to assoc, dissoc, merge, etc types.
+In the code, the result of c/parse-spec are called `spect` rather than
+`spec`, just to differentiate the implementation. Spects convey
+exactly the same information, but are more data-driven. Spects are
+defrecords, so it's easy to assoc, dissoc, merge, etc types, which
+we'll take advantage of.
 
 ### spectrum.flow
 
-Flow is an intermediate pass. It takes the output of tools.analyzer, analyzes function parameters and let bindings, and updates the analyzer output with the appropriate specs, to make checking simpler. The main thing it's responsible for is adding `::flow/ret-spec`, and any other useful annotations to every expression. For example:
+Flow is an intermediate pass. It takes the output of tools.analyzer,
+analyzes function parameters and let bindings, and updates the
+analyzer output with the appropriate spects. The main thing it's
+responsible for is adding `::flow/ret-spec`, and any other useful
+annotations to every expression. For example:
 
 ```clojure
 (s/fdef foo :args (s/cat :x int?) :ret int?)
@@ -157,9 +170,9 @@ transformer should return an updated fnspec, presumably with the more
 specific type. In this example, it would `clojure.core/update` the
 `:ret` spec from `seq?` to `(coll-of y?)`. Since map also requires the
 input type of `f` match the type of the seq passed in, we can
-similarly update the expected type of the collection. Transforming
-happens before conforming, so if the type becomes more strict, that
-new value will be used in the conform.
+similarly update the expected type of the second argument in
+`:arg`. Transforming happens before checking, so if the type becomes
+more strict, that new value will be used when checking.
 
 ### value
 
@@ -172,12 +185,13 @@ In some cases, we can identify the type of an expression at compile time. For ex
     :foo
     "bar"))
 
-If we didn't know the value of the test, the return spec of the `if`
+If we didn't know the value of the `if` test, the return spec of the `if`
 expression would be `(or keyword? string?)`. The type for `int?` is
 `any? -> boolean?`, which normally means we couldn't predict which
 branch to take.  Using a spec transformer, we can make int? more
 specific
 
+Spect defines an instance transformer for int?:
 ```
 (ann #'int? (instance-or [Long Integer Short Byte]))
 ```
@@ -186,21 +200,21 @@ In this case, `instance-or` is a higher-order function returning a
 transformer that checks for the argument being an instance of any of
 the specified classes. If we know the type of the argument passed to
 `int?` at compile time, and it conforms, the spec transformer returns
-`(value true)`. `value` is a spec unique to spect, which indicates a
+`(value true)`. `value` is a spec unique to spectrum, which indicates a
 literal value. `(value true)` represents this expression will always
 return true, rather than boolean?, which could indicate true or false.
 
-Some expressions, such as `if`, recognize value true and will replace
-the type of the `if` expression from `(or keyword? string?)` to just
-`keyword?`. Similarly, returning `(value false)` or `(value nil)` will
-cause the code to take the else branch.
+Some expressions, such as `if`, recognize `(value true)` and will
+replace the type of the `if` expression from `(or keyword? string?)`
+to just `keyword?`. Similarly, returning `(value false)` or `(value
+nil)` will cause the code to take the else branch.
 
 ## Unknown
 
 Spectrum doesn't insist that every var be spec'd immediately. There is
 a specific spec, `unknown` used in places where we don't know type,
-for example as the return value of an un-specced function. Passing
-unknown to a specced function is treated as a different error from a
+for example as the return value of an un-spec'd function. Passing
+unknown to a spec'd function is treated as a less severe error than a
 'real' type error, for example passing an int to a function expecting
 keyword?. Use configuration, described in the next section, to remove
 unknowns if desired.
@@ -208,6 +222,39 @@ unknowns if desired.
 The return value of un-spec'd functions is `unknown`, and in general,
 unknown does not conform to any spec except `any?`.
 
+## Configuration
+
+Spectrum has configurable warning levels. Every check 'error' has
+:type and :level, indicating the kind of error, and the author's
+perceived importance of that error, for convenient
+filtering/whitelisting/blacklisting. In general, the severity level of
+an issue depends on how certain we are it will cause problems.
+
+The error levels are:
+
+- 0: informational
+- 1: warning
+- 2: error
+
+errors
+
+- 2 calling a fn with incorrect number of args (spec'd or not)
+- 2 calling a spec'd fn with incompatible type (no unknown)
+- 2 attempt to invoke a non-fn var (i.e. `(*print-level* 2)`)
+- 2 spec arity doesn't conform to fn arity
+- 2 return value of a spec'd fn doesn't conform
+- 2 return value of a spec'd fn is unknown
+- 2 calling a java method incompatible args
+
+- 1 calling a spec'd fn with `unknown` args
+- 1 calling a java method with unknown args
+
+- 0 non-spec'd defn in a namespace being checked
+- 0 fdef spec with no :ret
+
+non-errors:
+things spec won't warn about
+- calling a non-spec'd fn from a non-spec'd fn
 
 ## Todo
 
@@ -217,7 +264,6 @@ unknown does not conform to any spec except `any?`.
 - java methods are all (or nil?)
 - `updating` the type of variables in a recur
 - s/def, but for non-fn vars
-
 
 ## Justification
 

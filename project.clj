@@ -1,4 +1,4 @@
-(defproject spectrum "0.1.0-SNAPSHOT"
+(defproject spectrum "0.1.0"
   :description "FIXME: write description"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
@@ -8,4 +8,6 @@
                  [org.clojure/test.check "0.9.0"]]
   :profiles
   {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]]
-         :repl-options {:init-ns spectrum.repl}}})
+         :repl-options {:init-ns spectrum.repl}}}
+  :deploy-repositories [["releases" {:url "https://clojars.org/repo"
+                                     :creds :gpg}]])

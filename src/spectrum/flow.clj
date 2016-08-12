@@ -567,6 +567,8 @@
   (let [a (assoc-spec-bindings a)
         a (update-in a [:body] (fn [body] (flow (with-a body a))))
         ret-spec (::ret-spec (:body a))]
+    (when-not ret-spec
+      (println "flow-loop-let: no ret spec" (:form (:body a)) (:op (:body a))))
     (assert ret-spec)
     (-> a
         (assoc ::ret-spec ret-spec))))
