@@ -1,3 +1,4 @@
+
 # spectrum
 
 A library for doing static analysis of Clojure code, catching clojure.spec conform errors at compile time.
@@ -13,6 +14,9 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 ![Proving contracts ahead of time](https://pbs.twimg.com/media/CphGpB5VUAAJyGL.jpg)
 
 ## Current Status
+
+[![CircleCI](https://circleci.com/gh/arohner/spectrum.svg?style=svg)](https://circleci.com/gh/arohner/spectrum)
+[![Clojars Project](https://img.shields.io/clojars/v/spectrum.svg)](https://clojars.org/spectrum)
 
 Developer Preview. I'm now convinced it's theoretically sound, and
 *most* of the core language semantics are done. The main thing it
