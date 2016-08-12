@@ -241,7 +241,7 @@
 (defn filter-fn [spect args-spect]
   (let [f (c/first* args-spect)
         coll (c/second* args-spect)]
-    (if (inspect (and (c/fn-spec? f) (flow/var-predicate? (:var f)) (c/coll-of? coll)))
+    (if (and (c/fn-spec? f) (flow/var-predicate? (:var f)) (c/coll-of? coll))
       (assoc spect :ret (c/coll-of (c/and-spec [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
       spect)))
 
