@@ -38,6 +38,7 @@
 (s/fdef clojure.core/keyword? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/map :args (s/cat :x any? :coll (s/* seqable?)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/map? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/mapcat :args (s/cat :x any? :coll (s/* seqable?)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/merge :args (s/cat :ms (s/* (s/nilable map?))) :ret map?)
 (s/fdef clojure.core/number? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/nil? :args (s/cat :x any?) :ret boolean?)
