@@ -10,4 +10,8 @@
   {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]]
          :repl-options {:init-ns spectrum.repl}}}
   :deploy-repositories [["releases" {:url "https://clojars.org/repo"
-                                     :creds :gpg}]])
+                                     :creds :gpg}]]
+  :jvm-opts ["-Xmx1024m"
+             "-XX:-OmitStackTraceInFastThrow"
+             "-XX:+UseConcMarkSweepGC"
+             "-Dfile.encoding=UTF-8"])
