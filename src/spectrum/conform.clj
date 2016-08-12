@@ -948,6 +948,12 @@
   (map->OrSpec {:ks ks
                 :ps ps}))
 
+(defn or-disj
+  "Remove pred from the set of preds"
+  [s pred]
+  (filter* (fn [p]
+             (= p pred)) s))
+
 (defn conform-keys [this x]
   (when (and
          (keys-spec? x)
@@ -1053,12 +1059,17 @@
   (truthyness [this]
     :truthy))
 
-(defn coll-of-spec
+(s/fdef coll-of :args (s/cat :s ::spect :kind (s/? (s/nilable coll?))) :ret ::spect)
+(defn coll-of
   ([s]
-   (coll-of-spec s nil))
+   (coll-of s nil))
   ([s kind]
    (map->CollOfSpec {:s s
                      :kind kind})))
+
+(s/fdef coll-of? :args (s/cat :x any?) :ret boolean?)
+(defn coll-of? [x]
+  (instance? CollOfSpec x))
 
 (defn parse-coll-of [x]
   (let [args (rest x)
