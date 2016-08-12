@@ -238,6 +238,31 @@
 (ann #'identity (fn [spect args-spect]
                   (assoc spect :ret (c/first* args-spect))))
 
+(defn filter-fn [spect args-spect]
+  (let [f (c/first* args-spect)
+        coll (c/second* args-spect)]
+    (if (inspect (and (c/fn-spec? f) (flow/var-predicate? (:var f)) (c/coll-of? coll)))
+      (assoc spect :ret (c/coll-of (c/and-spec [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
+      spect)))
+
+(defn ann-filter [spect args-spect]
+  (if (= 1 (flow/cat-count args-spect))
+    (assoc spect :ret transducer-fn-spec)
+    (let [f (c/first* args-spect)
+          colls (c/rest* args-spect)
+          _ (assert (c/cat-spec? colls))
+          colls (:ps colls)
+          coll-count (count (:ps colls))]
+      (if (every? (fn [c] (not (empty-seq? c))) colls)
+        (cond
+          (c/fn-spec? f) (filter-fn spect args-spect)
+          :else (do
+                  (println "ann filter don't know how to check:" f)
+                  spect))
+        (assoc spect :ret (c/value (list)))))))
+
+(ann #'filter ann-filter)
+
 (defn empty-seq?
   "True if this spect represents the empty seq, or a value that (seq x) would return nil on"
   [s]

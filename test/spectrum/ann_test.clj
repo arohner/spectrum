@@ -62,3 +62,9 @@
       (c/cat- [(c/get-var-fn-spec #'inc) (c/value [(c/value :foo)])])
       (c/cat- [(c/get-var-fn-spec #'inc) (c/coll-of-spec (c/pred-spec #'keyword?))])
       )))
+
+(deftest filter-tests
+  (testing "equals"
+    (are [args expected] (= expected (:ret (c/maybe-transform #'filter args)))
+      (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
+      (c/cat- [(c/get-var-fn-spec #'even?) (c/coll-of (c/pred-spec #'integer?))]) (c/coll-of (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)] )))))
