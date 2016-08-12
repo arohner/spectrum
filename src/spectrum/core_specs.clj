@@ -20,6 +20,8 @@
 (s/fdef clojure.core/boolean? :args (s/cat :x #(do % true)) :ret boolean?)
 (s/fdef clojure.core/coll? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/chunked-seq? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/dorun :args (s/cat :x seqable?) :ret nil?)
+(s/fdef clojure.core/doall :args (s/cat :x seqable?) :ret seq)
 (s/fdef clojure.core/even? :args (s/cat :n integer?) :ret boolean?)
 (s/fdef clojure.core/false? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/filter :args (s/cat :x any? :coll seqable?) :ret (s/or :seq seq? :xf fn?))
