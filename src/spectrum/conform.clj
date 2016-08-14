@@ -197,7 +197,10 @@
     nil)
   Truthyness
   (truthyness [this]
-    :falsey))
+    :falsey)
+  SpecToClass
+  (spec->class [this]
+    nil))
 
 (defn accept? [x]
   (instance? Accept x))
