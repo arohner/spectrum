@@ -7,6 +7,7 @@
             [clojure.spec :as s]
             [clojure.spec.gen :as spec-gen]
             [clojure.spec.test]
+            [spectrum.ann :as ann]
             [spectrum.conform :as c]
             [spectrum.flow :as flow]
             [spectrum.flow-test :as flow-test])
@@ -47,6 +48,16 @@
       (c/cat- [(c/pred-spec #'boolean?) (c/pred-spec #'boolean?)])
       (c/cat- [(c/pred-spec #'boolean?) (c/value true)]))))
 
+(deftest empty-seq
+  (testing "true"
+    (are [arg] (= true (ann/empty-seq? arg))
+      (c/value [])
+      (c/value nil)
+      (c/pred-spec #'nil?)))
+  (testing "false"
+    (are [arg] (= false (ann/empty-seq? arg))
+      (c/coll-of (c/pred-spec #'keyword?)))))
+
 (deftest map-tests
   (testing "equals"
     (are [args expected] (= expected (:ret (c/maybe-transform #'map args)))
@@ -60,7 +71,7 @@
   (testing "fail"
     (are [args] (= c/reject (:ret (c/maybe-transform #'map args)))
       (c/cat- [(c/get-var-fn-spec #'inc) (c/value [(c/value :foo)])])
-      (c/cat- [(c/get-var-fn-spec #'inc) (c/coll-of-spec (c/pred-spec #'keyword?))])
+      (c/cat- [(c/get-var-fn-spec #'inc) (c/coll-of (c/pred-spec #'keyword?))])
       )))
 
 (deftest filter-tests
@@ -68,3 +79,16 @@
     (are [args expected] (= expected (:ret (c/maybe-transform #'filter args)))
       (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
       (c/cat- [(c/get-var-fn-spec #'even?) (c/coll-of (c/pred-spec #'integer?))]) (c/coll-of (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)] )))))
+
+(deftest nil?-works
+  (testing "true"
+    (are [args] (= (c/value true) (:ret (c/maybe-transform #'nil? args)))
+      (c/cat- [(c/value nil)])))
+  (testing "false"
+    (are [args] (= c/reject (:ret (c/maybe-transform #'nil? args)))
+      (c/cat- [(c/value false)])
+      (c/cat- [(c/value 71)])
+      (c/cat- [(c/coll-of (c/pred-spec #'integer?))])))
+  (testing "ambigous"
+    (are [args] (= (c/pred-spec #'boolean?) (:ret (c/maybe-transform #'nil? args)))
+      (c/cat- [(c/pred-spec #'boolean?)]))))
