@@ -226,18 +226,34 @@
        (mapv :parameter-types)
        (str/join ", ")))
 
-(defmethod check* :static-call [a]
+(defn maybe-check-defmethod [a]
+  (if (flow/defmethod? a)
+    (let [[dispatch-val f] (:args a)]
+      ;; TODO flow-default, check-default, :children. defmethod checking is broken because we don't recurse automatically.
+      ;;
+      )
+    nil))
+
+(defn java-call [a]
   (let [a-args (zip a :args)
         args-spec (flow/analysis-args->spec a-args)
         call-spec (::flow/args-spec a)]
-    (if call-spec
-      (if (c/known? call-spec)
-        (if args-spec
-          (let [valid? (c/valid? call-spec args-spec)]
-            (when-not valid?
-              [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (print-str args-spec) (print-str call-spec))} a)]))
-          (println "static-call no arg-spec:" (flow/a-loc-str a)))
-        [(new-error {:message (format "Calling Java method %s unknown spec, given %s, possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a)])
-      [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a)])))
+    (concat
+     (if call-spec
+       (if (c/known? call-spec)
+         (if args-spec
+           (let [valid? (c/valid? call-spec args-spec)]
+             (when-not valid?
+               [(new-error {:message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (print-str args-spec) (print-str call-spec))} a)]))
+           (println "static-call no arg-spec:" (flow/a-loc-str a)))
+         [(new-error {:message (format "Calling Java method %s unknown spec, given %s, possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a)])
+       [(new-error {:message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a)])
+     (maybe-check-defmethod a))))
+
+(defmethod check* :instance-call [a]
+  (java-call a))
+
+(defmethod check* :static-call [a]
+  (java-call a))
 
 ;; check recur values conform to bindings
