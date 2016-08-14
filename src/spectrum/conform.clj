@@ -516,14 +516,18 @@
   (class-spec x))
 
 (defn parse-spec [x]
-  (cond
-    (spect? x) x
-    (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
-    (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
-    (= ::s/nil x) ::s/nil
-    (s/spec? x) (parse-spec* (s/form x))
-    (s/regex? x) (parse-spec* x)
-    :else (parse-spec* x)))
+  (try
+    (cond
+      (spect? x) x
+      (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
+      (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
+      (= ::s/nil x) ::s/nil
+      (s/spec? x) (parse-spec* (s/form x))
+      (s/regex? x) (parse-spec* x)
+      :else (parse-spec* x))
+    (catch IllegalArgumentException e
+      (println "don't know how to parse:" x)
+      (throw e))))
 
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
