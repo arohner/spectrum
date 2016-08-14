@@ -63,6 +63,21 @@
           (assoc spect :ret c/reject))
         spect))))
 
+(defn satisfies-transformer [protocol]
+  (fn [spect args-spect]
+    {:post [(do (println "satisfies:" args-spect "=>" %) true)]}
+    (let [arg (if (satisfies? c/FirstRest args-spect)
+                (c/first* args-spect)
+                args-spect)
+          c (if (c/spect? arg)
+              (c/spec->class arg)
+              (class arg))]
+      (if c
+        (if (satisfies? protocol c)
+          (assoc spect :ret (c/value true))
+          (assoc spect :ret c/reject))
+        spect))))
+
 (defn instance-or
   "spec-transformer for (or (instance? a) (instance? b)...) case. clses is a seq of classes."
   [clses]
