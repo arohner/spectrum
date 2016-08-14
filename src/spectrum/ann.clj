@@ -122,6 +122,7 @@
   (ann v (instance-transformer cls)))
 
 (ann #'int? (instance-or [Long Integer Short Byte]))
+(ann #'seqable? (instance-or [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map])) ;; TODO java array
 
 (defn maybe-convert-value
   "If the spect checks for a single value, i.e. nil? false?, return the value instead"

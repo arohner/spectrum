@@ -1,6 +1,7 @@
 (ns spectrum.core-specs
   (:require [clojure.core :as core]
-            [clojure.spec :as s])
+            [clojure.spec :as s]
+            [spectrum.ann :as ann])
   (:import (java.lang Iterable)
            (java.util Map)
            (clojure.lang ISeq
@@ -16,9 +17,12 @@
 (defn reduce? [x]
   (satisfies? clojure.core.protocols/CollReduce x))
 
+(ann/ann #'reduce? (ann/satisfies-transformer clojure.core.protocols/CollReduce))
+
 (s/fdef clojure.core/any? :args (s/cat :x (fn [x] (do true))) :ret boolean?)
 (s/fdef clojure.core/boolean? :args (s/cat :x #(do % true)) :ret boolean?)
 (s/fdef clojure.core/coll? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/concat :args (s/* seqable?) :ret seq?)
 (s/fdef clojure.core/chunked-seq? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/dorun :args (s/cat :x seqable?) :ret nil?)
 (s/fdef clojure.core/doall :args (s/cat :x seqable?) :ret seq)
