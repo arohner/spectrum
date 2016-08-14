@@ -170,9 +170,9 @@
 
          (c/class-spec clojure.lang.IPersistentMap) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)]) (c/or- [(c/parse-spec (s/keys :req-un [::integer])) (c/pred-spec #'map?)])
 
-         (c/coll-of-spec (c/pred-spec #'any?)) [(c/value :foo)] [(c/value :foo)]
+         (c/coll-of (c/pred-spec #'any?)) [(c/value :foo)] [(c/value :foo)]
 
-         (c/coll-of-spec (c/pred-spec #'int?)) [] []
+         (c/coll-of (c/pred-spec #'int?)) [] []
 
          (c/class-spec Object) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
          (c/class-spec Object) (c/value nil) (c/value nil)
@@ -213,8 +213,8 @@
 
          (s/coll-of int?) (s/coll-of string?)
          (c/pred-spec #'string?) (c/or- [(c/class-spec Number) (c/value :foo)])
-         (c/coll-of-spec (c/pred-spec #'int?)) (c/unknown '(mapv flow as))
-         (c/coll-of-spec (c/pred-spec #'int?)) nil)))
+         (c/coll-of (c/pred-spec #'int?)) (c/unknown '(mapv flow as))
+         (c/coll-of (c/pred-spec #'int?)) nil)))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))

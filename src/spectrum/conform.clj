@@ -28,6 +28,7 @@
 (declare or-spec)
 (declare class-spec)
 (declare keys-spec)
+(declare pred-spec)
 (declare spect-generator)
 (declare maybe-transform-pred)
 (declare conform-args?)
