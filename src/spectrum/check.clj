@@ -140,36 +140,29 @@
 (defn check-invoke-map [a]
   (print-once "check-invoke-map todo"))
 
+(defn check-walk [a]
+  (mapcat (fn [c-name]
+            (let [c (get a c-name)]
+              (if (sequential? c)
+                (mapcat (fn [x]
+                          (check* (with-a x a))) c)
+                (check* (with-a c a))))) (:children a)))
+
+(defmethod check* :default [a]
+  (print-once (str "TODO check " (:op a)))
+  (check-walk a))
+
 (defmethod check* :invoke [a]
   (let [f (-> a :fn flow/maybe-strip-meta)]
-    (condp = (:op f)
-      :var (check-invoke-var a)
-      :fn (check-invoke-fn-literal a)
-      :map (check-invoke-map a)
-      :local (check-invoke-local a)
-      (println "unknown invoke expr" (:form a) (:op a)))))
+    (concat (check-walk a)
+            (condp = (:op f)
+              :var (check-invoke-var a)
+              :fn (check-invoke-fn-literal a)
+              :map (check-invoke-map a)
+              :local (check-invoke-local a)
+              (println "unknown invoke expr" (:form a) (:op a))))))
 
-(defmethod check* :do [a]
-  (some->>
-   (concat
-    (mapcat (fn [s]
-              (check* (with-a s a))) (:statements a))
-    [(check* (zip a :ret))])
-   (doall)
-   (filter identity)))
 
-(defmethod check* :let [a]
-  (concat
-   (mapcat (fn [b]
-             (check* (with-a b a))) (:bindings a))
-   (check* (zip a :body))))
-
-(defmethod check* :with-meta [a]
-  (check* (zip a :expr)))
-
-(defmethod check* :def [a]
-  (when (:init a)
-    (check* (with-a (:init a) a))))
 
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
@@ -188,14 +181,6 @@
           [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or v "fn") (print-str ret-spec) (print-str expr-spec))} method-a)])
         [(new-error {:message (format "check-fn-method-return no ret-spec for expression:" (:form last-expr))} last-expr)]))))
 
-(defmethod check* :fn [a]
-  (concat
-   (some->>
-    (mapcat (fn [m]
-              (check* (with-a m a))) (:methods a))
-    (doall)
-    (filter identity))))
-
 (defn params-str [a]
   (->> a :params (mapv :form)))
 
@@ -210,13 +195,10 @@
         [(new-error {:message (format "fn spec doesn't match arity: %s, %s vs. %s" f-var (params-str a) (print-str args-spec))} a)]))))
 
 (defmethod check* :fn-method [a]
-  (let [body (zip a :body)]
-    (concat
-     (check* body)
-     (check-fn-method-return a)
-     (check-spec-arity a))))
-
-(defmethod check* :quote [a])
+  (concat
+   (check-walk a)
+   (check-fn-method-return a)
+   (check-spec-arity a)))
 
 (defn a->java-static-method-name [a]
   (str (:class a) "/" (:method a)))
@@ -226,6 +208,7 @@
        (mapv :parameter-types)
        (str/join ", ")))
 
+(s/fdef java-call :args (s/cat :a ::flow/analysis) :ret ::check-errors)
 (defn maybe-check-defmethod [a]
   (if (flow/defmethod? a)
     (let [[dispatch-val f] (:args a)]
@@ -234,6 +217,7 @@
       )
     nil))
 
+(s/fdef java-call :args (s/cat :a ::flow/analysis) :ret ::check-errors)
 (defn java-call [a]
   (let [a-args (zip a :args)
         args-spec (flow/analysis-args->spec a-args)
@@ -251,9 +235,13 @@
      (maybe-check-defmethod a))))
 
 (defmethod check* :instance-call [a]
-  (java-call a))
+  (concat
+   (check-walk a)
+   (java-call a)))
 
 (defmethod check* :static-call [a]
-  (java-call a))
+  (concat
+   (check-walk a)
+   (java-call a)))
 
 ;; check recur values conform to bindings
