@@ -413,7 +413,10 @@
     :truthy)
   SpecToClass
   (spec->class [this]
-    clojure.lang.ISeq))
+    clojure.lang.ISeq)
+  DependentSpecs
+  (dependent-specs* [this]
+    (set (pred-spec #'seq?) (pred-spec #'seqable?))))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
