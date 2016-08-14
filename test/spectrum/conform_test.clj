@@ -129,6 +129,8 @@
 
          (s/* (s/alt :int integer? :str string?)) ["foo" 3] [[:str (c/value "foo")] [:int (c/value 3)]]
 
+         (c/cat- []) (c/cat- []) []
+
          (s/cat :x (s/* integer?) :y (s/+ string?)) ["foo"] {:y [(c/value "foo")]}
          (s/cat :x (s/* integer?) :y (s/+ string?)) [1 "foo"] {:x [(c/value 1)] :y [(c/value "foo")]}
          (s/cat :x (s/* integer?) :y (s/+ string?)) [1 2 "foo" "bar"] {:x [(c/value 1) (c/value 2)] :y [(c/value "foo") (c/value "bar")]}

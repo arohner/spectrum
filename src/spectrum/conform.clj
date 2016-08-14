@@ -1173,7 +1173,8 @@
       (let [[x & xs] (if (:ps data)
                        (:ps data)
                        data)]
-        (if (empty? data)
+        (if (or (and (not (spect? data)) (empty? data))
+                (and (regex? data) (nil? (first* data))))
           (if (accept-nil? spec)
             (return spec)
             ::invalid)
