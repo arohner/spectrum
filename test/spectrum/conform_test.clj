@@ -71,7 +71,7 @@
          ;;(s/spec #(< % 10)) 3 3
          (c/value 1) (c/value 1) (c/value 1)
 
-         #'symbol? (c/value 'foo) (c/value true)
+         #'symbol? (c/value 'foo) (c/value 'foo)
          'integer? 'integer? (c/parse-spec 'integer?)
          #'integer? #'integer? (c/parse-spec #'integer?)
          'integer? (s/and integer? even?) (c/parse-spec (s/and integer? even?))
@@ -85,8 +85,8 @@
          (c/pred-spec #'any?) (c/pred-spec #'integer?) (c/pred-spec #'integer?)
 
          (c/pred-spec #'int?) (c/pred-spec #'int?) (c/pred-spec #'int?)
-         #'number? (c/class-spec Long) (c/value true)
-         #'int? (c/class-spec Long) (c/value true)
+         #'number? (c/class-spec Long) (c/class-spec Long)
+         #'int? (c/class-spec Long) (c/class-spec Long)
          (c/class-spec Long) 3 (c/value 3)
          (c/class-spec String) (c/class-spec String) (c/class-spec String)
 
@@ -99,7 +99,7 @@
 
          (c/or- [(c/class-spec Long) (c/class-spec String) (c/class-spec Keyword)]) (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/or- [(c/class-spec Long) (c/class-spec String)])
 
-         (c/parse-spec #'number?) (c/class-spec Long) (c/value true)
+         (c/parse-spec #'number?) (c/class-spec Long) (c/class-spec Long)
          (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
 
          (s/and integer? even?) 10 (c/value 10)
@@ -151,7 +151,7 @@
 
          (s/cat :args (s/keys :req-un [::integer])) [{:integer 3}] {:args (c/keys-spec {} {::integer (c/value 3)} {} {})}
 
-         #'map? (s/keys :req [::integer]) (c/value true)
+         #'map? (s/keys :req [::integer]) (c/parse-spec (s/keys :req [::integer]))
 
          (c/or- [(c/pred-spec #'map?) (c/pred-spec #'associative?)]) (c/keys-spec {} {} {} {}) (c/keys-spec {} {} {} {})
 
