@@ -137,6 +137,7 @@
   (ann v (instance-transformer cls)))
 
 (ann #'int? (instance-or [Long Integer Short Byte]))
+(ann #'integer? (instance-or [Long Integer Short Byte clojure.lang.BigInt BigInteger]))
 (ann #'seqable? (instance-or [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map])) ;; TODO java array
 
 (defn maybe-convert-value
