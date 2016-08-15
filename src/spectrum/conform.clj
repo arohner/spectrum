@@ -587,16 +587,16 @@
       (cond
         truthy x
         (= #'any? pred) x
-        (pred-spec? x) (when (or (= pred (:pred x))
-                                 (and (satisfies? DependentSpecs x)
-                                      (some (fn [px]
-                                              (= spec px)) (dependent-specs* x))))
+        (pred-spec? x) (when (or (= pred (:pred x)))
                          spec)
         (and (value? x) (conform-args? spec x)) (when ((:pred spec) (:v x))
                                                   x)
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? pred-class (:cls x))
-                            x)))))
+                            x))
+        (satisfies? DependentSpecs x) (some (fn [px]
+                                              (= spec px)) (dependent-specs* x))
+        (satisfies? SpecToClass x) (conform* spec (class-spec (spec->class x))))))
   (explain* [spec path via in x]
     (when (not (valid? spec x))
       [{:path path :pred form :val x :via via :in in}]))
