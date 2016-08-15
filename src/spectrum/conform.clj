@@ -467,6 +467,24 @@
       (if (= ret ::s/nil)
         r
         (conj r (if {k ret} ret)))))
+  (re-explain* [spec path via in x]
+    (if (empty? x)
+      [{:path path
+        :reason "Insufficient input"
+        :val ()
+        :via via
+        :in in}]
+      (apply concat
+             (map (fn [k form p]
+                    (explain* p
+                              (if k (conj path k) path)
+                              via
+                              in
+                              x))
+                  (or (seq ks) (repeat nil))
+                  (or (seq forms) (repeat nil))
+                  ps))))
+
   FirstRest
   (first* [this]
     (first ps))
