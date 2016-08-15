@@ -36,10 +36,6 @@
 
 (defmulti check* "Entrypoint into low level checking. Takes a tools.analyzer expression. Returns nil or an error" :op)
 
-(defmethod check* :default [a]
-  (print-once (str "TODO check " (:op a)))
-  nil)
-
 (declare check)
 
 ;; clojure.spec isn't in the check list atm, because analyzer re-evals the protocols, which breaks e.g. (satsifies? s/Spec) checking
