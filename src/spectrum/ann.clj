@@ -30,7 +30,7 @@
                          (if (c/known? inst-spec)
                            (if (isa? inst-cls c)
                              (assoc spect :ret (c/value true))
-                             (assoc spect :ret c/reject))
+                             (assoc spect :ret (c/value false)))
                            spect)
                          (do
                            (println "Can't spec->class:" inst-spec "Consider using ann/instance-transformer" )
@@ -60,7 +60,7 @@
       (if c
         (if (isa? c cls)
           (assoc spect :ret (c/value true))
-          (assoc spect :ret c/reject))
+          (assoc spect :ret (c/value false)))
         spect))))
 
 (defn satisfies-transformer [protocol]
@@ -75,12 +75,12 @@
       (if c
         (if (satisfies? protocol c)
           (assoc spect :ret (c/value true))
-          (assoc spect :ret c/reject))
+          (assoc spect :ret (c/value false)))
         spect))))
 
 (defn instance-or
-  "spec-transformer for (or (instance? a) (instance? b)...) case. clses is a seq of classes."
-  [clses]
+  "spec-transformer for (or (instance? a) (instance? b)...) case. classes is a seq of classes."
+  [classes]
   (fn [spect args-spect]
     (let [c (if (c/spect? args-spect)
               (c/spec->class (if (c/regex? args-spect)
@@ -88,10 +88,10 @@
                                args-spect))
               (class args-spect))]
       (if c
-        (if (some (fn [cls] (isa? c cls)) clses)
+        (if (some (fn [cls] (isa? c cls)) classes)
           (assoc spect :ret (c/value true))
-          (assoc spect :ret c/reject))
-        (c/unknown nil)))))
+          (assoc spect :ret (c/value false)))
+        spect))))
 
 (def pred->class
   {#'associative? clojure.lang.Associative
@@ -157,10 +157,10 @@
       (if (not= :ambiguous truthyness)
         (let [x (maybe-convert-value x)]
           (assoc spect :ret (cond
-                              (= :truthy truthyness) c/reject
+                              (= :truthy truthyness) (c/value false)
                               (c/value? x) (if (= val (:v x))
                                              (c/value true)
-                                             c/reject)
+                                             (c/value false))
                               :else (:ret spect))))
         spect))))
 
@@ -204,9 +204,9 @@
              ret (cond
                    (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
                                                      (c/value true)
-                                                     c/reject)
+                                                     (c/value false))
                    (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
-                        (not= (c/truthyness x) (c/truthyness y))) c/reject)]
+                        (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
 
          (if ret
            (assoc spect :ret ret)
@@ -350,7 +350,7 @@
               ;;(println "ann mapcat-fn: default" f)
               spect))
           (do
-            ;;(println "mapcat reject:" (:ret f))
+            ;;(println "mapcat reject""" (:ret f))
             (assoc spect :ret c/reject)))
         (assoc spect :ret (c/value []))))))
 
