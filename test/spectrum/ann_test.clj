@@ -37,7 +37,7 @@
       (c/cat- [(c/pred-spec #'nil?) (c/pred-spec #'nil?)])
       (c/cat- [(c/pred-spec #'false?) (c/value false)])))
   (testing "false"
-    (are [args] (= c/reject (:ret (transform-identical args)))
+    (are [args] (= (c/value false) (:ret (transform-identical args)))
       (c/cat- [(c/value 1) (c/value 0)])
       (c/cat- [(c/pred-spec #'nil?) (c/value 3)])
       (c/cat- [(c/pred-spec #'integer?) (c/value nil)])))
@@ -85,7 +85,7 @@
     (are [args] (= (c/value true) (:ret (c/maybe-transform #'nil? args)))
       (c/cat- [(c/value nil)])))
   (testing "false"
-    (are [args] (= c/reject (:ret (c/maybe-transform #'nil? args)))
+    (are [args] (= (c/value false) (:ret (c/maybe-transform #'nil? args)))
       (c/cat- [(c/value false)])
       (c/cat- [(c/value 71)])
       (c/cat- [(c/coll-of (c/pred-spec #'integer?))])))
