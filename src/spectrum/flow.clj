@@ -237,6 +237,10 @@
        (filter (fn [b] (= name (:name b))))
        first))
 
+(defmethod find-binding* :catch [a name]
+  (when (-> a :local :name (= name))
+    (:local a)))
+
 (defn binding-update-if-specs
   "Given a :binding, walk up the tree to find all :if predicate tests it contains, and update the spec"
   [a binding]
