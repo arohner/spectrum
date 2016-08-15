@@ -885,7 +885,7 @@
   (parse-literal-alt x))
 
 (defmethod parse-spec* 'clojure.spec/? [x]
-  (parse-literal-alt x))
+  (map->RegexAlt {:ps [(parse-spec (second x)) (accept ::s/nil)]}))
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]

@@ -125,6 +125,8 @@
          (s/? integer?) [] nil
          (s/? integer?) [1] (c/value 1)
 
+         (c/parse-spec (s/form (s/? integer?))) [1] (c/value 1)
+
          (s/+ integer?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?)]) [(c/pred-spec #'integer?) (c/pred-spec #'integer?)]
 
          (s/* (s/alt :int integer? :str string?)) ["foo" 3] [[:str (c/value "foo")] [:int (c/value 3)]]
@@ -135,6 +137,9 @@
          (s/cat :x (s/* integer?) :y (s/+ string?)) [1 "foo"] {:x [(c/value 1)] :y [(c/value "foo")]}
          (s/cat :x (s/* integer?) :y (s/+ string?)) [1 2 "foo" "bar"] {:x [(c/value 1) (c/value 2)] :y [(c/value "foo") (c/value "bar")]}
          (s/cat :x (s/? integer?)) [] {}
+
+         (s/cat :a integer? :b (s/? keyword?) :c integer?) [1 2] {:a (c/value 1) :c (c/value 2)}
+         (s/cat :a integer? :b (s/? keyword?) :c integer?) [1 :foo 2] {:a (c/value 1) :b (c/value :foo) :c (c/value 2)}
 
          (s/cat :x integer?) (s/cat :x integer?) {:x (c/parse-spec 'integer?)}
 
