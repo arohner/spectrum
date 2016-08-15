@@ -244,12 +244,6 @@
                    :else (:ret spect))]
          (assoc spect :ret ret))))
 
-(ann #'coll? (fn [spect args-spect]
-               (let [x (c/first* args-spect)]
-                 (if (c/cat-spec? x)
-                   (assoc spect :ret (c/value true))
-                   spect))))
-
 (def transducer-fn-spec (c/fn-spec nil nil nil))
 
 (ann #'identity (fn [spect args-spect]
