@@ -14,6 +14,7 @@
 
 (defn array? [x] (.isArray ^Class (class x)))
 
+(s/fdef reduce? :args (s/cat :x any?) :ret boolean?)
 (defn reduce? [x]
   (satisfies? clojure.core.protocols/CollReduce x))
 
@@ -24,6 +25,7 @@
 (s/fdef clojure.core/coll? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/concat :args (s/* seqable?) :ret seq?)
 (s/fdef clojure.core/chunked-seq? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/class? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/dorun :args (s/cat :x seqable?) :ret nil?)
 (s/fdef clojure.core/doall :args (s/cat :x seqable?) :ret seq)
 (s/fdef clojure.core/even? :args (s/cat :n integer?) :ret boolean?)
