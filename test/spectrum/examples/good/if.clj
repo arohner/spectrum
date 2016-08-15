@@ -78,7 +78,7 @@
 
 (s/fdef or-unknown :ret (s/or :k keyword? :s string?))
 (defn or-unknown []
-  (if (->> (unk))
+  (if (->> (unk 3))
     :then
     "else"))
 
