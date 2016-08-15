@@ -2,7 +2,7 @@
 
 ;;  we remove :recur
 (defn foo [x]
-  (if (pos-int? x)
+  (if (integer? x)
     (if (even? x)
       (recur (dec x))
       (recur (dec x)))
