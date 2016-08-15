@@ -6,7 +6,7 @@
   (if (string? x)
     "truthy"))
 
-(s/fdef ambiguous :args (s/cat :x int?) :ret (s/or :k keyword? :s string?))
+(s/fdef ambiguous :args (s/cat :x integer?) :ret (s/or :k keyword? :s string?))
 (defn ambiguous [x]
   (if (even? x)
     :even
