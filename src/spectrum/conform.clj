@@ -419,7 +419,7 @@
     clojure.lang.ISeq)
   DependentSpecs
   (dependent-specs* [this]
-    (set (pred-spec #'seq?) (pred-spec #'seqable?))))
+    #{(pred-spec #'seq?) (pred-spec #'seqable?)}))
 
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
