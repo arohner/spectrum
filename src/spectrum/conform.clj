@@ -1322,17 +1322,21 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
  "
   [spec args]
-  (let [spec (parse-spec spec)
-        args (parse-spec args)
-        t (:transformer spec)
-        spec (if t
-               (t spec args)
-               spec)]
-    (if-let [val (conform-compound spec args)]
-      (if (= ::s/nil val)
-        nil
-        val)
-      ::invalid)))
+  (try
+    (let [spec (parse-spec spec)
+          args (parse-spec args)
+          t (:transformer spec)
+          spec (if t
+                 (t spec args)
+                 spec)]
+      (if-let [val (conform-compound spec args)]
+        (if (= ::s/nil val)
+          nil
+          val)
+        ::invalid))
+    (catch IllegalArgumentException e
+      (println "conform: kaboom:" spec args (.getMessage e))
+      (throw e))))
 
 (defn valid? [spec x]
   (conformy? (conform spec x)))
