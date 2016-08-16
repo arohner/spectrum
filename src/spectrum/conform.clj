@@ -956,6 +956,12 @@
   WillAccept
   (will-accept [this]
     (first ps))
+  Truthyness
+  (truthyness [this]
+    (let [b (distinct (map truthyness ps))]
+      (if (= 1 (count b))
+        (first b)
+        :ambiguous)))
   Compound
   (map- [this f]
     (let [kps (->> (mapv vector (or ks (repeat nil)) ps)

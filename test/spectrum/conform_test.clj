@@ -185,7 +185,10 @@
          (c/class-spec Object) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
          (c/class-spec Object) (c/value nil) (c/value nil)
          (c/cat- [(c/class-spec Object) (c/class-spec Object)]) [(c/pred-spec #'nil?) (c/value nil)] [(c/pred-spec #'nil?) (c/value nil)]
-         (c/pred-spec #'coll?) [1 2 :foo] (c/parse-spec [1 2 :foo])))
+         (c/pred-spec #'coll?) [1 2 :foo] (c/parse-spec [1 2 :foo])
+
+         (c/pred-spec #'seqable?) (c/class-spec clojure.lang.PersistentHashMap) (c/class-spec clojure.lang.PersistentHashMap)
+         (c/pred-spec #'seqable?) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))))
 
   (testing "should fail"
     (are [spec val] (= ::c/invalid (c/conform spec val))
@@ -243,6 +246,10 @@
 
     (c/pred-spec #'integer?) :truthy
     (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) :truthy
+
+    (c/or- [(c/class-spec clojure.lang.ISeq) (c/class-spec clojure.lang.Seqable)]) :truthy
+
+    (c/or- [(c/class-spec String) (c/class-spec Boolean)]) :ambiguous
 
     (c/pred-spec #'false?) :falsey
     (c/pred-spec #'true?) :truthy
