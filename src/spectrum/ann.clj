@@ -366,3 +366,9 @@
         (assoc spect :ret (c/value (list)))))))
 
 (ann #'mapcat mapcat-ann)
+
+(ann #'seq (fn [spect args-spect]
+             (let [arg (c/first* args-spect)]
+               (if (c/valid? (c/pred-spec #'seq?) arg)
+                 (assoc spect :ret (c/pred-spec #'seq?))
+                 spect))))
