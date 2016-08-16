@@ -605,15 +605,15 @@
       (cond
         truthy x
         (= #'any? pred) x
-        (pred-spec? x) (when (or (= pred (:pred x)))
-                         spec)
+        (and (pred-spec? x) (= pred (:pred x))) x
         (and (value? x) (conform-args? spec x)) (when ((:pred spec) (:v x))
                                                   x)
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? pred-class (:cls x))
                             x))
-        (satisfies? DependentSpecs x) (some (fn [px]
-                                              (= spec px)) (dependent-specs* x))
+        (satisfies? DependentSpecs x) (when (some (fn [px]
+                                                    (= spec px)) (dependent-specs* x))
+                                        x)
         (satisfies? SpecToClass x) (conform* spec (class-spec (spec->class x))))))
   (explain* [spec path via in x]
     (when (not (valid? spec x))
@@ -1179,7 +1179,6 @@
                :vs val-pred}))
 
 (defmethod parse-spec* 'clojure.spec/map-of [x]
-  (println "map-of:" x)
   (let [k (nth x 1)
         v (nth x 2)]
     (map-of (parse-spec k) (parse-spec v))))

@@ -79,6 +79,7 @@
          (c/pred-spec #'even?) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)])
          (c/parse-spec #'even?) (c/pred-spec #'even?) (c/pred-spec #'even?)
          (c/pred-spec #'even?) (c/parse-spec #'even?) (c/pred-spec #'even?)
+         (c/pred-spec #'integer?) (c/parse-spec #'even?) (c/pred-spec #'even?)
 
          (c/pred-spec #'any?) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
          (c/pred-spec #'any?) (c/pred-spec #'boolean?) (c/pred-spec #'boolean?)
