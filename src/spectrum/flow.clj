@@ -12,6 +12,7 @@
   (:import clojure.lang.Var))
 
 (declare recur?)
+(declare control-flow?)
 (declare find-binding)
 
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
@@ -21,7 +22,7 @@
 (s/def ::fn (s/nilable ::c/spect))
 
 (s/def ::args-spec ::c/spect)
-(s/def ::ret-spec ::c/spect)
+(s/def ::ret-spec (s/or :s ::c/spect :cf control-flow?))
 (s/def ::var (s/with-gen (s/spec var?)
                (fn []
                  (gen/elements [#'int? #'println #'str]))))
@@ -56,7 +57,7 @@
 (defn throwable? [x]
   (instance? Throwable x))
 
-(s/fdef throw? :args (s/cat :x throwable?) :ret boolean?)
+(s/fdef throw? :args (s/cat :x any?) :ret boolean?)
 (defn throw? [x]
   (instance? ThrowForm x))
 
@@ -758,7 +759,7 @@
      (cond
        (and (c/value? target-ret-spec) (map? (:v target-ret-spec))) (get-in target-ret-spec [:v k])
        (c/keys-spec? target-ret-spec) (or (get-in target-ret-spec [:req-un k])
-                                                    (get-in target-ret-spec [:opt-un k])))
+                                          (get-in target-ret-spec [:opt-un k])))
      (c/unknown (:form a) (a-loc a)))))
 
 (defmethod flow :keyword-invoke [a]
@@ -831,7 +832,7 @@
 
 (defmethod flow :deftype [a]
   (let [a (flow-walk a)]
-    (assoc a ::ret-spec (c/class-spec (j/resolve-class (:class.name a))))))
+    (assoc a ::ret-spec (c/class-spec (:class-name a)))))
 
 (defn analyze+flow [form]
   (flow (ana.jvm/analyze form)))
