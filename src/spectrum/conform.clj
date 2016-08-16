@@ -1062,7 +1062,9 @@
   (some (fn [key-type]
           (get-in ks [key-type key])) [:req :req-un :opt :opt-un]))
 
+(s/fdef conform-collof-coll :args (s/cat :collof ::spect :x coll?))
 (defn conform-collof-coll [collof x]
+  {:pre [(not (spect? x))]}
   (when (and (or (nil? (:kind collof))
                  (= (empty (:kind collof))
                     (empty x)))
@@ -1077,7 +1079,6 @@
       (instance? CollOfSpec x) (when (valid? s (:s x))
                                  x)
       (value? x) (conform-collof-coll this (:v x))
-      (and (known? x) (coll? x)) (conform-collof-coll this x)
       :else false))
   SpecToClass
   (spec->class [s]
