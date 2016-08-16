@@ -136,6 +136,7 @@
 (defn check-invoke-map [a]
   (print-once "check-invoke-map todo"))
 
+(s/fdef check-walk :args (s/cat :a ::flow/analysis) :ret ::check-errors)
 (defn check-walk [a]
   (mapcat (fn [c-name]
             (let [c (get a c-name)]
