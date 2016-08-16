@@ -595,6 +595,15 @@
     (assert (::ret-spec b))
     (assoc a ::ret-spec (::ret-spec b))))
 
+(defn deftype?
+  "True if this analysis is inside a deftype"
+  [a]
+  (if (= :deftype (:op a))
+    true
+    (if-let [a* (unwrap-a a)]
+      (recur a*)
+      false)))
+
 (defmethod flow :binding [a]
   {:post [(::ret-spec %)]}
   (let [a (flow-walk a)]
@@ -603,6 +612,8 @@
     (assoc a ::ret-spec (cond
                           (:init a) (-> a :init ::ret-spec)
                           (-> a :local (= :this)) (c/class-spec (:tag a))
+                          (and (= '__extmap (:name a)) (deftype? a)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
+                          (and (= '__meta (:name a)) (deftype? a)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
                           :else (c/unknown (:form a) (a-loc a))))))
 
 (s/fdef assoc-spec-bindings :args (s/cat :a ::analysis) :ret ::analysis)
