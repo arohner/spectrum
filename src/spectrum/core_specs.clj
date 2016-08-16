@@ -58,3 +58,4 @@
 (s/fdef clojure.core/symbol? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/var? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/vector :args (s/* any?) :ret vector?)
+(s/fdef clojure.core/vector? :args (s/cat :x any?) :ret boolean?)
