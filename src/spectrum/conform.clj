@@ -1144,6 +1144,46 @@
 (defn merge-keys [ks]
   (map->KeysSpec (apply merge-with merge ks)))
 
+(s/fdef conform-map-of :args (s/cat :m ::spect :v value?) :ret any?)
+(defn conform-map-of [map-of v]
+  (when (and (every? (fn [k]
+                       (valid? (:ks map-of) k)) (keys (:v v)))
+             (every? (fn [v]
+                       (valid? (:vs map-of) v)) (vals (:v v))))
+    v))
+
+(defrecord MapOf [ks vs]
+  Spect
+  (conform* [this x]
+    (cond
+      (instance? MapOf x) (when (and (valid? ks (:ks x))
+                                     (valid? vs (:vs x)))
+                                 x)
+      (value? x) (conform-map-of this x)
+      :else false))
+  SpecToClass
+  (spec->class [s]
+    clojure.lang.PersistentHashMap)
+  ;; FirstRest
+  ;; TODO need tuples
+  ;; (first* [this]
+  ;;   )
+  ;; (rest* [this]
+  ;;   this)
+  Truthyness
+  (truthyness [this]
+    :truthy))
+
+(defn map-of [key-pred val-pred]
+  (map->MapOf {:ks key-pred
+               :vs val-pred}))
+
+(defmethod parse-spec* 'clojure.spec/map-of [x]
+  (println "map-of:" x)
+  (let [k (nth x 1)
+        v (nth x 2)]
+    (map-of (parse-spec k) (parse-spec v))))
+
 (defmethod parse-spec* 'clojure.spec/merge [x]
   (merge-keys (map parse-spec (rest x))))
 
