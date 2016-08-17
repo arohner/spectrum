@@ -97,15 +97,19 @@ This section is for the curious, and potential contributors. Shouldn't be necess
 This contains a spec parser and a re-implementation of clojure.spec, except they work on literals and specs rather than normal clojure values.
 
 ```clojure
+(:require [spectrum.conform :as c])
 (c/conform (s/cat :x integer?) [3])
 => {:x 3}
 ```
 
 ```clojure
-(require '[spectrum.conform :as c])
 (c/parse-spec (s/+ integer?))
 ```
-Returns a defrecord, containing the parsed spec. This is basically a reimplementation of clojure.spec, except more data-driven. If you're not using spectrum, but want to do other analysis-y stuff with specs, you may find this useful.
+
+Returns a defrecord, containing the parsed spec. This is basically a
+reimplementation of clojure.spec, except more data-driven. If you're
+not using spectrum, but want to do other analysis-y stuff with specs,
+you may find `spectrum.conform/parse-spec` useful.
 
 ```
 (c/conform (s/+ integer?) [1 2 3])
@@ -143,15 +147,24 @@ annotations to every expression. For example:
 
 Because foo has a spec, we destructure the arguments vector, and
 assign the spec `#'int?` to `x`. In the `let`, we identify inc takes
-an integer (handwaving here) and returns an int, and so assign `y` the
-spec `int?`. Finally, the `y` in the body has the same spec as the y
+an long and returns a long, and so assign `y` the
+spec `long`. Finally, the `y` in the body has the same spec as the y
 in the `let`.
 
 ### spectrum.check
 
 Where the magic happens. It takes a flow, and performs checks. Returns a seq of ParseError records.
 
+The checking process just `c/conform`s the inputs to every function
+call, and the return value of functions. Using our previous
+example, `y` has the spec `long`, and (c/conform #'int? long) returns
+truthy, so the function checks.
+
 ## Transformers
+
+Spectrum has two kinds of transformers, to add more detail to types: invoke transformer and type transformer
+
+### Invoke
 
 clojure.spec doesn't have logic variables, which means some specs
 aren't as tight as they could be. Consider `map`, which takes a fn of
@@ -161,7 +174,7 @@ express in clojure.spec, the best we can do is specify the return type
 of map as `seq?`, with no reference to `seq of Y`, which is based on
 the return type of the mapping function.
 
-Spectrum introduces spec transformers. They are hooks into the
+Spectrum introduces transformers. They are hooks into the
 checking process. For example,
 
 ```clojure
@@ -169,14 +182,13 @@ checking process. For example,
 ```
 
 ann takes a var, and a fn of two arguments, the original fnspec, and
-the arguments to a particular invocation of the function. The
+the arguments to a specific invocation of the function. The
 transformer should return an updated fnspec, presumably with the more
-specific type. In this example, it would `clojure.core/update` the
+specific type. In this example, it would `update` the
 `:ret` spec from `seq?` to `(coll-of y?)`. Since map also requires the
 input type of `f` match the type of the seq passed in, we can
 similarly update the expected type of the second argument in
-`:arg`. Transforming happens before checking, so if the type becomes
-more strict, that new value will be used when checking.
+`:arg`. The updated spec will be used in place during the normal checking process.
 
 ### value
 
@@ -196,7 +208,8 @@ branch to take.  Using a spec transformer, we can make int? more
 specific
 
 Spect defines an instance transformer for int?:
-```
+
+```clojure
 (ann #'int? (instance-or [Long Integer Short Byte]))
 ```
 
@@ -216,17 +229,19 @@ nil)` will cause the code to take the else branch.
 ## Unknown
 
 Spectrum doesn't insist that every var be spec'd immediately. There is
-a specific spec, `unknown` used in places where we don't know type,
+a specific spec, `c/unknown` used in places where we don't know type,
 for example as the return value of an un-spec'd function. Passing
 unknown to a spec'd function is treated as a less severe error than a
-'real' type error, for example passing an int to a function expecting
-keyword?. Use configuration, described in the next section, to remove
+'real' type error, for example passing an `int` to a function expecting
+`keyword?`. Use configuration, described in the next section, to remove
 unknowns if desired.
 
 The return value of un-spec'd functions is `unknown`, and in general,
 unknown does not conform to any spec except `any?`.
 
 ## Configuration
+
+(Planned. TBD. Didn't mean to commit this, leaving for informational purposes)
 
 Spectrum has configurable warning levels. Every check 'error' has
 :type and :level, indicating the kind of error, and the author's
