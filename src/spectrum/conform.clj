@@ -606,7 +606,8 @@
 (defrecord PredSpec [pred form]
   Spect
   (conform* [spec x]
-    (let [ret (maybe-transform-pred spec x)
+    (let [ret (when (spect? x)
+                (maybe-transform-pred spec x))
           truthy (= :truthy (truthyness ret))]
       (cond
         truthy x
