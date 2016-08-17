@@ -738,15 +738,16 @@
   [pred-spec arg]
   (let [s (resolve-pred-spec pred-spec)
         v (:pred pred-spec)
-        t (data/get-transformer v)]
-    (if s
-      (let [ret (:ret s)
-            ret* (:ret (maybe-transform v (cat- [arg])))]
-        (if (not= ret ret*)
-          ret*
-          nil))
-      (when (and t (not s))
-        (println "warning: transformer but no spec for" v)))))
+        t (data/get-invoke-transformer v)]
+    (if (not (reject? arg))
+      (if s
+        (let [ret (:ret s)
+              ret* (:ret (maybe-transform v (cat- [arg])))]
+          (if (not= ret ret*)
+            ret*
+            nil))
+        (when (and t (not s))
+          (println "warning: transformer but no spec for" v))))))
 
 ;; Spec representing a java class. Probably won't need to use this
 ;; directly. Used in java interop, and other places where we don't
