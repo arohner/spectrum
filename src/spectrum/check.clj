@@ -146,7 +146,6 @@
                 (check* (with-a c a))))) (:children a)))
 
 (defmethod check* :default [a]
-  (print-once (str "TODO check " (:op a)))
   (check-walk a))
 
 (defmethod check* :invoke [a]
