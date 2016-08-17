@@ -138,12 +138,16 @@
 
 (s/fdef check-walk :args (s/cat :a ::flow/analysis) :ret ::check-errors)
 (defn check-walk [a]
-  (mapcat (fn [c-name]
-            (let [c (get a c-name)]
-              (if (sequential? c)
-                (mapcat (fn [x]
-                          (check* (with-a x a))) c)
-                (check* (with-a c a))))) (:children a)))
+  (try
+    (mapcat (fn [c-name]
+              (let [c (get a c-name)]
+                (if (sequential? c)
+                  (mapcat (fn [x]
+                            (check* (with-a x a))) c)
+                  (check* (with-a c a))))) (:children a))
+    (catch Exception e
+      (println "Exception at" (flow/a-loc-str a) (:form a) (.getMessage e))
+      (throw e))))
 
 (defmethod check* :default [a]
   (check-walk a))
