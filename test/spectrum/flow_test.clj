@@ -48,7 +48,7 @@
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)) dummy-analysis)
           :ret))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]) dummy-analysis)
+  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- ['clojure.core]) dummy-analysis)
           :ret
           c/known?))
 
@@ -67,12 +67,12 @@
 (deftest expression-return-specs
   (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))
     '(+ 1 2) (c/parse-spec #'number?)
-    '(if (even? (inc 0)) 1 "string") (c/or- [(c/value 1) (c/value "string")])
-    '(let [x 1] x) (c/value 1)
+    '(if (even? (inc 0)) 1 "string") (c/or- [1 "string"])
+    '(let [x 1] x) 1
     '(let [x (+ 1 2)] x) (c/parse-spec #'number?)
 
-    '(if (map? {:foo 3}) :then :else) (c/value :then)
-    '(if (not (map? {:foo 3})) :then :else) (c/value :else)))
+    '(if (map? {:foo 3}) :then :else) :then
+    '(if (not (map? {:foo 3})) :then :else) :else))
 
 (s/def ::integer int?)
 

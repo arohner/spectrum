@@ -195,11 +195,18 @@ similarly update the expected type of the second argument in
 In some cases, we can identify the type of an expression at compile time. For example,
 
 ```
+
+### values
+
+In some cases, we can simplify the type of an expression at compile time. For example,
+
+```clojure
 (s/fdef foo :args (s/cat :x int?) :ret keyword?)
 (defn foo [x]
   (if (int? x)
     :foo
     "bar"))
+```
 
 If we didn't know the value of the `if` test, the return spec of the `if`
 expression would be `(or keyword? string?)`. The type for `int?` is
@@ -217,14 +224,12 @@ In this case, `instance-or` is a higher-order function returning a
 transformer that checks for the argument being an instance of any of
 the specified classes. If we know the type of the argument passed to
 `int?` at compile time, and it conforms, the spec transformer returns
-`(value true)`. `value` is a spec unique to spectrum, which indicates a
-literal value. `(value true)` represents this expression will always
-return true, rather than boolean?, which could indicate true or false.
+just `true` as the type. Clojure values that aren't specs represent that literal value in  a type.
 
-Some expressions, such as `if`, recognize `(value true)` and will
+Some expressions, such as `if`, recognize literal 'types' and will
 replace the type of the `if` expression from `(or keyword? string?)`
-to just `keyword?`. Similarly, returning `(value false)` or `(value
-nil)` will cause the code to take the else branch.
+to just `keyword?`. Similarly, returning `false` or `nil` will cause
+the code to take the else branch.
 
 ## Unknown
 

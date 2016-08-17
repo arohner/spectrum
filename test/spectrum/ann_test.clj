@@ -31,28 +31,28 @@
 
 (deftest identical
   (testing "true"
-    (are [args] (= (c/value true) (:ret (transform-identical args)))
-      (c/cat- [(c/value 1) (c/value 1)])
-      (c/cat- [(c/pred-spec #'nil?) (c/value nil)])
+    (are [args] (= true (:ret (transform-identical args)))
+      (c/cat- [1 1])
+      (c/cat- [(c/pred-spec #'nil?) nil])
       (c/cat- [(c/pred-spec #'nil?) (c/pred-spec #'nil?)])
-      (c/cat- [(c/pred-spec #'false?) (c/value false)])))
+      (c/cat- [(c/pred-spec #'false?) false])))
   (testing "false"
-    (are [args] (= (c/value false) (:ret (transform-identical args)))
-      (c/cat- [(c/value 1) (c/value 0)])
-      (c/cat- [(c/pred-spec #'nil?) (c/value 3)])
-      (c/cat- [(c/pred-spec #'integer?) (c/value nil)])))
+    (are [args] (= false (:ret (transform-identical args)))
+      (c/cat- [1 0])
+      (c/cat- [(c/pred-spec #'nil?) 3])
+      (c/cat- [(c/pred-spec #'integer?) nil])))
   (testing "unknown"
     (are [args] (= (c/class-spec Boolean) (:ret (transform-identical args)))
       (c/cat- [(c/pred-spec #'nil?) (c/or- [(c/pred-spec #'nil?) (c/unknown nil)])])
       (c/cat- [(c/pred-spec #'false?) (c/class-spec Boolean)])
       (c/cat- [(c/pred-spec #'boolean?) (c/pred-spec #'boolean?)])
-      (c/cat- [(c/pred-spec #'boolean?) (c/value true)]))))
+      (c/cat- [(c/pred-spec #'boolean?) true]))))
 
 (deftest empty-seq
   (testing "true"
     (are [arg] (= true (ann/empty-seq? arg))
-      (c/value [])
-      (c/value nil)
+      []
+      nil
       (c/pred-spec #'nil?)))
   (testing "false"
     (are [arg] (= false (ann/empty-seq? arg))
@@ -61,33 +61,33 @@
 (deftest map-tests
   (testing "equals"
     (are [args expected] (= expected (:ret (c/maybe-transform #'map args)))
-      (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
-      (c/cat- [(c/get-var-fn-spec #'identity) (c/pred-spec #'nil?)]) (c/value [])
+      (c/cat- [(c/get-var-fn-spec #'identity) nil]) []
+      (c/cat- [(c/get-var-fn-spec #'identity) (c/pred-spec #'nil?)]) []
       (c/cat- [(c/get-var-fn-spec #'identity) (c/coll-of (c/pred-spec #'keyword?))]) (c/coll-of (c/pred-spec #'keyword?))
 
-      (c/cat- [(c/get-var-fn-spec #'vector) (c/value [(c/value 1) (c/value :foo)])]) (c/coll-of (c/pred-spec #'vector?))
+      (c/cat- [(c/get-var-fn-spec #'vector) [1 :foo]]) (c/coll-of (c/pred-spec #'vector?))
       ))
 
   (testing "fail"
     (are [args] (= c/reject (:ret (c/maybe-transform #'map args)))
-      (c/cat- [(c/get-var-fn-spec #'inc) (c/value [(c/value :foo)])])
+      (c/cat- [(c/get-var-fn-spec #'inc) [:foo]])
       (c/cat- [(c/get-var-fn-spec #'inc) (c/coll-of (c/pred-spec #'keyword?))])
       )))
 
 (deftest filter-tests
   (testing "equals"
     (are [args expected] (= expected (:ret (c/maybe-transform #'filter args)))
-      (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
+      (c/cat- [(c/get-var-fn-spec #'identity) nil]) []
       (c/cat- [(c/get-var-fn-spec #'even?) (c/coll-of (c/pred-spec #'integer?))]) (c/coll-of (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)] )))))
 
 (deftest nil?-works
   (testing "true"
-    (are [args] (= (c/value true) (:ret (c/maybe-transform #'nil? args)))
-      (c/cat- [(c/value nil)])))
+    (are [args] (= true (:ret (c/maybe-transform #'nil? args)))
+      (c/cat- [nil])))
   (testing "false"
-    (are [args] (= (c/value false) (:ret (c/maybe-transform #'nil? args)))
-      (c/cat- [(c/value false)])
-      (c/cat- [(c/value 71)])
+    (are [args] (= false (:ret (c/maybe-transform #'nil? args)))
+      (c/cat- [false])
+      (c/cat- [71])
       (c/cat- [(c/coll-of (c/pred-spec #'integer?))])))
   (testing "ambigous"
     (are [args] (= (c/pred-spec #'boolean?) (:ret (c/maybe-transform #'nil? args)))

@@ -29,8 +29,8 @@
                        (if inst-cls
                          (if (c/known? inst-spec)
                            (if (isa? inst-cls c)
-                             (assoc spect :ret (c/value true))
-                             (assoc spect :ret (c/value false)))
+                             (assoc spect :ret true)
+                             (assoc spect :ret false))
                            spect)
                          (do
                            (println "Can't spec->class:" inst-spec "Consider using ann/instance-transformer" )
@@ -59,13 +59,12 @@
               (class arg))]
       (if c
         (if (isa? c cls)
-          (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
+          (assoc spect :ret true)
+          (assoc spect :ret false))
         spect))))
 
 (defn satisfies-transformer [protocol]
   (fn [spect args-spect]
-    {:post [(do (println "satisfies:" args-spect "=>" %) true)]}
     (let [arg (if (satisfies? c/FirstRest args-spect)
                 (c/first* args-spect)
                 args-spect)
@@ -74,23 +73,20 @@
               (class arg))]
       (if c
         (if (satisfies? protocol c)
-          (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
+          (assoc spect :ret true)
+          (assoc spect :ret false))
         spect))))
 
 (defn instance-or
   "spec-transformer for (or (instance? a) (instance? b)...) case. classes is a seq of classes."
   [classes]
   (fn [spect args-spect]
-    (let [c (if (c/spect? args-spect)
-              (c/spec->class (if (c/regex? args-spect)
-                               (c/first* args-spect)
-                               args-spect))
-              (class args-spect))]
+    (let [arg (c/first* args-spect)
+          c (c/spec->class arg)]
       (if c
         (if (some (fn [cls] (isa? c cls)) classes)
-          (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
+          (assoc spect :ret (c/and-spec [arg (c/or- (map c/class-spec classes))]))
+          (assoc spect :ret false))
         spect))))
 
 (def pred->class
@@ -145,9 +141,9 @@
   [s]
   (if (c/pred-spec? s)
     (condp = (:pred s)
-      #'nil? (c/value nil)
-      #'false? (c/value false)
-      #'true? (c/value true)
+      #'nil? nil
+      #'false? false
+      #'true? true
       s)
     s))
 
@@ -158,10 +154,10 @@
       (if (not= :ambiguous truthyness)
         (let [x (maybe-convert-value x)]
           (assoc spect :ret (cond
-                              (= :truthy truthyness) (c/value false)
-                              (c/value? x) (if (= val (:v x))
-                                             (c/value true)
-                                             (c/value false))
+                              (= :truthy truthyness) false
+                              (c/value? x) (if (= val x)
+                                             true
+                                             false)
                               :else (:ret spect))))
         spect))))
 
@@ -173,27 +169,21 @@
              (let [x (c/first* args-spec)
                    x (maybe-convert-value x)]
                (if (c/value? x)
-                 (assoc spect :ret (c/value (not (:v x))))
+                 (assoc spect :ret (not x))
                  spect))))
-
-(defn get-cat-vals
-  "Given a Cat of Value, return the raw vals"
-  [c]
-  (mapv :v c))
 
 (ann #'select-keys (fn [spect args-spect]
                      (let [m (c/first* args-spect)
                            select (c/second* args-spect)]
                        (if (and (c/keys-spec? m)
                                 (c/value? select)
-                                (coll? (:v select))
-                                (every? (fn [v] (c/conform #'keyword? v)) (:v select)))
-                         (let [vals (get-cat-vals (:v select))]
-                           (let [ret (c/keys-spec (select-keys (:req m) vals)
-                                                  (select-keys (:req-un m) vals)
-                                                  (select-keys (:opt m) vals)
-                                                  (select-keys (:opt-un m) vals))]
-                             (assoc spect :ret ret)))
+                                (coll? select)
+                                (every? (fn [v] (c/conform #'keyword? v)) select))
+                         (let [ret (c/keys-spec (select-keys (:req m) select)
+                                                (select-keys (:req-un m) select)
+                                                (select-keys (:opt m) select)
+                                                (select-keys (:opt-un m) select))]
+                           (assoc spect :ret ret))
                          spect))))
 
 (ann (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
@@ -203,11 +193,11 @@
              x (maybe-convert-value x)
              y (maybe-convert-value y)
              ret (cond
-                   (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
-                                                     (c/value true)
-                                                     (c/value false))
+                   (and (c/value? x) (c/value? y)) (if (= x y)
+                                                     true
+                                                     false)
                    (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
-                        (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
+                        (not= (c/truthyness x) (c/truthyness y))) false)]
 
          (if ret
            (assoc spect :ret ret)
@@ -230,7 +220,7 @@
        (let [coll (c/first* args-spect)
              key (c/second* args-spect)
              ret (cond
-                   (and (c/keys-spec? coll) (c/value? key)) (or (c/keys-get coll (:v key)) (c/pred-spec #'any?))
+                   (and (c/keys-spec? coll) (c/value? key)) (or (c/keys-get coll key) (c/pred-spec #'any?))
                    :else (:ret spect))]
          (assoc spect :ret ret))))
 
@@ -252,8 +242,8 @@
 (defn empty-seq?
   "True if this spect represents the empty seq, or a value that (seq x) would return nil on"
   [s]
-  (or (c/valid? (c/value []) s)
-      (c/valid? (c/value nil) s)
+  (or (c/valid? [] s)
+      (c/valid? nil s)
       (c/valid? (c/pred-spec #'nil?) s)))
 
 (defn filter-fn [spect args-spect]
@@ -278,7 +268,7 @@
           :else (do
                   ;;(println "ann filter don't know how to check:" f)
                   spect))
-        (assoc spect :ret (c/value (list)))))))
+        (assoc spect :ret (list))))))
 
 (ann #'filter ann-filter)
 
@@ -292,7 +282,7 @@
                         (every? c/first-rest? colls) (c/cat- (map c/first* colls))
                         (every? c/value? colls) (let [colls (map :v colls)]
                                                             (when (seq colls)
-                                                              (c/cat- (map (fn [p] (c/value (first (:v p)))) colls))))
+                                                              (c/cat- (map (fn [p] (first p)) colls))))
                         :else (c/unknown args-spect))]
       (if (every? (fn [c] (not (empty-seq? c))) colls)
         (if (c/valid? (:args f) invoke-args)
@@ -300,7 +290,7 @@
             (assoc spect :ret (c/coll-of (:ret (c/maybe-transform v invoke-args))))
             spect)
           (assoc spect :ret c/reject))
-        (assoc spect :ret (c/value []))))))
+        (assoc spect :ret [])))))
 
 ;; [[X->Y] [X] -> [Y]]
 (defn map-ann [spect args-spect]
@@ -316,7 +306,7 @@
           :else (do
                   (println "ann map don't know how to check:" f)
                   spect))
-        (assoc spect :ret (c/value (list)))))))
+        (assoc spect :ret (list))))))
 
 (ann #'map map-ann)
 
@@ -332,7 +322,7 @@
                         (every? c/first-rest? colls) (c/cat- (map c/first* colls))
                         (every? c/value? colls) (let [colls (map :v colls)]
                                                             (when (seq colls)
-                                                              (c/cat- (map (fn [p] (c/value (first (:v p)))) colls))))
+                                                              (c/cat- (map (fn [p] (first p)) colls))))
                         :else (do
                                 (println "mapcat-fn args unknown:" colls)
                                 (c/unknown args-spect)))]
@@ -347,7 +337,7 @@
           (do
             ;;(println "mapcat reject""" (:ret f))
             (assoc spect :ret c/reject)))
-        (assoc spect :ret (c/value []))))))
+        (assoc spect :ret [])))))
 
 ;; [[X->Y] [X] -> [Y]]
 (defn mapcat-ann [spect args-spect]
@@ -363,7 +353,7 @@
           :else (do
                   ;;(println "ann map don't know how to check:" f)
                   spect))
-        (assoc spect :ret (c/value (list)))))))
+        (assoc spect :ret (list))))))
 
 (ann #'mapcat mapcat-ann)
 

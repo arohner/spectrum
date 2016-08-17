@@ -25,7 +25,7 @@
 (defn resolve-class
   [sym]
   (try
-    (clojure.lang.RT/classForName (str sym))
+    (clojure.lang.RT/classForName (pr-str sym))
     (catch ClassNotFoundException e
       nil)))
 

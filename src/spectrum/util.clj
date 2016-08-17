@@ -3,15 +3,9 @@
             [clojure.spec :as s])
   (:import clojure.lang.Var))
 
-(defn literal? [x]
-  (let [a (ana.jvm/analyze x)]
-    (and (:literal? a) (not= :unknown (:type a)))))
-
 (defn fn-literal? [x]
   (and (seq? x)
-       (= 'fn* (first x))
-       (let [a (ana.jvm/analyze x)]
-         (= :fn (:op a)))))
+       (= 'fn* (first x))))
 
 (s/fdef var-name :args (s/cat :v var?) :ret symbol?)
 (defn var-name [^Var v]

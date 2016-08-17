@@ -41,7 +41,7 @@
          (s/* (s/alt :int integer? :str string?))))
 
   (testing "literals"
-    (is (= (c/value 3) (c/parse-spec 3)))
+    (is (= 3 (c/parse-spec 3)))
     (is (c/value? (c/parse-spec '[integer? integer?]))))
 
   (testing "keys"
@@ -52,7 +52,6 @@
       (s/merge (s/keys :req-un [::integer]) (s/keys :req-un [::even-int]))
       {::integer 3})
 
-    (is (= (c/value 3) (-> {::integer 3} c/parse-spec :req ::integer)))
     (is (-> (c/parse-spec (s/keys :req-un [::even-int])) :req-un :even-int)))
   (testing "fn-spec"
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?) :ret boolean?))]
@@ -68,9 +67,8 @@
   (testing "should return val"
     (are [spec val] (= val (c/conform spec val))
       (c/pred-spec #'integer?) 3
-      (c/pred-spec #'integer?) (c/value 3)
-      (c/pred-spec #'symbol?) (c/value 'foo)
-      (c/value 1) (c/value 1)
+      (c/pred-spec #'symbol?) 'foo
+      1 1
       (c/pred-spec #'integer?) (c/pred-spec #'integer?)
       (c/pred-spec #'integer?) (c/pred-spec #'integer?)
       (c/pred-spec #'integer?) (c/parse-spec (s/and integer? even?))
@@ -84,7 +82,10 @@
       (c/pred-spec #'number?) (c/class-spec Long)
       (c/class-spec Long) 3
       (c/pred-spec #'int?) (c/class-spec Long)
-      (c/class-spec String) (c/class-spec String)))
+      (c/class-spec String) (c/class-spec String)
+      (c/class-spec clojure.lang.IPersistentMap) {:file "foo" :line 1}
+      (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
+      (c/or- [(c/pred-spec #'map?) (c/pred-spec #'associative?) (c/pred-spec #'nil?)]) (c/keys-spec {} {} {} {})))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))
@@ -167,11 +168,11 @@
          (c/cat- [(c/class-spec java.util.concurrent.Callable)]) [(c/and-spec [(c/pred-spec #'fn?) (c/pred-spec #'ifn?)])] [(c/and-spec [(c/pred-spec #'fn?) (c/pred-spec #'ifn?)])]
 
          (s/coll-of int?) (c/coll-of (c/pred-spec #'int?)) (c/coll-of (c/pred-spec #'int?))
-         (c/or- [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
+         (c/or- [(c/pred-spec #'int?) true]) (c/pred-spec #'int?) (c/pred-spec #'int?)
 
          (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
 
-         (c/and-spec [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
+         (c/and-spec [(c/pred-spec #'int?) true]) (c/pred-spec #'int?) (c/pred-spec #'int?)
 
          (c/cat- []) [] []
 
@@ -182,8 +183,8 @@
          (c/coll-of (c/pred-spec #'int?)) [] []
 
          (c/class-spec Object) (c/pred-spec #'nil?) (c/pred-spec #'nil?)
-         (c/class-spec Object) (c/value nil) (c/value nil)
-         (c/cat- [(c/class-spec Object) (c/class-spec Object)]) [(c/pred-spec #'nil?) (c/value nil)] [(c/pred-spec #'nil?) (c/value nil)]
+         (c/class-spec Object) nil nil
+         (c/cat- [(c/class-spec Object) (c/class-spec Object)]) [(c/pred-spec #'nil?) nil] [(c/pred-spec #'nil?) nil]
          (c/pred-spec #'coll?) [1 2 :foo] [1 2 :foo]
 
          (c/pred-spec #'seqable?) (c/class-spec clojure.lang.PersistentHashMap) (c/class-spec clojure.lang.PersistentHashMap)
@@ -210,19 +211,19 @@
       (s/cat :x integer? :y keyword?) 3
       (s/alt :int integer? :str string?) ["foo" 3]
       (s/cat :x keyword?) [3]
-      (s/cat :x keyword?) [(c/value 3)]
+      (s/cat :x keyword?) [3]
       ;; (s/& (s/+ integer?) #(even? (count %))) [1]
 
       (c/class-spec String) 3
       (c/class-spec Integer) 3
 
-      (c/value 1) (c/value 2)
+      1 2
 
       (s/keys :req [::integer] :opt [::string]) {::integer 3 ::string 5} ;; should fail because string doesn't conform
       (s/keys :req [::integer] :opt [::string]) {::string "foo"}
 
       (s/coll-of int?) (c/parse-spec (s/coll-of string?))
-      (c/pred-spec #'string?) (c/or- [(c/class-spec Number) (c/value :foo)])
+      (c/pred-spec #'string?) (c/or- [(c/class-spec Number) :foo])
       (c/coll-of (c/pred-spec #'int?)) (c/unknown '(mapv flow as))
       (c/coll-of (c/pred-spec #'int?)) nil)))
 
@@ -253,8 +254,8 @@
     (c/pred-spec #'false?) :falsey
     (c/pred-spec #'true?) :truthy
 
-    (c/value true) :truthy
-    (c/value false) :falsey
+    true :truthy
+    false :falsey
     (c/class-spec Integer) :truthy
     ))
 

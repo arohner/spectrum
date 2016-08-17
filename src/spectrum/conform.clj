@@ -526,9 +526,7 @@
 (defmulti parse-spec* #'parse-spec*-dispatch)
 
 (defmethod parse-spec* :literal [x]
-  (if (spect? x)
-    x
-    (value x)))
+  x)
 
 (defmethod parse-spec* :class [x]
   (class-spec x))
@@ -559,42 +557,11 @@
 (defmethod parse-spec* :keyword [x]
   (if (and (qualified-keyword? x) (s/get-spec x))
     (parse-spec (s/get-spec x))
-    (value x)))
-
-(defrecord Value [v]
-  Spect
-  (conform* [this x]
-    (if (and (value? x) (= (:v this) (:v x)))
-      x
-      false))
-  SpecToClass
-  (spec->class [this]
-    (class (:v this)))
-  Truthyness
-  (truthyness [this]
-    (if v
-      :truthy
-      :falsey)))
-
-(s/fdef value :args (s/cat :x any?) :ret value?)
-(defn value
-  "spec representing a single value"
-  [v]
-  (map->Value {:v v}))
+    x))
 
 (s/fdef value? :args (s/cat :x any?) :ret boolean?)
 (defn value? [s]
-  (instance? Value s))
-
-(s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
-(defn valuey? [s]
-  "true if s is a value with a truthy value"
-  (and (value? s) (boolean (:v s))))
-
-(defn maybe-strip-value [x]
-  (if (value? x)
-    (:v x)
-    x))
+  (not (spect? s)))
 
 (s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
 (defn conformy?
@@ -763,9 +730,9 @@
       (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
                                (when (isa? v-class cls)
                                  v))
-      (class? v) (isa? cls v)
-      (j/primitive? v) (isa? cls (j/primitive->class v))
-      (literal? v) (when (isa? cls (class v))
+      (class? v) (isa? v cls)
+      (j/primitive? v) (isa? (j/primitive->class v) cls)
+      (value? v) (when (isa? (class v) cls)
                      v)
       :else false))
   WillAccept
@@ -793,7 +760,6 @@
 
 (defmethod parse-spec* :fn-sym [x]
   (let [v (resolve x)]
-    (assert v)
     (map->PredSpec {:pred v
                     :form (symbol (str (.ns ^Var v)) (str (.sym ^Var v)))})))
 
@@ -804,8 +770,8 @@
 (defn parse-spec-seq [x]
   (let [v (mapv parse-spec* x)]
     (if (list? x)
-      (value (list* v))
-      (value (into (or (empty x) []) v)))))
+      (list* v)
+      (into (or (empty x) []) v))))
 
 (defn parse-spec-map [x]
   (let [state (reduce (fn [state [k v]]
@@ -944,7 +910,7 @@
 
 (s/fdef and-spec :args (s/cat :forms (s/coll-of ::spect)) :ret ::spect)
 (defn and-spec [x]
-  (let [ps (remove valuey? x)]
+  (let [ps (filter spect? x)]
     (cond
       (>= (count ps) 2) (map->AndSpec {:ps ps})
       :else (first ps))))
@@ -1187,9 +1153,9 @@
 (s/fdef conform-map-of :args (s/cat :m ::spect :v value?) :ret any?)
 (defn conform-map-of [map-of v]
   (when (and (every? (fn [k]
-                       (valid? (:ks map-of) k)) (keys (:v v)))
+                       (valid? (:ks map-of) k)) (keys v))
              (every? (fn [v]
-                       (valid? (:vs map-of) v)) (vals (:v v))))
+                       (valid? (:vs map-of) v)) (vals v)))
     v))
 
 (defrecord MapOf [ks vs]
@@ -1227,7 +1193,7 @@
   (merge-keys (map parse-spec (rest x))))
 
 (defmethod parse-spec* 'clojure.spec/conformer [x]
-  (value true))
+  true)
 
 (extend-protocol Spect
   clojure.spec.Spec
@@ -1269,20 +1235,19 @@
     Object))
 
 (defn re-conform [spec data]
-  (let [data (maybe-strip-value data)]
-    (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
-      (let [[x & xs] (if (:ps data)
-                       (:ps data)
-                       data)]
-        (if (or (and (not (spect? data)) (empty? data))
-                (and (regex? data) (nil? (first* data))))
-          (if (accept-nil? spec)
-            (return spec)
-            ::invalid)
-          (if-let [dp (derivative spec x)]
-            (recur dp xs)
-            ::invalid)))
-      ::invalid)))
+  (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
+    (let [[x & xs] (if (:ps data)
+                     (:ps data)
+                     data)]
+      (if (or (and (not (spect? data)) (empty? data))
+              (and (regex? data) (nil? (first* data))))
+        (if (accept-nil? spec)
+          (return spec)
+          ::invalid)
+        (if-let [dp (derivative spec x)]
+          (recur dp xs)
+          ::invalid)))
+    ::invalid))
 
 (defn re-explain [spec path via in data]
   (loop [spec spec
@@ -1303,7 +1268,7 @@
   (explain* [spec path via in x]
     (re-explain spec path via in x)))
 
-(def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
+(def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) true false (unknown nil)]))
 
 (defn conform-strategy [spec args]
   (let [spec-or (or-spec? spec)
@@ -1417,9 +1382,6 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
 (defmethod print-method RegexAlt [v ^Writer w]
   (regex-print-method "Alt" v w))
-
-(defmethod print-method Value [v ^Writer w]
-  (.write w (format "#Value[%s]" (print-str (:v v)))))
 
 (defmethod print-method PredSpec [v ^Writer w]
   (.write w (format "#Pred[%s]" (print-str (:form v)))))
