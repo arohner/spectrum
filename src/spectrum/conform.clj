@@ -644,7 +644,7 @@
 (defrecord FnSpec [args ret fn]
   Spect
   (conform* [this x]
-    (if (and (fn-spec? x)
+    (if (and (instance? FnSpec x)
              (conform (:args this) (:args x))
              (conform (:ret this) (:ret x)))
       x
