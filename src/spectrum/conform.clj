@@ -17,11 +17,9 @@
 
 (declare and-spec?)
 (declare class-spec?)
-(declare fn-spec?)
 (declare keys-spec?)
 (declare or-spec?)
 (declare pred-spec?)
-(declare spect?)
 (declare unknown?)
 (declare regex?)
 
@@ -305,7 +303,7 @@
 
 (s/fdef cat- :args (s/cat :ps (s/coll-of any?)))
 (defn cat- [ps]
-  (new-regex-cat (map parse-spec ps) nil nil []))
+  (new-regex-cat ps nil nil []))
 
 (defrecord RegexCat [ps ks forms ret]
   Regex
@@ -359,7 +357,7 @@
         (first* p)
         p)))
   (rest* [this]
-    (let [dx (derivative this (parse-spec (will-accept this)))]
+    (let [dx (derivative this (will-accept this))]
       (if (not (accept? dx))
         dx
         nil)))
@@ -407,7 +405,7 @@
   (first* [this]
     (first ps))
   (rest* [this]
-    (derivative this (parse-spec (will-accept this))))
+    (derivative this (will-accept this)))
   WillAccept
   (will-accept [this]
                (will-accept (first ps)))
