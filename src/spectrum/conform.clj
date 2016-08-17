@@ -614,7 +614,7 @@
         (and (not (spect? x)) (conform-args? spec x)) (when ((:pred spec) x)
                                                         x)
         (class-spec? x) (when-let [pred-class (spec->class spec)]
-                          (when (isa? pred-class (:cls x))
+                          (when (isa? (:cls x) pred-class)
                             x))
         (and (satisfies? DependentSpecs x) (some (fn [px] (= spec px)) (dependent-specs* x))) x
         (satisfies? SpecToClass x) (conform* spec (class-spec (spec->class x))))))
