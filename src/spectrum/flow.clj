@@ -146,7 +146,11 @@
               a)) a (:children a)))
 
 (defn flow-walk [a]
-  (walk-a flow a))
+  (try
+    (walk-a flow a)
+    (catch Throwable t
+      (println "while walking:" (a-loc-str a) (:form a))
+      (throw t))))
 
 (defmethod flow :default [a]
   {:post [(::ret-spec %)]}
