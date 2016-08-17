@@ -617,9 +617,7 @@
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? pred-class (:cls x))
                             x))
-        (satisfies? DependentSpecs x) (when (some (fn [px]
-                                                    (= spec px)) (dependent-specs* x))
-                                        x)
+        (and (satisfies? DependentSpecs x) (some (fn [px] (= spec px)) (dependent-specs* x))) x
         (satisfies? SpecToClass x) (conform* spec (class-spec (spec->class x))))))
   (explain* [spec path via in x]
     (when (not (valid? spec x))
