@@ -693,6 +693,7 @@
 (defn fn-spec? [x]
   (instance? FnSpec x))
 
+(s/fdef fn-spec :args (s/cat :args (s/nilable ::spect) :ret (s/nilable ::spect) :fn (s/nilable ::spect)))
 (defn fn-spec [args ret fn]
   (map->FnSpec {:args args
                 :ret ret
