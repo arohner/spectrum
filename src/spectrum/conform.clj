@@ -303,7 +303,7 @@
                       :ret ret}))
     reject))
 
-(s/fdef cat- :args (s/cat :ps (s/coll-of ::spect)))
+(s/fdef cat- :args (s/cat :ps (s/coll-of any?)))
 (defn cat- [ps]
   (new-regex-cat (map parse-spec ps) nil nil []))
 
@@ -533,11 +533,17 @@
 (defmethod parse-spec* :class [x]
   (class-spec x))
 
+(defn maybe-resolve [x]
+  (try
+    (resolve x)
+    (catch Exception e
+      nil)))
+
 (defn parse-spec [x]
   (try
     (cond
       (spect? x) x
-      (and (symbol? x) (resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
+      (and (symbol? x) (maybe-resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
       (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
       (= ::s/nil x) ::s/nil
       (s/spec? x) (parse-spec* (s/form x))
@@ -606,8 +612,8 @@
         truthy x
         (= #'any? pred) x
         (and (pred-spec? x) (= pred (:pred x))) x
-        (and (value? x) (conform-args? spec x)) (when ((:pred spec) (:v x))
-                                                  x)
+        (and (not (spect? x)) (conform-args? spec x)) (when ((:pred spec) x)
+                                                        x)
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? pred-class (:cls x))
                             x))
@@ -992,7 +998,8 @@
   (filter* (fn [p]
              (= p pred)) s))
 
-(defn conform-keys [this x]
+(s/fdef conform-keys-keys :args (s/cat :s ::keys-spec :x ::keys-spec) :ret any?)
+(defn conform-keys-keys [this x]
   (when (and
          (keys-spec? x)
          ;; x keys conform to spec
@@ -1009,6 +1016,24 @@
                         (if (s/get-spec key)
                           (valid? (parse-spec key) val)
                           true)))))
+    x))
+
+(defn conform-keys-value [s x]
+  (when (and
+         (map? x)
+         ;; x keys conform to spec
+         (every? (fn [[key spec]]
+                   (valid? spec (get x key))) (:req s))
+         (every? (fn [[key spec]]
+                   (valid? spec (get x (strip-namespace key)))) (:req-un s))
+         (every? (fn [[key spec]]
+                   (if-let [v (get x key)]
+                     (valid? spec v)
+                     true)) (:opt s))
+         (every? (fn [[key spec]]
+                   (if-let [v (get x (strip-namespace key))]
+                     (valid? spec v)
+                     true)) (:req-un s)))
     x))
 
 (defn explain-keys [{:keys [req req-un] :as spec} path via in x]
@@ -1030,7 +1055,9 @@
 (defrecord KeysSpec [req req-un opt opt-un]
   Spect
   (conform* [this x]
-    (conform-keys this x))
+    (cond
+      (keys-spec? x) (conform-keys-keys this x)
+      (not (spect? x)) (conform-keys-value this x)))
   (explain* [spec path via in x]
     (explain-keys spec path via in x))
   WillAccept
@@ -1046,6 +1073,9 @@
 (s/fdef keys-spec :args (s/cat :x any?) :ret boolean?)
 (defn keys-spec? [x]
   (instance? KeysSpec x))
+
+(s/def ::keys-spec keys-spec?)
+
 
 (s/fdef keys-spec :args (s/cat :req (s/nilable (s/map-of qualified-keyword? ::spect))
                                :req-un (s/nilable (s/map-of keyword? ::spect))
@@ -1068,7 +1098,7 @@
   (some (fn [key-type]
           (get-in ks [key-type key])) [:req :req-un :opt :opt-un]))
 
-(s/fdef conform-collof-coll :args (s/cat :collof ::spect :x coll?))
+(s/fdef conform-collof-coll :args (s/cat :collof ::spect :x (s/nilable coll?)))
 (defn conform-collof-coll [collof x]
   {:pre [(not (spect? x))]}
   (when (and (or (nil? (:kind collof))
@@ -1084,7 +1114,7 @@
     (cond
       (instance? CollOfSpec x) (when (valid? s (:s x))
                                  x)
-      (value? x) (conform-collof-coll this (:v x))
+      (not (spect? x)) (conform-collof-coll this x)
       :else false))
   SpecToClass
   (spec->class [s]
@@ -1317,6 +1347,7 @@
 (defmethod conform-compound :simple [spec args]
   (conform* spec args))
 
+(s/fdef conform :args (s/cat :spec (s/or :spec s/spec? :re s/regex? :spect ::spect) :args any?) :ret any?)
 (defn conform
   "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, not variables that contain values.
 
@@ -1328,9 +1359,8 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
  "
   [spec args]
   (try
-    (let [spec (parse-spec spec)
-          args (parse-spec args)
-          t (:transformer spec)
+    (let [t (:transformer spec)
+          spec (parse-spec spec)
           spec (if t
                  (t spec args)
                  spec)]
