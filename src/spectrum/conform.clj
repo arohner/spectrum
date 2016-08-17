@@ -1369,7 +1369,7 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
           nil
           val)
         ::invalid))
-    (catch IllegalArgumentException e
+    (catch Throwable e
       (println "conform: kaboom:" spec args (.getMessage e))
       (throw e))))
 
