@@ -3,7 +3,7 @@
             [clojure.spec.gen :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.util :refer (fn-literal? literal? print-once strip-namespace var-name)]
+            [spectrum.util :refer (fn-literal? print-once strip-namespace var-name)]
             [spectrum.data :as data]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)
