@@ -684,7 +684,10 @@
       false))
   (explain* [spec path via in x]
     (when-not (valid? spec x)
-      [{:path path :pred spec :val x :via via :in in}])))
+      [{:path path :pred spec :val x :via via :in in}]))
+  SpecToClass
+  (spec->class [this]
+    clojure.lang.IFn))
 
 (s/fdef fn-spec? :args (s/cat :x any?) :ret boolean?)
 (defn fn-spec? [x]
