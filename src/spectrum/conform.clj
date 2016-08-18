@@ -419,6 +419,9 @@
   (dependent-specs* [this]
     #{(pred-spec #'seq?) (pred-spec #'seqable?)}))
 
+(defn regex-seq? [x]
+  (instance? RegexSeq x))
+
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
     (let [pks (->> (map vector ps

@@ -228,8 +228,8 @@
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
-  (is (instance? spectrum.conform.RegexSeq (c/rest* (c/parse-spec (s/* integer?)))))
-  (is (instance? spectrum.conform.RegexCat (c/rest* (c/parse-spec (s/+ integer?)))))
+  (is (c/regex-seq? (c/rest* (c/parse-spec (s/* integer?)))))
+  (is (c/cat-spec? (c/rest* (c/parse-spec (s/+ integer?)))))
   (is (nil? (c/rest* (c/cat- []))))
 
   (is (= (c/pred-spec #'string?) (c/second* (c/cat- [(c/class-spec String) (c/parse-spec #'string?)]))))
