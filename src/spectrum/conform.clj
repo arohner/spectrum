@@ -275,13 +275,13 @@
 (declare map->RegexCat)
 
 (s/def :cat/ks (s/nilable (s/coll-of keyword?)))
-(s/def :cat/ps (s/coll-of ::spect))
+(s/def :cat/ps (s/coll-of any?))
 (s/def :cat/fs (s/nilable coll?))
 (s/def :cat/ret coll?)
 
 (s/fdef map->RegexCat :args (s/cat :x (s/keys :opt-un [:cat/ks :cat/ps :cat/fs] :req-un [:cat/ret])) :ret regex?)
 
-(s/fdef new-regex-cat :args (s/cat :ps (s/nilable (s/coll-of (s/nilable ::spect))) :ks (s/nilable (s/coll-of keyword?)) :fs (s/nilable coll?) :ret coll?) :ret regex?)
+(s/fdef new-regex-cat :args (s/cat :ps (s/nilable (s/coll-of any?)) :ks (s/nilable (s/coll-of keyword?)) :fs (s/nilable coll?) :ret coll?) :ret regex?)
 
 (defn new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
   (if (and ps

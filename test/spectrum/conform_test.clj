@@ -67,7 +67,7 @@
 (deftest conform-works
   (testing "should return val"
     (are [spec val] (= val (c/conform spec val))
-      (c/pred-spec #'integer?) 3
+      (c/pred-spec #'integer?) (c/value 3)
       (c/pred-spec #'integer?) (c/value 3)
       (c/pred-spec #'symbol?) (c/value 'foo)
       (c/value 1) (c/value 1)
@@ -82,7 +82,7 @@
       (c/pred-spec #'any?) (c/pred-spec #'integer?)
       (c/pred-spec #'int?) (c/pred-spec #'int?)
       (c/pred-spec #'number?) (c/class-spec Long)
-      (c/class-spec Long) 3
+      (c/class-spec Long) (c/value 3)
       (c/pred-spec #'int?) (c/class-spec Long)
       (c/class-spec String) (c/class-spec String)))
 
