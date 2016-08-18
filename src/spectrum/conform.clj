@@ -587,6 +587,11 @@
 (defn value? [s]
   (instance? Value s))
 
+(defn raw-value?
+  "A normal clojure value that isn't a spect, and isn't Value"
+  [x]
+  (not (spect? x)))
+
 (s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
 (defn valuey? [s]
   "true if s is a value with a truthy value"
@@ -678,7 +683,7 @@
 (defrecord FnSpec [args ret fn]
   Spect
   (conform* [this x]
-    (if (and (fn-spec? x)
+    (if (and (instance? FnSpec x)
              (conform (:args this) (:args x))
              (conform (:ret this) (:ret x)))
       x
