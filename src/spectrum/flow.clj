@@ -524,13 +524,13 @@
         v (:var instance)]
     (and (= :instance-call (:op a)) (= method 'addMethod) (some-> v deref multimethod?))))
 
+(s/fdef maybe-flow-multi-method :args (s/cat :a ::analysis) :ret ::analysis)
 (defn maybe-flow-multi-method [a]
   (let [{:keys [class method instance]} a
         v (:var instance)]
     (if (defmethod? a)
       (let [[dispatch-val f] (:args a)]
-        (assoc-in a [:args 1 ::var] v)
-        a)
+        (assoc-in a [:args 1 ::var] v))
       a)))
 
 (defn flow-java-call

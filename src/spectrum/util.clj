@@ -24,7 +24,9 @@
 (defn zip
   "Returns (get x key), with x attached as metadata"
   [a key]
-  (with-meta (get a key) {:a a}))
+  (let [v (get a key)]
+    (assert v)
+    (with-meta v {:a a})))
 
 (defn with-a [x a]
   (with-meta x {:a a}))
