@@ -118,7 +118,7 @@
     (if s
       (and (-> s :args c/cat-spec?)
            (-> s :args :ps count (= 1))
-           (-> s :ret (= (c/parse-spec #'boolean?)))
+           (-> s :ret (= (c/pred-spec #'boolean?)))
            (var-named-predicate? v))
       false)))
 
@@ -166,13 +166,13 @@
   (data/store-var-analysis a)
   (let [a (maybe-assoc-var-name a)
         a (flow-walk a)]
-    (assoc a ::ret-spec (c/parse-spec #'var?))))
+    (assoc a ::ret-spec (c/pred-spec #'var?))))
 
 (defmethod flow :the-var [a]
   {:post [(::ret-spec %)]}
   ;; the-var => (var foo). Returns the actual var
   (let [a (flow-walk a)]
-    (assoc a ::ret-spec (c/parse-spec #'var?))))
+    (assoc a ::ret-spec (c/pred-spec #'var?))))
 
 (defmethod flow :var [a]
   {:post [(::ret-spec %)]}
@@ -436,7 +436,7 @@
       (if (c/valid? s arg-spec)
         (assoc a ::ret-spec (c/value true))
         (assoc a ::ret-spec c/reject))
-      (assoc a ::ret-spec (c/parse-spec #'boolean?)))))
+      (assoc a ::ret-spec (c/pred-spec #'boolean?)))))
 
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?
