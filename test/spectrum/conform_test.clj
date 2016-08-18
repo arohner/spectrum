@@ -83,6 +83,7 @@
       (c/pred-spec #'int?) (c/pred-spec #'int?)
       (c/pred-spec #'number?) (c/class-spec Long)
       (c/class-spec Long) (c/value 3)
+      (c/class-spec Integer) (c/value 0)
       (c/pred-spec #'int?) (c/class-spec Long)
       (c/class-spec String) (c/class-spec String)))
 

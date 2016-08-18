@@ -762,21 +762,30 @@
 ;; directly. Used in java interop, and other places where we don't
 ;; have 'real' specs
 
+(defn integer-range [cls]
+  [(.get (.getDeclaredField cls "MIN_VALUE") nil) (.get (.getDeclaredField cls "MAX_VALUE") nil)])
+
+(defn integer-castable?
+  "True if integer value n can be cast to class c without loss"
+  [n class]
+  (println "class:" class)
+  (let [[min max] (integer-range class)]
+    (and (integer? n)
+         (>= n min)
+         (<= n max))))
+
 (defrecord ClassSpec [cls]
   Spect
   (conform* [this v]
     (cond
-      (satisfies? Spect v) (let [v-class (or (spec->class v) Object)]
-                               (when (isa? v-class cls)
-                                 v))
-      (class? v) (isa? cls v)
-      (j/primitive? v) (isa? cls (j/primitive->class v))
-      (or (value? v) (raw-value? v)) (when (isa? cls (class (maybe-strip-value v)))
-                                       v)
-      :else false))
+      (and (spect? v) (isa? (or (spec->class v) Object) cls)) v
+      (and (isa? cls Number)
+           (value? v)
+           (valid? (pred-spec #'integer?) v)
+           (integer-castable? (maybe-strip-value v) cls)) v))
   WillAccept
   (will-accept [this]
-    cls)
+    this)
   Truthyness
   (truthyness [this]
     (condp = (:cls this)

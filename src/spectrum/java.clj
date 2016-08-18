@@ -3,11 +3,20 @@
             [clojure.set :as set]
             [spectrum.data :as data]))
 
-(def primitive->class- {'long Long
-                       Long/TYPE Long
-                       'double Double
-                       'boolean Boolean
-                       Boolean/TYPE Boolean})
+(def primitive->class- {'boolean Boolean
+                        'byte Byte
+                        'char Character
+                        'double Double
+                        'float Float
+                        'int Integer
+                        'long Long
+                        Boolean/TYPE Boolean
+                        Byte/TYPE Byte
+                        Character/TYPE Character
+                        Double/TYPE Double
+                        Float/TYPE Float
+                        Integer/TYPE Integer
+                        Long/TYPE Long})
 
 (def class->primitive (set/map-invert primitive->class-))
 
