@@ -198,10 +198,8 @@
 
 (ann (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
      (fn [spect args-spect]
-       (let [x (c/first* args-spect)
-             y (c/second* args-spect)
-             x (maybe-convert-value x)
-             y (maybe-convert-value y)
+       (let [x (-> args-spect c/first* maybe-convert-value)
+             y (-> args-spect c/second* maybe-convert-value)
              ret (cond
                    (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
                                                      (c/value true)
