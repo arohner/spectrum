@@ -766,8 +766,8 @@
                                  v))
       (class? v) (isa? cls v)
       (j/primitive? v) (isa? cls (j/primitive->class v))
-      (literal? v) (when (isa? cls (class v))
-                     v)
+      (or (value? v) (raw-value? v)) (when (isa? cls (class (maybe-strip-value v)))
+                                       v)
       :else false))
   WillAccept
   (will-accept [this]
@@ -1119,7 +1119,7 @@
     (cond
       (instance? CollOfSpec x) (when (valid? s (:s x))
                                  x)
-      (not (spect? x)) (conform-collof-coll this x)
+      (or (value? x) (raw-value? x)) (conform-collof-coll this (maybe-strip-value x))
       :else false))
   SpecToClass
   (spec->class [s]
