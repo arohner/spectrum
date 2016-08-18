@@ -76,6 +76,10 @@
   [v]
   (boolean (get @data/var-analysis v)))
 
+(defn a-multimethod? [a]
+  (and (-> a :init :op (= :new))
+       (-> a :init :class :val (= clojure.lang.MultiFn))))
+
 (s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
 (defn var-fn?
   "True if this var holds a fn"
@@ -83,7 +87,8 @@
   (let [a (get @data/var-analysis v)]
     (when-not a
       (println (format "Couldn't find var %s in analysis cache:" v)))
-    (-> a :init flow/maybe-strip-meta :op (= :fn))))
+    (or (-> a :init flow/maybe-strip-meta :op (= :fn))
+        (a-multimethod? a))))
 
 (s/fdef wrong-number-args-error :args (s/cat :f ::flow/analysis :a ::flow/analysis) :ret check-error?)
 (defn wrong-number-args-error [f a]
