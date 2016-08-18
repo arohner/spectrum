@@ -762,13 +762,14 @@
 ;; directly. Used in java interop, and other places where we don't
 ;; have 'real' specs
 
-(defn integer-range [cls]
-  [(.get (.getDeclaredField cls "MIN_VALUE") nil) (.get (.getDeclaredField cls "MAX_VALUE") nil)])
+(defn integer-range [^Class cls]
+  (assert cls)
+  [(.get ^java.lang.reflect.Field (.getDeclaredField cls "MIN_VALUE") nil)
+   (.get ^java.lang.reflect.Field (.getDeclaredField ^Class cls "MAX_VALUE") nil)])
 
 (defn integer-castable?
   "True if integer value n can be cast to class c without loss"
   [n class]
-  (println "class:" class)
   (let [[min max] (integer-range class)]
     (and (integer? n)
          (>= n min)
