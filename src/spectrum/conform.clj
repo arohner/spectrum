@@ -623,7 +623,7 @@
       [{:path path :pred form :val x :via via :in in}]))
   WillAccept
   (will-accept [this]
-    pred)
+    this)
   Truthyness
   (truthyness [this]
     (condp = pred
