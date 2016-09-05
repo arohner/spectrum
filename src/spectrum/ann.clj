@@ -199,7 +199,7 @@
                        (if (and (c/keys-spec? m)
                                 (c/value? select)
                                 (coll? (:v select))
-                                (every? (fn [v] (c/conform #'keyword? v)) (:v select)))
+                                (every? (fn [v] (c/conform (c/pred-spec #'keyword?) v)) (:v select)))
                          (let [vals (get-cat-vals (:v select))]
                            (let [ret (c/keys-spec (select-keys (:req m) vals)
                                                   (select-keys (:req-un m) vals)
