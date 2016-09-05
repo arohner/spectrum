@@ -251,8 +251,6 @@
   [a binding]
   (loop [a a
          spec (::ret-spec binding)]
-    (when-not spec
-      (println "binding-update-if-specs:" (:form a) (:name binding)))
     (assert spec)
     (if a
       (let [parent (unwrap-a a)]
