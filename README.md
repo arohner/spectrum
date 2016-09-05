@@ -111,7 +111,7 @@ reimplementation of clojure.spec, except more data-driven. If you're
 not using spectrum, but want to do other analysis-y stuff with specs,
 you may find `spectrum.conform/parse-spec` useful.
 
-```
+```clojure
 (c/conform (s/+ integer?) [1 2 3])
 
 (c/conform (s/+ integer?) '[integer? integer?])
@@ -194,12 +194,13 @@ similarly update the expected type of the second argument in
 
 In some cases, we can identify the type of an expression at compile time. For example,
 
-```
+```clojure
 (s/fdef foo :args (s/cat :x int?) :ret keyword?)
 (defn foo [x]
   (if (int? x)
     :foo
     "bar"))
+```
 
 If we didn't know the value of the `if` test, the return spec of the `if`
 expression would be `(or keyword? string?)`. The type for `int?` is
