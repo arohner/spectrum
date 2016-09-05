@@ -354,9 +354,7 @@
             (do
               ;;(println "ann mapcat-fn: default" f)
               spect))
-          (do
-            ;;(println "mapcat reject""" (:ret f))
-            (assoc spect :ret c/reject)))
+          (assoc spect :ret c/reject))
         (assoc spect :ret (c/value []))))))
 
 ;; [[X->Y] [X] -> [Y]]
