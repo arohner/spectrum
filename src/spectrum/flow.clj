@@ -149,7 +149,7 @@
   (try
     (walk-a flow a)
     (catch Throwable t
-      (println "while walking:" (a-loc-str a) (:form a))
+      (println "flow-walk exception while walking:" (a-loc-str a) (:form a))
       (throw t))))
 
 (defmethod flow :default [a]
