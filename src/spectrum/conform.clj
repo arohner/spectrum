@@ -577,6 +577,35 @@
       :truthy
       :falsey)))
 
+(defrecord SpecSpec [s]
+  ;; 'container' spec, for when the user does e.g. (s/cat :x (s/spec (s/* integer?)))
+  ;; necessary because it changes the behavior of `first`
+  Spect
+  (conform* [this x]
+    (conform* s x))
+  WillAccept
+  (will-accept [this]
+    s)
+  FirstRest
+  (first* [this]
+    (first* s))
+  (rest* [this]
+    (rest* s))
+  SpecToClass
+  (spec->class [this]
+    (spec->class s))
+  Truthyness
+  (truthyness [this]
+    (spec->class s)))
+
+(defn spec-spec? [x]
+  (instance? SpecSpec x))
+
+(defn spec-spec [s]
+  (if (not (spec-spec? s))
+    (map->SpecSpec {:s s})
+    s))
+
 (s/fdef value :args (s/cat :x any?) :ret value?)
 (defn value
   "spec representing a single value"
@@ -713,6 +742,11 @@
   (when-let [s (s/get-spec v)]
     (assoc (parse-spec s) :var v)))
 
+(defn maybe-spec-spec [x]
+  (if (regex-seq? x)
+    (spec-spec x)
+    x))
+
 (s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :args-spec ::spect) :ret (s/nilable fn-spec?))
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
@@ -848,6 +882,9 @@
 
 (defmethod parse-spec* 'var [x]
   (parse-spec* (second x)))
+
+(defmethod parse-spec* 'clojure.spec/spec [x]
+  (spec-spec (parse-spec* (second x))))
 
 (defmethod parse-spec* :clojure.spec/pcat [x]
   (map->RegexCat {:ks (:ks x)

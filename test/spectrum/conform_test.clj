@@ -237,7 +237,10 @@
 
   (is (= (c/pred-spec #'int?) (c/first* (c/parse-spec (s/cat :x int?)))))
   (is (nil? (c/rest* (c/parse-spec (s/cat :x int?)))))
-  (is (= (c/value false) (c/second* (c/cat- [(c/pred-spec #'false?) (c/value false)])))))
+  (is (= (c/value false) (c/second* (c/cat- [(c/pred-spec #'false?) (c/value false)]))))
+
+  (is (= (c/value true) (c/second* (c/parse-spec (s/cat :x (s/spec (s/* keyword?)) :y true)))))
+  )
 
 (deftest truthyness
   (are [s expected] (= expected (c/truthyness s))
