@@ -975,7 +975,17 @@
   Spect
   (conform* [this x]
     (when (not (valid? s x))
-      x)))
+      x))
+  SpecToClass
+  (spec->class [this]
+    nil)
+  Truthyness
+  (truthyness [this]
+    (let [v (truthyness s)]
+      (condp = v
+        :truthy :falsey
+        :falsey :truthy
+        :ambiguous :ambiguous))))
 
 (defn not-spec [s]
   (map->NotSpec {:s s}))
