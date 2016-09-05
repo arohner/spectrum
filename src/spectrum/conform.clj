@@ -1,5 +1,6 @@
 (ns spectrum.conform
-  (:require [clojure.spec :as s]
+  (:require [clojure.reflect :as reflect]
+            [clojure.spec :as s]
             [clojure.spec.gen :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
@@ -18,7 +19,6 @@
 (declare and-spec?)
 (declare class-spec?)
 (declare keys-spec?)
-(declare or-spec?)
 (declare pred-spec?)
 (declare unknown?)
 (declare regex?)
@@ -624,7 +624,7 @@
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? (:cls x) pred-class)
                             x))
-        (and (satisfies? DependentSpecs x) (some (fn [px] (= spec px)) (dependent-specs* x))) x
+        (and (satisfies? DependentSpecs x) (some (fn [px] (valid? spec px)) (dependent-specs* x))) x
         (satisfies? SpecToClass x) (conform* spec (class-spec (spec->class x))))))
   (explain* [spec path via in x]
     (when (not (valid? spec x))

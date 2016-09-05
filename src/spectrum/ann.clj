@@ -65,7 +65,6 @@
 
 (defn satisfies-transformer [protocol]
   (fn [spect args-spect]
-    {:post [(do (println "satisfies:" args-spect "=>" %) true)]}
     (let [arg (if (satisfies? c/FirstRest args-spect)
                 (c/first* args-spect)
                 args-spect)
@@ -136,9 +135,19 @@
   (data/register-pred->class v cls)
   (ann v (instance-transformer cls)))
 
-(ann #'int? (instance-or [Long Integer Short Byte]))
-(ann #'integer? (instance-or [Long Integer Short Byte clojure.lang.BigInt BigInteger]))
-(ann #'seqable? (instance-or [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map])) ;; TODO java array
+(s/fdef ann-type :args (s/cat :v var? :t ::spect))
+(defn ann-type [v t]
+  (swap! data/type-transformers assoc v t)
+  nil)
+
+(defn ann-instance-or [v classes]
+  (ann v (instance-or classes))
+  (ann-type v (c/or- (mapv c/class-spec classes))))
+
+
+(ann-instance-or #'int? [Long Integer Short Byte])
+(ann-instance-or #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
+(ann-instance-or #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
 
 (defn maybe-convert-value
   "If the spect checks for a single value, i.e. nil? false?, return the value instead"
