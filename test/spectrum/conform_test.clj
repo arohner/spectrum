@@ -85,9 +85,7 @@
       (c/class-spec Long) (c/value 3)
       (c/class-spec Integer) (c/value 0)
       (c/pred-spec #'int?) (c/class-spec Long)
-      (c/class-spec String) (c/class-spec String)
-
-      (c/pred-spec #'number?) (c/pred-spec #'integer?)))
+      (c/class-spec String) (c/class-spec String)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))

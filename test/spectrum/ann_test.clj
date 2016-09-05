@@ -100,3 +100,8 @@
       (c/cat- [(c/pred-spec #'float?)]) (c/pred-spec #'double?)
       (c/cat- [(c/value 3)]) (c/class-spec Long)
       (c/cat- [(c/pred-spec #'string?)]) c/reject)))
+
+(deftest conform-ann
+  ;; 'regular' conform tests that require annotations to work
+  (are [spec val] (= val (c/conform spec val))
+    (c/pred-spec #'number?) (c/pred-spec #'integer?)))
