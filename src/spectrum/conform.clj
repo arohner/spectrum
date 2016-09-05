@@ -506,7 +506,7 @@
 (defn get-spec [spec-name]
   (let [s (s/get-spec spec-name)
         cs (parse-spec s)]
-    (if-let [t (data/get-transformer spec-name)]
+    (if-let [t (data/get-invoke-transformer spec-name)]
       (assoc cs :transformer t)
       cs)))
 
@@ -614,7 +614,8 @@
   (conform* [spec x]
     (let [ret (when (spect? x)
                 (maybe-transform-pred spec x))
-          truthy (= :truthy (truthyness ret))]
+          truthy (= :truthy (truthyness ret))
+          tt (data/get-type-transformer (:pred spec))]
       (cond
         truthy x
         (= #'any? pred) x
@@ -678,7 +679,9 @@
         (if (and spec-fn (not (any-spec? spec-arg)))
           (do
             (recur (conj ret spec-arg) spec-arg))
-          ret)))))
+          (if-let [tt (data/get-type-transformer (:pred this))]
+            (conj ret tt)
+            ret))))))
 
 (defrecord FnSpec [args ret fn]
   Spect
@@ -715,7 +718,7 @@
   "apply the var's spec transformer, if applicable"
   [v args-spec]
   (when-let [fn-spec (get-var-fn-spec v)]
-    (if-let [t (data/get-transformer v)]
+    (if-let [t (data/get-invoke-transformer v)]
       (let [fn-spec* (t fn-spec args-spec)]
         fn-spec*)
       fn-spec)))
@@ -723,7 +726,7 @@
 (defn maybe-transform-method
   "apply the java method transformer, if applicable"
   [meth spec args-spec]
-  (if-let [t (data/get-transformer meth)]
+  (if-let [t (data/get-invoke-transformer meth)]
     (let [spec* (t spec args-spec)]
       spec*)
     spec))

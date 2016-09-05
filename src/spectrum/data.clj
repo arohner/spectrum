@@ -13,11 +13,19 @@
 
 (defonce
   ^{:doc "Map of vars to transformer functions"}
-  spec-transformers
+  invoke-transformers
   (atom {}))
 
-(defn get-transformer [v]
-  (get @spec-transformers v))
+(defonce
+  ^{:doc "Map of vars to transformer functions"}
+  type-transformers
+  (atom {}))
+
+(defn get-invoke-transformer [v]
+  (get @invoke-transformers v))
+
+(defn get-type-transformer [v]
+  (get @type-transformers v))
 
 (defonce
   ^{:doc "map of preds to java classes."}

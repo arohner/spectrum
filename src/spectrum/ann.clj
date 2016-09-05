@@ -16,7 +16,7 @@
   spec. This is typically used to make :ret more specific.
 "
   [v f]
-  (swap! data/spec-transformers assoc v f)
+  (swap! data/invoke-transformers assoc v f)
   nil)
 
 (ann #'instance? (fn [spect args-spect]
