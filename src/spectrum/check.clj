@@ -76,6 +76,7 @@
   [v]
   (boolean (get @data/var-analysis v)))
 
+(s/fdef a-multimethod? :args (s/cat :a ::analysis) :ret boolean?)
 (defn a-multimethod? [a]
   (and (-> a :init :op (= :new))
        (-> a :init :class :val (= clojure.lang.MultiFn))))
@@ -132,6 +133,9 @@
         (print-once "check-invoke-var: no spec for" v))]
      (filter identity))))
 
+(defn check-invoke-invoke [a]
+  (println "check-invoke-invoke:" (:form a) (:op a)))
+
 (defn check-invoke-local [a]
   (print-once "check-invoke-local todo"))
 
@@ -165,6 +169,7 @@
               :fn (check-invoke-fn-literal a)
               :map (check-invoke-map a)
               :local (check-invoke-local a)
+              :invoke (check-invoke-invoke a)
               (println "unknown invoke expr" (:form a) (:op a))))))
 
 
