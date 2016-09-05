@@ -97,7 +97,7 @@
   (testing "true"
     (are [args ret] (= ret (:ret (c/maybe-transform #'inc args)))
       (c/cat- [(c/pred-spec #'integer?)]) (c/class-spec Long)
-      (c/cat- [(c/pred-spec #'float?)]) (c/pred-spec #'double?)
+      (c/cat- [(c/pred-spec #'float?)]) (c/class-spec Double)
       (c/cat- [(c/value 3)]) (c/class-spec Long)
       (c/cat- [(c/pred-spec #'string?)]) c/reject)))
 
