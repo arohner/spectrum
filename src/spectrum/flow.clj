@@ -246,6 +246,14 @@
   (when (-> a :local :name (= name))
     (:local a)))
 
+(s/fdef maybe-disj-pred :args (s/cat ::s ::c/spect :p ::c/spect) :ret ::c/spect)
+(defn maybe-disj-pred
+  "If s is an or-spec, remove p if present"
+  [s p]
+  (if (c/or-spec? s)
+    (c/or-disj s p)
+    s))
+
 (defn binding-update-if-specs
   "Given a :binding, walk up the tree to find all :if predicate tests it contains, and update the spec"
   [a binding]
@@ -263,12 +271,12 @@
                             :else (do
                                     (assert false)))
                 this (get parent this-expr)]
-
             (if (and (invoke-predicate? test)
                      (-> test :args first :name (= (:name binding))))
+              (let [test-pred (c/pred-spec (-> test :fn :var))])
               (if (= this-expr :then)
                 (recur parent (c/and-spec [spec (c/pred-spec (-> test :fn :var))]))
-                (recur parent spec))  ;; TODO add (not pred) to spec here.
+                (recur parent (c/and-spec [(maybe-disj-pred spec test-pred) (c/not-spec test-pred)])))
               (recur parent spec)))
           (recur parent spec)))
       (assoc binding ::ret-spec spec))))

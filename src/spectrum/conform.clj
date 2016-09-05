@@ -971,6 +971,19 @@
 (defmethod parse-spec* 'clojure.spec/and [x]
   (and-spec (mapv parse-spec (rest x))))
 
+(defrecord NotSpec [s]
+  Spect
+  (conform* [this x]
+    (when (not (valid? s x))
+      x)))
+
+(defn not-spec [s]
+  (map->NotSpec {:s s}))
+
+(s/fdef not-spec :args (s/cat :x any?) :ret boolean?)
+(defn not-spec? [x]
+  (instance? NotSpec x))
+
 (defrecord OrSpec [ps ks]
   Spect
   (conform* [this x]
@@ -1015,6 +1028,7 @@
   (map->OrSpec {:ks ks
                 :ps ps}))
 
+(s/fdef or-disj :args (s/cat :s or-spec? :p ::spect) :ret or-spec?)
 (defn or-disj
   "Remove pred from the set of preds"
   [s pred]
