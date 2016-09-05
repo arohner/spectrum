@@ -176,20 +176,21 @@
 
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
-        v (::flow/var f)
-        ret-spec (:ret (c/get-var-fn-spec v))
-        body (-> method-a :body)
-        last-expr (if (map? body)
-                    body
-                    (do
-                      (assert (sequential? body))
-                      (last body)))
-        expr-spec (::flow/ret-spec method-a)]
-    (when (and ret-spec (c/known? ret-spec))
-      (if expr-spec
-        (when-not (c/valid-return? ret-spec expr-spec)
-          [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or v "fn") (print-str ret-spec) (print-str expr-spec))} method-a)])
-        [(new-error {:message (format "check-fn-method-return no ret-spec for expression:" (:form last-expr))} last-expr)]))))
+        v (::flow/var f)]
+    (when v
+      (let [ret-spec (:ret (c/get-var-fn-spec v))
+            body (-> method-a :body)
+            last-expr (if (map? body)
+                        body
+                        (do
+                          (assert (sequential? body))
+                          (last body)))
+            expr-spec (::flow/ret-spec method-a)]
+        (when (and ret-spec (c/known? ret-spec))
+          (if expr-spec
+            (when-not (c/valid-return? ret-spec expr-spec)
+              [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or v "fn") (print-str ret-spec) (print-str expr-spec))} method-a)])
+            [(new-error {:message (format "check-fn-method-return no ret-spec for expression:" (:form last-expr))} last-expr)]))))))
 
 (defn params-str [a]
   (->> a :params (mapv :form)))
