@@ -3,7 +3,9 @@
             [spectrum.conform :as c]
             [spectrum.data :as data]
             [spectrum.flow :as flow]
-            [spectrum.util :refer (print-once)]))
+            [spectrum.util :refer (print-once)])
+  (:import (clojure.lang BigInt
+                         Ratio)))
 
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
@@ -104,6 +106,7 @@
    #'decimal? BigDecimal
    #'delay? clojure.lang.Delay
    #'double? Double
+   #'float? Float
    #'fn? clojure.lang.Fn
    #'future? java.util.concurrent.Future
    #'ifn? clojure.lang.IFn
@@ -379,3 +382,22 @@
                (if (c/valid? (c/pred-spec #'seq?) arg)
                  (assoc spect :ret (c/pred-spec #'seq?))
                  spect))))
+
+(ann #'inc (fn [spect args-spect]
+             (let [arg (c/first* args-spect)]
+               (if (c/valid? (c/pred-spec #'number?) arg)
+                 (let [c (if (c/spect? arg)
+                           (c/spec->class arg)
+                           (class arg))
+                       ret-class (condp = c
+                                   Long Long
+                                   Double Double
+                                   Integer Long
+                                   Float Double
+                                   BigInt BigInt
+                                   BigInteger BigInteger
+                                   Ratio Ratio
+                                   BigDecimal BigDecimal
+                                   Long)]
+                   (assoc spect :ret (c/class-spec ret-class)))
+                 (assoc spect :ret c/reject)))))

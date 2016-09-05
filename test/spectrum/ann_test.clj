@@ -92,3 +92,11 @@
   (testing "ambigous"
     (are [args] (= (c/pred-spec #'boolean?) (:ret (c/maybe-transform #'nil? args)))
       (c/cat- [(c/pred-spec #'boolean?)]))))
+
+(deftest inc-works
+  (testing "true"
+    (are [args ret] (= ret (:ret (c/maybe-transform #'inc args)))
+      (c/cat- [(c/pred-spec #'integer?)]) (c/class-spec Long)
+      (c/cat- [(c/pred-spec #'float?)]) (c/pred-spec #'double?)
+      (c/cat- [(c/value 3)]) (c/class-spec Long)
+      (c/cat- [(c/pred-spec #'string?)]) c/reject)))

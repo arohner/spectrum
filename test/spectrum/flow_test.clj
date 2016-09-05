@@ -57,6 +57,10 @@
           c/known?))
   (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []) dummy-analysis)
           :ret
+          c/known?))
+
+  (is (-> (flow/get-java-method-spec clojure.lang.Indexed 'nth (c/cat- [(c/value 0)]) dummy-analysis)
+          :ret
           c/known?)))
 
 (deftest java-type->spec-works
