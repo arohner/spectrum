@@ -300,7 +300,7 @@
                                 (when-not (::ret-spec arg)
                                   (println "analysis-args->spec:" arg (:form arg)))
                                 (assert (::ret-spec arg))
-                                (::ret-spec arg)) args)
+                                (c/maybe-spec-spec (::ret-spec arg))) args)
                     :ret []}))
 
 (defn invoke-spec [v spec args-spec]
@@ -535,8 +535,10 @@
   (let [{:keys [class method instance]} a
         v (:var instance)]
     (if (defmethod? a)
-      (let [[dispatch-val f] (:args a)]
-        (assoc-in a [:args 1 ::var] v))
+      (let [[dispatch-val f] (:args a)
+            a (assoc-in a [:args 1 ::var] v)]
+        (data/store-defmethod-analysis a)
+        a)
       a)))
 
 (defn flow-java-call

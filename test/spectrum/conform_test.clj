@@ -2,6 +2,7 @@
   (:require [clojure.spec :as s]
             [clojure.spec.test]
             [clojure.test :refer :all]
+            [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.conform :as c])
   (:import clojure.lang.Keyword))
 
@@ -85,11 +86,11 @@
       (c/class-spec Long) (c/value 3)
       (c/class-spec Integer) (c/value 0)
       (c/pred-spec #'int?) (c/class-spec Long)
-      (c/class-spec String) (c/class-spec String)))
+      (c/class-spec String) (c/class-spec String)
+      (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::analysis-common)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))
-
 
          (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/class-spec Long) (c/class-spec Long)
          (c/or- [(c/class-spec Long) (c/class-spec String)]) (c/class-spec String) (c/class-spec String)
@@ -225,7 +226,11 @@
       (s/coll-of int?) (c/parse-spec (s/coll-of string?))
       (c/pred-spec #'string?) (c/or- [(c/class-spec Number) (c/value :foo)])
       (c/coll-of (c/pred-spec #'int?)) (c/unknown '(mapv flow as))
-      (c/coll-of (c/pred-spec #'int?)) nil)))
+      (c/coll-of (c/pred-spec #'int?)) nil
+
+      (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
+      (c/parse-spec ::ana.jvm/analysis) 3
+      (c/parse-spec ::ana.jvm/analysis) {})))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
@@ -239,8 +244,7 @@
   (is (nil? (c/rest* (c/parse-spec (s/cat :x int?)))))
   (is (= (c/value false) (c/second* (c/cat- [(c/pred-spec #'false?) (c/value false)]))))
 
-  (is (= (c/value true) (c/second* (c/parse-spec (s/cat :x (s/spec (s/* keyword?)) :y true)))))
-  )
+  (is (= (c/value true) (c/second* (c/parse-spec (s/cat :x (s/spec (s/* keyword?)) :y true))))))
 
 (deftest truthyness
   (are [s expected] (= expected (c/truthyness s))

@@ -14,7 +14,6 @@
 (declare parse-spec)
 (declare conform)
 (declare value)
-(declare value?)
 
 (declare and-spec?)
 (declare class-spec?)
@@ -53,7 +52,7 @@
   (filter- spec (complement f)))
 
 (defn spect? [x]
-  (and (map? x) (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
+  (and (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
 
 (defprotocol WillAccept
   (will-accept [spec]
@@ -63,6 +62,10 @@
 (defprotocol SpecToClass
   (spec->class [s]
     "If this spec checks for an instance of a class, return it, else nil"))
+
+(s/fdef spec->class? :args (s/cat :x any?) :ret boolean?)
+(defn spec->class? [x]
+  (satisfies? SpecToClass x))
 
 (defprotocol RegexConform
   (regex-conform [spec seq]
@@ -565,7 +568,7 @@
 (defrecord Value [v]
   Spect
   (conform* [this x]
-    (if (and (value? x) (= (:v this) (:v x)))
+    (if (and (instance? Value x) (= (:v this) (:v x)))
       x
       false))
   SpecToClass
@@ -576,6 +579,31 @@
     (if v
       :truthy
       :falsey)))
+
+(s/fdef value? :args (s/cat :x any?) :ret boolean?)
+(defn value? [s]
+  (instance? Value s))
+
+(s/fdef value :args (s/cat :x any?) :ret value?)
+(defn value
+  "spec representing a single value"
+  [v]
+  (map->Value {:v v}))
+
+(defn raw-value?
+  "A normal clojure value that isn't a spect, and isn't Value"
+  [x]
+  (not (spect? x)))
+
+(s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
+(defn valuey? [s]
+  "true if s is a value with a truthy value"
+  (and (value? s) (boolean (:v s))))
+
+(defn maybe-strip-value [x]
+  (if (value? x)
+    (:v x)
+    x))
 
 (defrecord SpecSpec [s]
   ;; 'container' spec, for when the user does e.g. (s/cat :x (s/spec (s/* integer?)))
@@ -605,31 +633,6 @@
   (if (not (spec-spec? s))
     (map->SpecSpec {:s s})
     s))
-
-(s/fdef value :args (s/cat :x any?) :ret value?)
-(defn value
-  "spec representing a single value"
-  [v]
-  (map->Value {:v v}))
-
-(s/fdef value? :args (s/cat :x any?) :ret boolean?)
-(defn value? [s]
-  (instance? Value s))
-
-(defn raw-value?
-  "A normal clojure value that isn't a spect, and isn't Value"
-  [x]
-  (not (spect? x)))
-
-(s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
-(defn valuey? [s]
-  "true if s is a value with a truthy value"
-  (and (value? s) (boolean (:v s))))
-
-(defn maybe-strip-value [x]
-  (if (value? x)
-    (:v x)
-    x))
 
 (s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
 (defn conformy?
@@ -816,7 +819,7 @@
   Spect
   (conform* [this v]
     (cond
-      (and (spect? v) (isa? (or (spec->class v) Object) cls)) v
+      (and (spect? v) (isa? (or (when (spec->class? v) (spec->class v)) Object) cls)) v
       (and (isa? cls Number)
            (value? v)
            (valid? (pred-spec #'integer?) v)
@@ -846,7 +849,7 @@
 
 (defmethod parse-spec* :fn-sym [x]
   (let [v (resolve x)]
-    (assert v)
+    (assert v (format "couldn't resolve %s" x))
     (map->PredSpec {:pred v
                     :form (symbol (str (.ns ^Var v)) (str (.sym ^Var v)))})))
 
@@ -878,7 +881,7 @@
                   :form x}))
 
 (defmethod parse-spec* 'quote [x]
-  (parse-spec* (first x)))
+  (parse-spec* (second x)))
 
 (defmethod parse-spec* 'var [x]
   (parse-spec* (second x)))
@@ -1175,6 +1178,12 @@
                   :opt-un (into {} (map (fn [[k s]]
                                           [(strip-namespace k) s]) opt-un))}))
 
+(defn keys-contains?
+  "clojure.core/contains? for keys-spec"
+  [ks key]
+  (some (fn [key-type]
+          (contains? (get ks key-type) key)) [:req :req-un :opt :opt-un]))
+
 (s/fdef keys-get :args (s/cat :ks keys-spec? :key keyword?) :ret (s/nilable any?))
 (defn keys-get
   "clojure.core/get, for key-spec"
@@ -1306,8 +1315,113 @@
 (defmethod parse-spec* 'clojure.spec/merge [x]
   (merge-keys (map parse-spec (rest x))))
 
+(defmethod parse-spec* 'clojure.spec/merge-spec-impl [x]
+  (let [[forms preds & _] (rest x)
+        forms (second forms)]
+    (merge-keys (map parse-spec forms))))
+
 (defmethod parse-spec* 'clojure.spec/conformer [x]
   (value true))
+
+(defmethod parse-spec* 'clojure.spec/nonconforming [x]
+  (parse-spec* (second x)))
+
+(s/fdef valid-invoke? :args (s/cat :s fn-spec? :args ::spect) :ret boolean?)
+(defn valid-invoke?
+  "check that fnspec can be invoked w/ args"
+  [spec args]
+  (assert (fn-spec? spec))
+  (valid? (:args spec) args))
+
+(defn multispec-dispatch-values
+  "Returns the seq of allowed dispatch values in the multimethod"
+  [^clojure.lang.MultiFn ms]
+  (->> (.getMethodTable ms)
+       (keys)))
+
+(defn maybe-resolve-keyword-spec [x]
+  (if (and (value? x) (keyword? (:v x)) (#'s/maybe-spec (:v x)))
+    (parse-spec (s/spec (:v x)))
+    x))
+
+(defn multispec-dispatch-ret-value
+  "Given a dispatch value, return the spec"
+  [ms dispatch-value]
+  (let [v (:multimethod ms)
+        a (data/get-defmethod-fn-analysis v dispatch-value)]
+    (if a
+      (if-let [s (-> a :methods first :spectrum.flow/ret-spec maybe-resolve-keyword-spec)]
+        s
+        (do
+          (println "no ret-spec on:" v a)
+          ::unknown))
+      (do
+        (println "no analysis found for" v dispatch-value)
+        ::unknown))))
+
+(defn multispec-dispatch-invoke [ms v]
+  (assert (fn? (:retag ms)))
+  (assert (var? (:retag ms)))
+  (if-let [s (get-var-fn-spec (:retag ms))]
+    (if-let [t (data/get-invoke-transformer v)]
+      (let [fn-spec* (t s v)]
+        (:ret fn-spec*))
+      (:ret s))
+    (do
+      (println "no spec for" (:retag ms))
+      ::no-dispatch)))
+
+(defn multispec-dispatch
+  [ms x]
+  (cond
+    (keyword? (:retag ms)) (or (when (keys-contains? x (:retag ms))
+                                 (let [d (keys-get x (:retag ms))]
+                                   (if (value? d)
+                                     d
+                                     ::no-dispatch)))
+                               ::no-dispatch)
+    (fn? (:retag ms)) (multispec-dispatch-invoke ms x)))
+
+(defn multispec-default-spec
+  "When we can't determine the correct multispec dispatch value, get the lowest common denominator spec, Or'ing all of the possible values together"
+  [ms]
+  (or- (map (fn [v]
+              (multispec-dispatch-ret-value ms v)) (multispec-dispatch-values @(:multimethod ms)))))
+
+(defn multispec-resolve-spec
+  "Attempt to resolve the specific spec for v"
+  [ms v]
+  (let [d (multispec-dispatch ms v)]
+    (println "resolve dispatch:" ms v d)
+    (if (not= d ::no-dispatch)
+      (multispec-dispatch-ret-value ms d)
+      (multispec-default-spec ms))))
+
+(defrecord MultiSpec [multimethod retag]
+  Spect
+  (conform* [this x]
+    (println "multispect conform" this x)
+    (let [dispatch-type (cond
+                          (keyword? (:retag this)) :keyword
+                          (fn? (:retag this)) :fn
+                          :else (assert false "unknown dispatch type"))]
+      (println "dispatch-type" dispatch-type)
+      (condp = dispatch-type
+        :keyword (when (valid? (pred-spec #'map?) x)
+                   (let [s (multispec-resolve-spec this x)]
+                     (println "resolved spec:" s)
+                     (conform s x)))
+        :fn (when (valid-invoke? (:retag this) x)
+              (conform (multispec-resolve-spec this x) x))))))
+
+(defmethod parse-spec* 'clojure.spec/multi-spec [x]
+  (let [retag (nth x 2)
+        retag (cond
+                (keyword? retag) retag
+                (symbol? retag) (resolve retag))]
+    (assert retag)
+    (map->MultiSpec {:multimethod (resolve (nth x 1))
+                     :retag retag})))
 
 (extend-protocol Spect
   clojure.spec.Spec
@@ -1459,13 +1573,6 @@ If an arg is a spec, it is treated as a variable that conforms to the spec. pass
 
 (defn valid? [spec x]
   (conformy? (conform spec x)))
-
-(s/fdef valid-invoke? :args (s/cat :s fn-spec? :args ::spect) :ret boolean?)
-(defn valid-invoke?
-  "check that fnspec can be invoked w/ args"
-  [spec args]
-  (assert (fn-spec? spec))
-  (valid? (:args spec) args))
 
 (s/fdef valid-return? :args (s/cat :s ::spect :args ::spect) :ret boolean?)
 (defn valid-return?

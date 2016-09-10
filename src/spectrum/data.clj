@@ -48,6 +48,27 @@
   [a]
   (swap! var-analysis assoc (:var a) a))
 
+(defn store-defmethod-analysis
+  [a]
+  (let [v (-> a :args (get 1) :spectrum.flow/var)
+        dispatch-val (-> a :args first :val)]
+    (assert v)
+    (assert dispatch-val)
+    (swap! var-analysis assoc [v dispatch-val] a)))
+
+(defn get-defmethod-analysis [v dispatch]
+  (get @var-analysis [v dispatch]))
+
+(defn get-defmethod-fn-analysis
+  "Returns the flow for only the fn, not the whole (. var addMethod f)"
+  [v dispatch]
+  (get-in (get-defmethod-analysis v dispatch) [:args 1]))
+
+(defn get-defmethod-fn-method-analysis
+  "Returns the flow for only the fn, not the whole (. var addMethod f)"
+  [v dispatch]
+  (get-in (get-defmethod-analysis v dispatch) [:args 1]))
+
 (defn load-clojure-data
   "fake analysis data for special clojure.core vars that aren't defined in .clj source"
   []
@@ -68,6 +89,7 @@
       (when (= :def (:op a))
         (store-var-analysis a)))))
 
+(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis))
 (defn get-var-analysis
   [v]
   {:post [(do (when-not %
