@@ -845,9 +845,3 @@
 (defmethod flow :deftype [a]
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/class-spec (:class-name a)))))
-
-(defn analyze+flow [form]
-  (flow (ana.jvm/analyze form)))
-
-(defn analyze+flow-ns [ns]
-  (mapv flow (ana.jvm/analyze-ns ns)))
