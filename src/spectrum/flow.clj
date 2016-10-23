@@ -12,7 +12,6 @@
   (:import clojure.lang.Var))
 
 (declare recur?)
-(declare control-flow?)
 (declare find-binding)
 
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
@@ -20,18 +19,6 @@
 (s/def ::args ::c/spect)
 (s/def ::ret ::c/spect)
 (s/def ::fn (s/nilable ::c/spect))
-
-(s/def ::args-spec ::c/spect)
-(s/def ::ret-spec (s/or :s ::c/spect :cf control-flow?))
-(s/def ::var (s/with-gen (s/spec var?)
-               (fn []
-                 (gen/elements [#'int? #'println #'str]))))
-
-(s/def ::analysis (s/merge ::ana.jvm/analysis (s/keys :opt [::var ::args-spec ::ret-spec])))
-
-(s/def ::analysis? (s/nilable ::analysis))
-
-(s/def ::analyses (s/coll-of ::analysis))
 
 (defn a-loc [a]
   (select-keys a [:file :line :column]))
@@ -68,6 +55,19 @@
 (s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
 (defn control-flow? [x]
   (or (throw? x) (recur? x)))
+
+(s/def ::args-spec ::c/spect)
+(s/def ::ret-spec (s/or :s ::c/spect :cf control-flow?))
+
+(s/def ::var (s/with-gen (s/spec var?)
+               (fn []
+                 (gen/elements [#'int? #'println #'str]))))
+
+(s/def ::analysis (s/and ::ana.jvm/analysis (s/keys :opt [::var ::args-spec ::ret-spec])))
+
+(s/def ::analysis? (s/nilable ::analysis))
+
+(s/def ::analyses (s/coll-of ::analysis))
 
 (s/fdef flow-dispatch :args (s/cat :a ::analysis) :ret keyword?)
 (defn flow-dispatch [a]
@@ -292,7 +292,7 @@
         (when-let [a* (unwrap-a a*)]
           (recur a*))))))
 
-(s/fdef analysis-args->spec :args (s/cat :a ::analyses) :ret ::c/spect)
+(s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret ::c/spect)
 (defn analysis-args->spec
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
   [args]
@@ -695,7 +695,6 @@
       (println "destructure failed:" (a-loc-str a) "params are all unknown")
       (mapv (fn [p]
               (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
-
 
 (defn strip-control-flow
   "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
