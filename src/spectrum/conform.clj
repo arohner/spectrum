@@ -51,6 +51,7 @@
 (defn remove* [f spec]
   (filter- spec (complement f)))
 
+(s/fdef spect? :args (s/cat :x any?) :ret boolean?)
 (defn spect? [x]
   (and (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
 
@@ -92,6 +93,13 @@
 (defprotocol Truthyness
   (truthyness [this]
     "The truthyness of this spec, if it appeared in an `if`. Returns :truthy, :falsey or :ambiguous"))
+
+(defprotocol KeywordInvoke
+  (keyword-invoke [s key]
+    "If code calls (:foo spec), produce a value"))
+
+(defn keyword-invoke? [s]
+  (satisfies? KeywordInvoke s))
 
 (s/def ::spect (s/with-gen (s/and spect? map?)
                  (fn []
@@ -578,7 +586,11 @@
   (truthyness [this]
     (if v
       :truthy
-      :falsey)))
+      :falsey))
+  KeywordInvoke
+  (keyword-invoke [this k]
+    (when (map? (:v this))
+      (get-in this [:v k]))))
 
 (s/fdef value? :args (s/cat :x any?) :ret boolean?)
 (defn value? [s]
@@ -1034,6 +1046,8 @@
 (defn not-spec? [x]
   (instance? NotSpec x))
 
+(declare or-)
+
 (defrecord OrSpec [ps ks]
   Spect
   (conform* [this x]
@@ -1064,11 +1078,20 @@
     (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
                    (filter (fn [[k p]]
                              (f p))))]
-      (or-spec (map first kps) (map second kps)))))
+      (or-spec (map first kps) (map second kps))))
+  KeywordInvoke
+  (keyword-invoke [this k]
+    (->> ps
+         (filter keyword-invoke?)
+         (map (fn [p]
+                (keyword-invoke p k)))
+         (distinct)
+         (or-))))
 
 (defn or-spec? [x]
   (instance? OrSpec x))
 
+(s/fdef or- :args (s/cat :ps (s/coll-of ::spect)) :ret or-spec?)
 (defn or- [ps]
   (if (>= (count ps) 2)
     (map->OrSpec {:ps ps})
@@ -1155,7 +1178,11 @@
     clojure.lang.PersistentHashMap)
   Truthyness
   (truthyness [this]
-    :truthy))
+    :truthy)
+  KeywordInvoke
+  (keyword-invoke [this k]
+    (some (fn [key-type]
+            (get-in this [key-type k])) [:req :req-un :opt :opt-un])))
 
 (s/fdef keys-spec :args (s/cat :x any?) :ret boolean?)
 (defn keys-spec? [x]
@@ -1354,10 +1381,10 @@
         s
         (do
           (println "no ret-spec on:" v a)
-          ::unknown))
+          (unknown [v dispatch-value])))
       (do
-        (println "no analysis found for" v dispatch-value)
-        ::unknown))))
+        (println "could not find analysis found for" v dispatch-value ", returning unknown")
+        (unknown [v dispatch-value])))))
 
 (defn multispec-dispatch-invoke [ms v]
   (assert (fn? (:retag ms)))
@@ -1400,19 +1427,20 @@
 (defrecord MultiSpec [multimethod retag]
   Spect
   (conform* [this x]
-    (println "multispect conform" this x)
     (let [dispatch-type (cond
                           (keyword? (:retag this)) :keyword
                           (fn? (:retag this)) :fn
                           :else (assert false "unknown dispatch type"))]
-      (println "dispatch-type" dispatch-type)
       (condp = dispatch-type
         :keyword (when (valid? (pred-spec #'map?) x)
                    (let [s (multispec-resolve-spec this x)]
-                     (println "resolved spec:" s)
+                     (println "multispec conform" s x)
                      (conform s x)))
         :fn (when (valid-invoke? (:retag this) x)
-              (conform (multispec-resolve-spec this x) x))))))
+              (conform (multispec-resolve-spec this x) x)))))
+  KeywordInvoke
+  (keyword-invoke [this k]
+    (keyword-invoke (multispec-default-spec this) k)))
 
 (defmethod parse-spec* 'clojure.spec/multi-spec [x]
   (let [retag (nth x 2)

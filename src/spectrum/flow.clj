@@ -762,17 +762,17 @@
   [a]
   {:post [(c/spect? %)]}
   (let [a (update-in a [:target] (fn [t]
-                            (flow (with-a t a))))
-        target-ret-spec (-> a :target ::ret-spec)
+                                   (flow (with-a t a))))
+        spec (-> a :target ::ret-spec)
         k (-> a :keyword :val)]
     (assert k)
-    (assert target-ret-spec)
+    (assert spec)
     (or
-     (cond
-       (and (c/value? target-ret-spec) (map? (:v target-ret-spec))) (get-in target-ret-spec [:v k])
-       (c/keys-spec? target-ret-spec) (or (get-in target-ret-spec [:req-un k])
-                                          (get-in target-ret-spec [:opt-un k])))
-     (c/unknown (:form a) (a-loc a)))))
+     (when (c/keyword-invoke? spec)
+       (c/keyword-invoke spec k))
+     (do
+       (println "unknown keyword-invoke:" (:form a) "on" spec (a-loc-str a))
+       (c/unknown (:form a) (a-loc a))))))
 
 (defmethod flow :keyword-invoke [a]
   {:post [(::ret-spec %)]}
