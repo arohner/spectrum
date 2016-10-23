@@ -4,6 +4,7 @@
             [clojure.tools.namespace.find :as find]
             [clojure.spec :as s]
             [clojure.spec.test :as spec-test]
+            [spectrum.conform :as c]
             [spectrum.check :as st]))
 
 (spec-test/instrument)
