@@ -88,7 +88,7 @@
       (c/class-spec Integer) (c/value 0)
       (c/pred-spec #'int?) (c/class-spec Long)
       (c/class-spec String) (c/class-spec String)
-      (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::analysis-common)))
+      (c/pred-spec #'c/spect?) (c/value false)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))

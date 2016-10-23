@@ -652,8 +652,8 @@
         truthy x
         (= #'any? pred) x
         (and (pred-spec? x) (= pred (:pred x))) x
-        (and (not (spect? x)) (conform-args? spec x)) (when ((:pred spec) x)
-                                                        x)
+        (conform-args? spec x) (when ((:pred spec) x)
+                                 x)
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? (:cls x) pred-class)
                             x))
