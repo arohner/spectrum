@@ -1575,12 +1575,10 @@
 
 (s/fdef conform :args (s/cat :spec (s/or :spec s/spec? :re s/regex? :spect ::spect) :args any?) :ret any?)
 (defn conform
-  "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, not variables that contain values.
+  "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, but not variables that contain values.
 
-If an arg is a spec, it is treated as a variable that conforms to the spec. pass ::unknown for an variable with no specs.
-
-(conform 'user/defn [symbol? string? [] (+ 1 2)])
-=> {:def/name 'user/defn
+If an arg is a spec, it is treated as a variable that conforms to the
+  spec. pass ::unknown for an variable with no specs.
 
  "
   [spec args]

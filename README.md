@@ -27,25 +27,22 @@ like `map`, `filter`, `update-in`, etc.
 
 - usable
 - pragmatic
-- readable code
+- readable implementation
 - fast
 - configurable strictness levels
-- incremental
+- incremental checking
 
 ## Non-goals
 
 - perfection
 - correctness
-
-## Anti-goals
-
-- requiring 100% spec coverage. Spectrum will do its best to find
-  errors where it can, even if not everything is spec'd. Note that
-  speccing more is recommended, but we understand other constraints
-  get in the way.
+- requiring 100% spec coverage.
 
 In particular, spectrum aims to be fast and usable, and catching
-bugs. A tool that catches 80% of bugs that you use every day is better
+bugs. It aims to have low false positives, at the expense of
+potentially not catching 100% of type errors.
+
+A tool that catches 80% of bugs that you use every day is better
 than a 100% tool that you don't use. Spectrum will converge on 100%,
 but won't guarantee 100% correctness for a while.
 
@@ -64,6 +61,7 @@ Returns a seq of Error defrecords.
 ### Requirements
 
 - if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
+- if you check code that uses s/multi-spec, you must have previously called `check/ensure-analysis` or `check/check` on the namespace containing the multimethod code
 
 #### Defrecord / instance?
 
@@ -83,14 +81,12 @@ This tells the system that expressions tagged  w/ spec `#'foo?` are of class `Fo
 
 ## Limitations
 
-- It's still very early. It doesn't understand all clojure forms yet, nor all spec annotations. Contributions welcome.
-
-- It also proceeds from the assumption that your specs are correct (i.e. no spec errors at runtime). If you're not running clojure.test.spec or not running your unit tests with `instrument`, you're gonna have a bad time.
+- It's still very early. Contributions welcome.
 
 
 ## How It Works
 
-This section is for the curious, and potential contributors. Shouldn't be necessary to understand this to use it.
+This section is for the curious, and potential contributors. Shouldn't be necessary to understand this to use spectrum.
 
 ### spectrum.conform
 
@@ -133,10 +129,10 @@ we'll take advantage of.
 ### spectrum.flow
 
 Flow is an intermediate pass. It takes the output of tools.analyzer,
-analyzes function parameters and let bindings, and updates the
-analyzer output with the appropriate spects. The main thing it's
-responsible for is adding `::flow/ret-spec`, and any other useful
-annotations to every expression. For example:
+and recursively walks the analysis, adding specs to every
+expression. The main thing it's responsible for is adding
+`::flow/ret-spec`, and any other useful annotations to every
+expression. For example:
 
 ```clojure
 (s/fdef foo :args (s/cat :x int?) :ret int?)
@@ -182,7 +178,7 @@ checking process. For example,
 ```
 
 ann takes a var, and a fn of two arguments, the original fnspec, and
-the arguments to a specific invocation of the function. The
+the arguments to a specific invocation of the function (map). The
 transformer should return an updated fnspec, presumably with the more
 specific type. In this example, it would `update` the
 `:ret` spec from `seq?` to `(coll-of y?)`. Since map also requires the
