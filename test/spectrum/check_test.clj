@@ -37,3 +37,16 @@
     (testing (str "testing: " ns)
       ;; currently only testing for non-explosion. Testing for no errors is on the roadmap!
       (st/check ns))))
+
+(deftest type-of-works
+  (are [form expected] (= (st/type-of form) val)
+    '3 (c/value 3)))
+
+(deftest check-form-works
+  (testing "good"
+    (are [form] (nil? (seq (st/check-form form)))
+      '(+ 1 3)))
+  (testing "bad"
+    (are [form] (seq (st/check-form form))
+      '(+ 1 "foo")
+      '(first 1))))

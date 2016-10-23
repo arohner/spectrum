@@ -7,8 +7,11 @@
   ;; var => ana.jvm/analysis cache
   (atom {}))
 
-(defonce checked-nses
-  ;; Previously checked namespaces. Will not be rechecked unless checked at the top-level (i.e. not a dep of another ns
+(defonce defmethod-analysis
+  ;; [var dispatch-value] => analysis cache
+  (atom {}))
+
+(defonce analyzed-nses
   (atom #{}))
 
 (defonce
@@ -54,10 +57,16 @@
         dispatch-val (-> a :args first :val)]
     (assert v)
     (assert dispatch-val)
-    (swap! var-analysis assoc [v dispatch-val] a)))
+    (swap! defmethod-analysis assoc [v dispatch-val] a)))
+
+(defn mark-ns-analyzed! [ns]
+  (swap! analyzed-nses conj ns))
+
+(defn analyzed-ns? [ns]
+  (contains? @analyzed-nses ns))
 
 (defn get-defmethod-analysis [v dispatch]
-  (get @var-analysis [v dispatch]))
+  (get @defmethod-analysis [v dispatch]))
 
 (defn get-defmethod-fn-analysis
   "Returns the flow for only the fn, not the whole (. var addMethod f)"
@@ -87,7 +96,8 @@
   (let [as (ana.jvm/analyze-ns ns)]
     (doseq [a as]
       (when (= :def (:op a))
-        (store-var-analysis a)))))
+        (store-var-analysis a)))
+    (mark-ns-analyzed! ns)))
 
 (s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis))
 (defn get-var-analysis

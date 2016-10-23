@@ -43,17 +43,15 @@
 (def builtin-nses '[clojure.core clojure.set clojure.string])
 
 (defn maybe-load-clojure-builtins []
-  (when-not (contains? @data/checked-nses 'clojure.core)
+  (when-not (data/analyzed-ns? 'clojure.core)
     (println "loading clojure")
     (data/load-clojure-data)
     (doseq [n builtin-nses]
-      (data/analyze-cache-ns n)
-      (swap! data/checked-nses conj n))))
+      (data/analyze-cache-ns n))))
 
 (s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
 
 (defn check [ns]
-  (swap! data/checked-nses conj ns)
   (maybe-load-clojure-builtins)
   (println "checking " ns)
   (some->>
@@ -256,3 +254,29 @@
    (java-call a)))
 
 ;; check recur values conform to bindings
+
+(defn analyze-form [form]
+  (flow/flow (ana.jvm/analyze form)))
+
+(defn analyze-ns [ns]
+  (mapv flow/flow (ana.jvm/analyze-ns ns)))
+
+(defn ensure-analysis [ns]
+  (when-not (data/analyzed-ns? ns)
+    (println "analyzing" ns)
+    (analyze-ns ns)
+    (data/mark-ns-analyzed! ns)))
+
+(defn type-of
+  "Given a quoted form, returns spectrum's expected type for evaluating the form"
+  [f]
+  (->> f
+       (analyze-form)
+       ::flow/ret-spec))
+
+(defn check-form
+  "Given a quoted form, returns any typechecking errors, or nil"
+  [f]
+  (->> f
+       (analyze-form)
+       (check*)))
