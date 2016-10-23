@@ -107,4 +107,6 @@
 (deftest conform-ann
   ;; 'regular' conform tests that require annotations to work
   (are [spec val] (= val (c/conform spec val))
-    (c/pred-spec #'number?) (c/pred-spec #'integer?)))
+    (c/pred-spec #'number?) (c/pred-spec #'integer?)
+    (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
+    (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::flow/analysis)))

@@ -3,7 +3,8 @@
             [clojure.spec.test]
             [clojure.test :refer :all]
             [clojure.tools.analyzer.jvm :as ana.jvm]
-            [spectrum.conform :as c])
+            [spectrum.conform :as c]
+            [spectrum.flow :as flow])
   (:import clojure.lang.Keyword))
 
 (clojure.spec.test/instrument)
@@ -228,7 +229,6 @@
       (c/coll-of (c/pred-spec #'int?)) (c/unknown '(mapv flow as))
       (c/coll-of (c/pred-spec #'int?)) nil
 
-      (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
       (c/parse-spec ::ana.jvm/analysis) 3
       (c/parse-spec ::ana.jvm/analysis) {})))
 
