@@ -99,7 +99,7 @@
         (store-var-analysis a)))
     (mark-ns-analyzed! ns)))
 
-(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis))
+(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis-def))
 (defn get-var-analysis
   [v]
   {:post [(do (when-not %
