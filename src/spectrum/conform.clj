@@ -1371,6 +1371,10 @@
     (parse-spec (s/spec (:v x)))
     x))
 
+(declare multispec?)
+
+(s/fdef multispec-dispatch-ret-value :args (s/cat :ms multispec? :val any?) :ret spect?)
+
 (defn multispec-dispatch-ret-value
   "Given a dispatch value, return the spec"
   [ms dispatch-value]
@@ -1378,7 +1382,7 @@
         a (data/get-defmethod-fn-analysis v dispatch-value)]
     (if a
       (if-let [s (-> a :methods first :spectrum.flow/ret-spec maybe-resolve-keyword-spec)]
-        s
+        (parse-spec s)
         (do
           (println "no ret-spec on:" v a)
           (unknown [v dispatch-value])))
@@ -1416,10 +1420,9 @@
               (multispec-dispatch-ret-value ms v)) (multispec-dispatch-values @(:multimethod ms)))))
 
 (defn multispec-resolve-spec
-  "Attempt to resolve the specific spec for v"
+  "Given a multispec and a dispatch value, attempt to return the spec for that defmethod call. Returns specific spec, or multispec-default-spec"
   [ms v]
   (let [d (multispec-dispatch ms v)]
-    (println "resolve dispatch:" ms v d)
     (if (not= d ::no-dispatch)
       (multispec-dispatch-ret-value ms d)
       (multispec-default-spec ms))))
@@ -1433,7 +1436,9 @@
                           :else (assert false "unknown dispatch type"))]
       (condp = dispatch-type
         :keyword (when (valid? (pred-spec #'map?) x)
-                   (let [s (multispec-resolve-spec this x)]
+                   (let [s (multispec-resolve-spec this x)
+                         x (if (multispec? x)
+                             (multispec-resolve-spec ))]
                      (println "multispec conform" s x)
                      (conform s x)))
         :fn (when (valid-invoke? (:retag this) x)
@@ -1448,8 +1453,8 @@
                 (keyword? retag) retag
                 (symbol? retag) (resolve retag))]
     (assert retag)
-    (map->MultiSpec {:multimethod (resolve (nth x 1))
-                     :retag retag})))
+    (multispec-default-spec (map->MultiSpec {:multimethod (resolve (nth x 1))
+                                             :retag retag}))))
 
 (extend-protocol Spect
   clojure.spec.Spec
