@@ -594,7 +594,9 @@
 (defrecord Value [v]
   Spect
   (conform* [this x]
-    (if (and (instance? Value x) (= (:v this) (:v x)))
+    (if (= (:v this) (if (instance? Value x)
+                       (:v x)
+                       x))
       x
       false))
   SpecToClass

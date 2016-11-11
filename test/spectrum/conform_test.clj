@@ -84,6 +84,7 @@
       (c/pred-spec #'integer?) (c/value 3)
       (c/pred-spec #'symbol?) (c/value 'foo)
       (c/value 1) (c/value 1)
+      (c/value 1) 1
       (c/pred-spec #'integer?) (c/pred-spec #'integer?)
       (c/pred-spec #'integer?) (c/pred-spec #'integer?)
       (c/pred-spec #'integer?) (c/parse-spec (s/and integer? even?))
