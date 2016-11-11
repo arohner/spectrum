@@ -56,7 +56,7 @@
     (let [arg (if (satisfies? c/FirstRest args-spect)
                 (c/first* args-spect)
                 args-spect)
-          c (if (c/spect? arg)
+          c (if (and (c/spect? arg) (c/spec->class? arg))
               (c/spec->class arg)
               (class arg))]
       (if c
@@ -65,16 +65,13 @@
           (assoc spect :ret (c/value false)))
         spect))))
 
-(defn satisfies-transformer [protocol]
+(defn protocol-transformer [protocol]
   (fn [spect args-spect]
     (let [arg (if (satisfies? c/FirstRest args-spect)
                 (c/first* args-spect)
-                args-spect)
-          c (if (c/spect? arg)
-              (c/spec->class arg)
-              (class arg))]
-      (if c
-        (if (satisfies? protocol c)
+                args-spect)]
+      (if arg
+        (if (satisfies? protocol arg)
           (assoc spect :ret (c/value true))
           (assoc spect :ret (c/value false)))
         spect))))
@@ -138,6 +135,22 @@
   (data/register-pred->class v cls)
   (ann v (instance-transformer cls)))
 
+(defn ann-instance?
+  "Annotates var-predicate p as just a simple instanceof? check
+
+   (ann-instance #'string? java.lang.String)
+ "
+  [v cls]
+  (ann v (instance-transformer cls)))
+
+(defn ann-protocol?
+  "Annotates var-predicate p as just a simple satisfies? check
+
+   (ann-protocol #'spect? Spect)
+ "
+  [v proto]
+  (ann v (protocol-transformer proto)))
+
 (s/fdef ann-type :args (s/cat :v var? :t ::spect))
 (defn ann-type [v t]
   (swap! data/type-transformers assoc v t)
@@ -146,7 +159,6 @@
 (defn ann-instance-or [v classes]
   (ann v (instance-or classes))
   (ann-type v (c/or- (mapv c/class-spec classes))))
-
 
 (ann-instance-or #'int? [Long Integer Short Byte])
 (ann-instance-or #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
@@ -218,7 +230,6 @@
                                                      (c/value false))
                    (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
                         (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
-
          (if ret
            (assoc spect :ret ret)
            spect))))
@@ -273,7 +284,6 @@
       (assoc spect :ret (c/coll-of (c/and-spec [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
       spect)))
 
-
 (defn ann-filter [spect args-spect]
   (if (= 1 (flow/cat-count args-spect))
     (assoc spect :ret transducer-fn-spec)
@@ -309,8 +319,12 @@
           (if-let [v (:var f)]
             (assoc spect :ret (c/coll-of (:ret (c/maybe-transform v invoke-args))))
             spect)
-          (assoc spect :ret c/reject))
-        (assoc spect :ret (c/value []))))))
+          (do
+            (println "ann map: not valid" (:args f) invoke-args "rejecting")
+            (assoc spect :ret c/reject)))
+        (do
+          (println "ann map empty seq")
+          (assoc spect :ret (c/value [])))))))
 
 ;; [[X->Y] [X] -> [Y]]
 (defn map-ann [spect args-spect]
@@ -326,7 +340,9 @@
           :else (do
                   (println "ann map don't know how to check:" f)
                   spect))
-        (assoc spect :ret (c/value (list)))))))
+        (do
+          (println "ann map empty seq")
+          (assoc spect :ret (c/value (list))))))))
 
 (ann #'map map-ann)
 
@@ -352,10 +368,14 @@
           (if-let [v (:var f)]
             (assoc spect :ret (:ret (c/maybe-transform v invoke-args)))
             (do
-              ;;(println "ann mapcat-fn: default" f)
+              (println "ann mapcat-fn: default" f)
               spect))
-          (assoc spect :ret c/reject))
-        (assoc spect :ret (c/value []))))))
+          (do
+            (println "ann mapcat not valid, rejecting" (:args f) invoke-args (:ret f))
+            (assoc spect :ret c/reject)))
+        (do
+          (println "ann mapcat empty seq" )
+          (assoc spect :ret (c/value [])))))))
 
 ;; [[X->Y] [X] -> [Y]]
 (defn mapcat-ann [spect args-spect]
@@ -399,3 +419,5 @@
                                    Long)]
                    (assoc spect :ret (c/class-spec ret-class)))
                  (assoc spect :ret c/reject)))))
+
+(ann-protocol? #'c/spect? c/Spect)

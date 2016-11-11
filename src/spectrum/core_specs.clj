@@ -18,7 +18,7 @@
 (defn reduce? [x]
   (satisfies? clojure.core.protocols/CollReduce x))
 
-(ann/ann #'reduce? (ann/satisfies-transformer clojure.core.protocols/CollReduce))
+(ann/ann #'reduce? (ann/protocol-transformer clojure.core.protocols/CollReduce))
 
 (s/def ::seq-like (s/nilable (s/or :seq seq? :seqable seqable?)))
 

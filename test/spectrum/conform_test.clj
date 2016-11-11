@@ -24,11 +24,14 @@
          ::even-int
          (s/spec ::even-int)
          (s/or :int integer? :str string?)
-         (s/and #(> % 10))
          (s/and integer? #(> % 10))
          (s/nilable int?)
          (s/coll-of ::integer)
          '[integer? integer?]))
+
+  (testing "spect-like"
+    (are [s] (s/conform ::c/spect-like (c/parse-spec s))
+      (s/and #(> % 10))))
 
   (testing "nil"
     (= ::s/nil (c/parse-spec ::s/nil)))
@@ -54,7 +57,7 @@
       (s/merge (s/keys :req-un [::integer]) (s/keys :req-un [::even-int]))
       {::integer 3})
 
-    (is (= (c/value 3) (-> {::integer 3} c/parse-spec :req ::integer)))
+    (is (= (c/value 3) (-> {::integer 3} c/parse-spec :req ::integer c/parse-spec)))
     (is (-> (c/parse-spec (s/keys :req-un [::even-int])) :req-un :even-int)))
   (testing "fn-spec"
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?) :ret boolean?))]
@@ -64,7 +67,15 @@
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?)))]
       (is (nil? (:ret fs)))))
   (testing "seq-of"
-    (is (= (c/pred-spec #'seqable?) (first (:ps (c/parse-spec '(clojure.spec/* clojure.core/seqable?))))))))
+    (is (= (c/pred-spec #'seqable?) (-> (c/parse-spec '(clojure.spec/* clojure.core/seqable?)) :ps first c/parse-spec)))))
+
+(deftest any-spec-works
+  (are [s] (c/any-spec? s)
+    (c/pred-spec #'any?)))
+
+(deftest conform-args-works
+  (are [spec val] (c/conform-args? spec val)
+    (c/pred-spec #'c/spect?) (c/value true)))
 
 (deftest conform-works
   (testing "should return val"
@@ -87,8 +98,7 @@
       (c/class-spec Long) (c/value 3)
       (c/class-spec Integer) (c/value 0)
       (c/pred-spec #'int?) (c/class-spec Long)
-      (c/class-spec String) (c/class-spec String)
-      (c/pred-spec #'c/spect?) (c/value false)))
+      (c/class-spec String) (c/class-spec String)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))
@@ -269,4 +279,22 @@
 
 (deftest dependendent-specs
   (are [s expected] (= expected (c/dependent-specs* s))
-    (c/pred-spec #'even?) #{(c/pred-spec #'integer?) (c/pred-spec #'any?)}))
+    (c/pred-spec #'even?) #{(c/pred-spec #'integer?)}))
+
+(s/def ::a string?)
+(s/def ::b int?)
+(s/def ::r double?)
+(s/def ::recursive-map (s/keys :req [::r] :req-un [::a ::b] :opt-un [::recursive-map]))
+
+(deftest recursive-map-works
+  (is (c/parse-spec ::recursive-map))
+  (is (c/conform (c/parse-spec ::recursive-map) {::r 3.0 ::a "foo" ::b 1}))
+  (is (c/conform (c/parse-spec ::recursive-map) (c/parse-spec ::recursive-map))))
+
+(s/def ::recursive-cat (s/cat :a ::a :b (s/? ::recursive-cat)))
+
+(deftest recursive-cat-works
+  (is (c/parse-spec ::recursive-cat))
+  (is (c/conform (c/parse-spec ::recursive-cat) ["a"]))
+  (is (c/conform (c/parse-spec ::recursive-cat) ["a" "a" "a"]))
+  (is (c/conform (c/parse-spec ::recursive-cat) (c/parse-spec ::recursive-cat))))

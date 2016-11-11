@@ -109,4 +109,6 @@
   (are [spec val] (= val (c/conform spec val))
     (c/pred-spec #'number?) (c/pred-spec #'integer?)
     (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
-    (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::flow/analysis)))
+    (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::flow/analysis)
+    (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::ana.jvm/analysis)
+    (c/pred-spec #'c/spect?) (c/value false)))

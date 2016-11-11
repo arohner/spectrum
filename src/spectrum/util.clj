@@ -45,3 +45,9 @@
   (apply println args))
 
 (def print-once (memoize print-once*))
+
+(defn protocol? [x]
+  (and (map? x)
+       (var? (:var x))
+       (class? (:on-interface x))
+       (map? (:method-map x))))

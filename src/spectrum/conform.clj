@@ -105,6 +105,12 @@
                  (fn []
                    spect-generator)))
 
+(defn fn-invoke? [x]
+  (and (seq? x) (symbol? (first x))))
+
+;; a thing that parse-spec will return a valid ::spect on
+(s/def ::spect-like (s/or :spec s/spec? :spect ::spect :key keyword? :sym symbol? :var var? :fn fn-invoke?))
+
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
 
 (defrecord Unknown [form file line column]
@@ -257,13 +263,16 @@
 
 (extend-type Object
   Regex
-  (derivative [spec x]
-    (if (= spec x)
-      (accept x)
-      reject))
-  (empty-regex [spec]
+  (derivative [obj x]
+    (if-let [s (and (keyword? obj) (#'s/maybe-spec obj))]
+      (let [s (parse-spec s)]
+        (derivative s x))
+      (if (= obj x)
+        (accept x)
+        reject)))
+  (empty-regex [_]
     reject)
-  (accept-nil? [this]
+  (accept-nil? [_]
     false)
   (return [this]
     this)
@@ -319,7 +328,8 @@
 (defrecord RegexCat [ps ks forms ret]
   Regex
   (derivative [this x]
-    (let [v (let [[p0 & pr] ps
+    (let [v (let [ps (map parse-spec ps)
+                  [p0 & pr] ps
                   [k0 & kr] ks
                   [f0 & fr] forms]
               (maybe-alt-
@@ -348,9 +358,12 @@
         (explain* pred path via in x))))
 
   (accept-nil? [this]
-    (every? accept-nil? ps))
+    (->>
+     ps
+     (map parse-spec)
+     (every? accept-nil?)))
   (return [this]
-    (return (add-return (first ps) ret (first ks))))
+    (return (add-return (some-> ps first parse-spec) ret (first ks))))
   (add-return [this r k]
     (let [ret (return this)]
       (if (empty? ret)
@@ -358,12 +371,12 @@
         (conj r (if k {k ret} ret)))))
   WillAccept
   (will-accept [this]
-    (if-let [p (first ps)]
+    (if-let [p (some-> ps first parse-spec)]
       (will-accept p)
       nil))
   FirstRest
   (first* [this]
-    (let [p (first ps)]
+    (let [p (some-> ps first parse-spec)]
       (if (and (and (first-rest? p) (regex? p)))
         (first* p)
         p)))
@@ -402,7 +415,9 @@
 (defrecord RegexSeq [ps ks forms splice ret]
   Regex
   (derivative [this x]
-    (new-regex-seq [(derivative (first ps) x) (first ps)] ret splice forms))
+    (let [p (first ps)
+          p (parse-spec p)]
+      (new-regex-seq [(derivative p x) p] ret splice forms)))
   (accept-nil? [this]
     true)
   (return [this]
@@ -414,12 +429,12 @@
         ((if splice into conj) r (if k {k ret} ret)))))
   FirstRest
   (first* [this]
-    (first ps))
+    (some-> ps first parse-spec))
   (rest* [this]
     (derivative this (will-accept this)))
   WillAccept
   (will-accept [this]
-               (will-accept (first ps)))
+    (some-> ps first parse-spec will-accept))
   Truthyness
   (truthyness [this]
     :truthy)
@@ -458,16 +473,19 @@
 (defrecord RegexAlt [ps ks forms ret]
   Regex
   (derivative [this x]
-    (new-regex-alt (map #(derivative % x) ps) ks forms))
+    (let [ps (map parse-spec ps)]
+      (new-regex-alt (mapv #(derivative % x) ps) ks forms)))
 
   (empty-regex [this]
     (map->RegexAlt {:ps (map empty-regex ps)
                     :ks ks
                     :forms forms}))
   (accept-nil? [this]
-    (some accept-nil? ps))
+    (let [ps (map parse-spec ps)]
+      (some accept-nil? ps)))
   (return [this]
-    (let [[[p0] [k0]] (filter-alt ps ks forms accept-nil?)
+    (let [ps (map parse-spec ps)
+          [[p0] [k0]] (filter-alt ps ks forms accept-nil?)
           r (if (nil? p0)
               nil
               (return p0))]
@@ -499,12 +517,12 @@
 
   FirstRest
   (first* [this]
-    (first ps))
+    (some-> ps first parse-spec))
   (rest* [this]
     (derivative this (will-accept this)))
   WillAccept
   (will-accept [this]
-    (will-accept (first ps)))
+    (some-> ps first parse-spec will-accept))
   Truthyness
   (truthyness [this]
     (let [b (distinct (map truthyness ps))]
@@ -607,36 +625,47 @@
   [x]
   (not (spect? x)))
 
-(s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
-(defn valuey? [s]
-  "true if s is a value with a truthy value"
-  (and (value? s) (boolean (:v s))))
+(s/fdef valuey? :args (s/cat :x any?) :ret boolean)
+(defn valuey? [x]
+  (or (value? x) (raw-value? x)))
 
-(defn maybe-strip-value [x]
+(s/def ::valuey (s/or :v value? :rv raw-value?))
+(s/fdef get-value :args (s/cat :x ::valuey))
+(defn get-value [x]
   (if (value? x)
     (:v x)
     x))
+
+(s/fdef truthy-value? :args (s/cat :x any?) :ret boolean?)
+(defn truthy-value? [s]
+  "true if s is a value with a truthy value"
+  (and (value? s) (boolean (:v s))))
+
+(defn maybe-strip-value [s]
+  (if (value? s)
+    (:v s)
+    s))
 
 (defrecord SpecSpec [s]
   ;; 'container' spec, for when the user does e.g. (s/cat :x (s/spec (s/* integer?)))
   ;; necessary because it changes the behavior of `first`
   Spect
   (conform* [this x]
-    (conform* s x))
+    (conform* (parse-spec s) x))
   WillAccept
   (will-accept [this]
-    s)
+    (parse-spec s))
   FirstRest
   (first* [this]
-    (first* s))
+    (-> s parse-spec first*))
   (rest* [this]
-    (rest* s))
+    (-> s parse-spec rest*))
   SpecToClass
   (spec->class [this]
-    (spec->class s))
+    (-> s parse-spec spec->class))
   Truthyness
   (truthyness [this]
-    (spec->class s)))
+    (-> s parse-spec spec->class)))
 
 (defn spec-spec? [x]
   (instance? SpecSpec x))
@@ -659,7 +688,7 @@
     (let [ret (when (spect? x)
                 (maybe-transform-pred spec x))
           truthy (= :truthy (truthyness ret))
-          tt (data/get-type-transformer (:pred spec))]
+          spec (parse-spec spec)]
       (cond
         truthy x
         (= #'any? pred) x
@@ -667,10 +696,13 @@
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? (:cls x) pred-class)
                             x))
+        (data/pred->protocol? pred) (let [proto (data/pred->protocol pred)]
+                                                (satisfies? proto x))
+        (and (satisfies? SpecToClass x) (valid? spec (class-spec (spec->class x)))) (conform spec (class-spec (spec->class x)))
         (and (satisfies? DependentSpecs x) (some (fn [px] (valid? spec px)) (dependent-specs* x))) x
-        (satisfies? SpecToClass x) (conform* spec (class-spec (spec->class x)))
-        (conform-args? spec x) (when ((:pred spec) x)
-                                 x))))
+        ;; calling the pred should always be last resort
+        (and (conform-args? spec x) (valuey? x)) (when (pred (get-value x))
+                                                   x))))
   (explain* [spec path via in x]
     (when (not (valid? spec x))
       [{:path path :pred form :val x :via via :in in}]))
@@ -711,7 +743,7 @@
 (defn any-spec?
   "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
   [pred-spec]
-  (-> pred-spec :form (= '(clojure.core/fn [x] (do true)))))
+  (-> pred-spec :pred (= #'any?)))
 
 (extend-protocol DependentSpecs
   PredSpec
@@ -878,9 +910,9 @@
 (defn parse-spec-map [x]
   (let [state (reduce (fn [state [k v]]
                         (cond
-                          (qualified-keyword? k) (assoc-in state [:req k] (parse-spec v))
-                          (simple-keyword? k) (assoc-in state [:req-un k] (parse-spec v)))) {:req {}
-                                                                                             :req-un {}} x)]
+                          (qualified-keyword? k) (assoc-in state [:req k] v)
+                          (simple-keyword? k) (assoc-in state [:req-un k] v))) {:req {}
+                                                                                :req-un {}} x)]
     (apply keys-spec [(:req state) (:req-un state) {} {}])))
 
 (defmethod parse-spec* :coll [x]
@@ -904,9 +936,9 @@
 (defmethod parse-spec* :clojure.spec/pcat [x]
   (map->RegexCat {:ks (:ks x)
                   :ps (mapv (fn [[form pred]]
-                              (parse-spec (if (:clojure.spec/op pred)
-                                            pred
-                                            form))) (map vector (:forms x) (:ps x)))
+                              (if (:clojure.spec/op pred)
+                                pred
+                                form)) (map vector (:forms x) (:ps x)))
                   :forms (:forms x)
                   :ret (:ret x)}))
 
@@ -918,7 +950,7 @@
         ks (map first pairs)
         ps (map second pairs)]
     (map->RegexCat {:ks ks
-                    :ps (mapv parse-spec ps)
+                    :ps ps
                     :forms ps
                     :ret {}})))
 
@@ -933,10 +965,9 @@
 (defmethod parse-spec* :clojure.spec/rep [x]
   (let [forms (if (vector? (:forms x))
                 (:forms x)
-                [(:forms x)])
-        preds (mapv parse-spec forms)]
+                [(:forms x)])]
     (map->RegexSeq {:ks (:ks x)
-                    :ps preds
+                    :ps forms
                     :forms forms
                     :ret []
                     :splice (:splice x)})))
@@ -944,18 +975,16 @@
 (defmethod parse-spec* :clojure.spec/rep [x]
   (let [forms (if (vector? (:forms x))
                 (:forms x)
-                [(:forms x)])
-        preds (mapv parse-spec forms)]
+                [(:forms x)])]
     (map->RegexSeq {:ks (:ks x)
-                    :ps preds
+                    :ps forms
                     :forms forms
                     :ret []
                     :splice (:splice x)})))
 
 (defmethod parse-spec* 'clojure.spec/* [x]
-  (let [forms (rest x)
-        ps (map parse-spec forms)]
-    (map->RegexSeq {:ps ps
+  (let [forms (rest x)]
+    (map->RegexSeq {:ps forms
                     :forms forms
                     :ret []
                     :splice false})))
@@ -970,23 +999,22 @@
 
     (map->RegexAlt {:ks (:ks x)
                     :forms (:forms x)
-                    :ps (mapv parse-spec forms)})))
+                    :ps forms})))
 
 (defn parse-literal-alt [x]
   (let [pairs (partition 2 (rest x))
         ks (mapv first pairs)
-        forms (mapv second pairs)
-        ps (mapv parse-spec forms)]
+        forms (mapv second pairs)]
     (map->RegexAlt {:ks ks
                     :forms forms
-                    :ps ps})))
+                    :ps forms})))
 
 (defmethod parse-spec* 'clojure.spec/alt [x]
   ;; literal alt form
   (parse-literal-alt x))
 
 (defmethod parse-spec* 'clojure.spec/? [x]
-  (map->RegexAlt {:ps [(parse-spec (second x)) (accept ::s/nil)]}))
+  (map->RegexAlt {:ps [(second x) (accept ::s/nil)]}))
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
@@ -1013,15 +1041,15 @@
 (defn and-spec? [x]
   (instance? AndSpec x))
 
-(s/fdef and-spec :args (s/cat :forms (s/coll-of ::spect)) :ret ::spect)
+(s/fdef and-spec :args (s/cat :forms (s/coll-of ::spect-like)) :ret ::spect-like)
 (defn and-spec [x]
-  (let [ps (remove valuey? x)]
+  (let [ps (remove truthy-value? x)]
     (cond
       (>= (count ps) 2) (map->AndSpec {:ps ps})
       :else (first ps))))
 
 (defmethod parse-spec* 'clojure.spec/and [x]
-  (and-spec (mapv parse-spec (rest x))))
+  (and-spec (rest x)))
 
 (defrecord NotSpec [s]
   Spect
@@ -1051,11 +1079,15 @@
 (defrecord OrSpec [ps ks]
   Spect
   (conform* [this x]
-    (some (fn [[k p]]
-            (when (valid? p x)
-              (if k
-                [k x]
-                x))) (mapv vector (or ks (repeat nil)) ps)))
+    (->>
+     ps
+     (map parse-spec)
+     (mapv vector (or ks (repeat nil)))
+     (some (fn [[k p]]
+             (when (valid? p x)
+               (if k
+                 [k x]
+                 x))))))
   DependentSpecs
   (dependent-specs* [spec]
     (apply set/intersection (map dependent-specs* ps)))
@@ -1091,7 +1123,7 @@
 (defn or-spec? [x]
   (instance? OrSpec x))
 
-(s/fdef or- :args (s/cat :ps (s/coll-of ::spect)) :ret or-spec?)
+(s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret or-spec?)
 (defn or- [ps]
   (if (>= (count ps) 2)
     (map->OrSpec {:ps ps})
@@ -1101,7 +1133,7 @@
   (map->OrSpec {:ks ks
                 :ps ps}))
 
-(s/fdef or-disj :args (s/cat :s or-spec? :p ::spect) :ret or-spec?)
+(s/fdef or-disj :args (s/cat :s or-spec? :p ::spect-like) :ret or-spec?)
 (defn or-disj
   "Remove pred from the set of preds"
   [s pred]
@@ -1114,9 +1146,9 @@
          (keys-spec? x)
          ;; x keys conform to spec
          (every? (fn [[key spec]]
-                   (valid? spec (get-in x [:req key]))) (:req this))
+                   (valid? (parse-spec spec) (parse-spec (get-in x [:req key])))) (:req this))
          (every? (fn [[key spec]]
-                   (valid? spec (get-in x [:req-un (strip-namespace key)]))) (:req-un this))
+                   (valid? (parse-spec spec) (parse-spec (get-in x [:req-un (strip-namespace key)])))) (:req-un this))
          ;; x keys conform to their own spec
          (->> [:req :opt]
               (map (fn [key-type]
@@ -1124,7 +1156,7 @@
               (apply concat)
               (every? (fn [[key val]]
                         (if (s/get-spec key)
-                          (valid? (parse-spec key) val)
+                          (valid? key (parse-spec val))
                           true)))))
     x))
 
@@ -1191,10 +1223,10 @@
 (s/def ::keys-spec keys-spec?)
 
 
-(s/fdef keys-spec :args (s/cat :req (s/nilable (s/map-of qualified-keyword? ::spect))
-                               :req-un (s/nilable (s/map-of keyword? ::spect))
-                               :opt (s/nilable (s/map-of qualified-keyword? ::spect))
-                               :opt-un (s/nilable (s/map-of keyword? ::spect)))
+(s/fdef keys-spec :args (s/cat :req (s/nilable (s/map-of qualified-keyword? ::spect-like))
+                               :req-un (s/nilable (s/map-of keyword? ::spect-like))
+                               :opt (s/nilable (s/map-of qualified-keyword? ::spect-like))
+                               :opt-un (s/nilable (s/map-of keyword? ::spect-like)))
         :ret keys-spec?)
 
 (defn keys-spec [req req-un opt opt-un]
@@ -1241,7 +1273,7 @@
     (or (class s) clojure.lang.PersistentList))
   FirstRest
   (first* [this]
-    s)
+    (parse-spec s))
   (rest* [this]
     this)
   Truthyness
@@ -1262,7 +1294,7 @@
 
 (defn parse-coll-of [x]
   (let [args (rest x)
-        s (parse-spec (first args))
+        s (first args)
         opts (apply hash-map (rest args))]
     (map->CollOfSpec (merge {:s s} opts))))
 
@@ -1273,7 +1305,7 @@
   (parse-coll-of x))
 
 (defmethod parse-spec* 'clojure.spec/nilable [x]
-  (let [s (parse-spec (second x))]
+  (let [s (second x)]
     (or- [s (parse-spec #'nil?)])))
 
 (defmethod parse-spec* 'clojure.spec/or [x]
@@ -1281,7 +1313,7 @@
         keys (mapv first pairs)
         forms (mapv second pairs)]
     (map->OrSpec {:ks keys
-                  :ps (mapv parse-spec forms)})))
+                  :ps forms})))
 
 (defmethod parse-spec* 'clojure.spec/keys [x]
   (let [args (->> (rest x)
@@ -1289,7 +1321,7 @@
                   (map (fn [[key-type specs]]
                          [key-type (into {} (map (fn [spec-name]
                                                    (if-let [s (s/get-spec spec-name)]
-                                                     [spec-name (parse-spec (s/form s))]
+                                                     [spec-name (s/form s)]
                                                      (throw (Exception. (format "Could not resolve spec: %s" spec-name))))) specs))]))
                   (into {} ))]
     (keys-spec (:req args)
@@ -1298,7 +1330,10 @@
                (:opt-un args))))
 
 (defn merge-keys [ks]
-  (map->KeysSpec (apply merge-with merge ks)))
+  (->> ks
+       (map parse-spec)
+       (apply merge-with merge)
+       (map->KeysSpec)))
 
 (s/fdef conform-map-of :args (s/cat :m ::spect :v value?) :ret any?)
 (defn conform-map-of [map-of v]
@@ -1321,7 +1356,7 @@
   (spec->class [s]
     clojure.lang.PersistentHashMap)
   ;; FirstRest
-  ;; TODO need tuples
+  ;; TODO need tuples/MapEntry
   ;; (first* [this]
   ;;   )
   ;; (rest* [this]
@@ -1337,15 +1372,15 @@
 (defmethod parse-spec* 'clojure.spec/map-of [x]
   (let [k (nth x 1)
         v (nth x 2)]
-    (map-of (parse-spec k) (parse-spec v))))
+    (map-of k v)))
 
 (defmethod parse-spec* 'clojure.spec/merge [x]
-  (merge-keys (map parse-spec (rest x))))
+  (merge-keys (rest x)))
 
 (defmethod parse-spec* 'clojure.spec/merge-spec-impl [x]
   (let [[forms preds & _] (rest x)
         forms (second forms)]
-    (merge-keys (map parse-spec forms))))
+    (merge-keys forms)))
 
 (defmethod parse-spec* 'clojure.spec/conformer [x]
   (value true))
@@ -1497,9 +1532,11 @@
 
 (defn re-conform [spec data]
   (let [data (maybe-strip-value data)]
-    (if (or (nil? data) (sequential? data) (and (spect? data) (regex? data)))
+    (if (or (nil? data) (sequential? data) (spect? data) (regex? data))
       (let [[x & xs] (if (:ps data)
-                       (:ps data)
+                       (if (or (spect? data) (regex? data))
+                         (map parse-spec (:ps data))
+                         (:ps data))
                        data)]
         (if (or (and (not (spect? data)) (empty? data))
                 (and (regex? data) (nil? (first* data))))
@@ -1552,33 +1589,33 @@
 
 (defmethod conform-compound :and-and [spec args]
   (when (every? (fn [p]
-                  (valid? p args)) (:ps spec))
+                  (valid? p args)) (map parse-spec (:ps spec)))
     args))
 
 (defmethod conform-compound :or-or [spec args]
   (when (every? (fn [arg]
-                  (valid? spec arg)) (:ps args))
+                  (valid? spec arg)) (map parse-spec (:ps args)))
     args))
 
 (defmethod conform-compound :spec-and [spec args]
   (when (every? (fn [p]
-                  (valid? p args)) (:ps spec))
+                  (valid? p args)) (map parse-spec (:ps spec)))
     args))
 
 (defmethod conform-compound :args-and [spec args]
   (when (some (fn [arg]
-                (valid? spec arg)) (:ps args))
+                (valid? spec arg)) (map parse-spec (:ps args)))
     args))
 
 (defmethod conform-compound :args-or [spec args]
   (when (every? (fn [arg]
-                  (valid? spec arg)) (:ps args))
+                  (valid? spec arg)) (map parse-spec (:ps args)))
     args))
 
 (defmethod conform-compound :simple [spec args]
   (conform* spec args))
 
-(s/fdef conform :args (s/cat :spec (s/or :spec s/spec? :re s/regex? :spect ::spect) :args any?) :ret any?)
+(s/fdef conform :args (s/cat :spec (s/or :spec s/spec? :re s/regex? :spect ::spect :key keyword?) :args any?) :ret any?)
 (defn conform
   "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, but not variables that contain values.
 
@@ -1589,6 +1626,7 @@ If an arg is a spec, it is treated as a variable that conforms to the
   [spec args]
   (try
     (let [t (:transformer spec)
+          spec* spec
           spec (parse-spec spec)
           spec (if t
                  (t spec args)

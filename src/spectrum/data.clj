@@ -1,7 +1,7 @@
 (ns spectrum.data
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec :as s]
-            [spectrum.util :refer (print-once)]))
+            [spectrum.util :refer (print-once protocol?)]))
 
 (defonce var-analysis
   ;; var => ana.jvm/analysis cache
@@ -35,16 +35,36 @@
   pred->class-
   (atom {}))
 
-(s/fdef register-class-pred :args (s/cat :p var? :cls class?))
+(defonce
+  ^{:doc "map of preds to protocols"}
+  pred->protocol-
+  (atom {}))
+
+(s/fdef register-pred->class :args (s/cat :p var? :cls class?))
 (defn register-pred->class
-  "Register pred as checking for instances of class c. Use this for preds that correspond *directlly* to classes. "
+  "Register pred as checking for instances of class c. Use this for preds that correspond *directly* to classes. "
   [pred cls]
   (swap! pred->class- assoc pred cls)
+  nil)
+
+(s/fdef register-protocol->pred :args (s/cat :p var? :protocol protocol?))
+(defn register-pred->protocol
+  "Register pred as checking for protocol p. Use this for preds that are exactly equivalent to (satisfies? p x)"
+  [pred protocol]
+  (swap! pred->protocol- assoc pred protocol)
   nil)
 
 (s/fdef pred->class :args (s/cat :p var?) :ret (s/nilable class?))
 (defn pred->class [v]
   (get @pred->class- v))
+
+(s/fdef pred->protocol :args (s/cat :p var?) :ret (s/nilable protocol?))
+(defn pred->protocol [v]
+  (get @pred->protocol- v))
+
+(s/fdef pred->protocol :args (s/cat :p var?) :ret boolean?)
+(defn pred->protocol? [x]
+  (boolean (pred->protocol x)))
 
 (defn store-var-analysis
   "Store the ana.jvm/analyze result for a var. Used for future type checking"
