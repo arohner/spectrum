@@ -8,7 +8,7 @@
                          Seqable)))
 
 
-;;; specs for clojure.core fns, used as hacks/testing. Delete as appropriate
+;;; specs for clojure.core fns, used as hacks/testing. Delete when official versions become available
 
 (defn namespace? [x] (instance? clojure.lang.Namespace))
 

@@ -186,42 +186,47 @@ input type of `f` match the type of the seq passed in, we can
 similarly update the expected type of the second argument in
 `:arg`. The updated spec will be used in place during the normal checking process.
 
-### value
+Invoke transformers are only run when checking a function invokation.
 
-In some cases, we can identify the type of an expression at compile time. For example,
+#### type transformers
+
+Type transformers are a second kind of hook, used to attach additional
+specs to *values* during the checking process. Consider
 
 ```clojure
-(s/fdef foo :args (s/cat :x int?) :ret keyword?)
+(s/fdef foo :args (s/cat :x map?))
+
 (defn foo [x]
-  (if (int? x)
-    :foo
-    "bar"))
+  (seq x))
 ```
 
-If we didn't know the value of the `if` test, the return spec of the `if`
-expression would be `(or keyword? string?)`. The type for `int?` is
-`any? -> boolean?`, which normally means we couldn't predict which
-branch to take.  Using a spec transformer, we can make int? more
-specific
-
-Spect defines an instance transformer for int?:
+Is this call legal? It is, but the `map?` predicate by itself doesn't
+indicate that maps are seqable. We know `seq` should work on anything
+where `seqable?` returns true, and from reading Clojure's
+implementation, we know seq will accept values that are `(instance?
+Map %)` (defined in `clojure.lang.RT/seqFrom`, if you're curious). We
+can and do use an instance transformer for `(seq)` and `(seqable?`),
+but those don't help us in the situation where `seqable?` isn't the
+function being invoked. Continuing our example:
 
 ```clojure
-(ann #'int? (instance-or [Long Integer Short Byte]))
+(s/fdef foo :args (s/cat :x map?))
+(s/fdef bar :args (s/cat :y seqable?))
+
+(defn foo [x]
+  (bar x))
 ```
 
-In this case, `instance-or` is a higher-order function returning a
-transformer that checks for the argument being an instance of any of
-the specified classes. If we know the type of the argument passed to
-`int?` at compile time, and it conforms, the spec transformer returns
-`(value true)`. `value` is a spec unique to spectrum, which indicates a
-literal value. `(value true)` represents this expression will always
-return true, rather than boolean?, which could indicate true or false.
+We know this should pass, because maps are seqable?, but the predicate
+only gets us so far. Type transformers are used to attach additional
+specs to to values during the checking process. In this case, we add a
+type transformer to `seqable?` to specify values that are `seqable?` also have the spec `(or clojure.lang.ISeq java.util.Map <bunch of other classes>)`.
+The call to `bar` now checks, because passing a map to a spec expecting
+`(or java.util.Map...)` conforms.
 
-Some expressions, such as `if`, recognize `(value true)` and will
-replace the type of the `if` expression from `(or keyword? string?)`
-to just `keyword?`. Similarly, returning `(value false)` or `(value
-nil)` will cause the code to take the else branch.
+For the most part, you shouldn't need to use type transformers,
+because they are primarily used to flesh out operations in the Clojure
+implementation.
 
 ## Unknown
 
