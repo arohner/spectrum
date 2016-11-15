@@ -153,29 +153,29 @@
       (throw t))))
 
 (defmethod flow :default [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (flow-walk a))
 
 (defmethod flow :quote [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (-> a :expr ::ret-spec))))
 
 (defmethod flow :def [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (data/store-var-analysis a)
   (let [a (maybe-assoc-var-name a)
         a (flow-walk a)]
     (assoc a ::ret-spec (c/pred-spec #'var?))))
 
 (defmethod flow :the-var [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   ;; the-var => (var foo). Returns the actual var
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/pred-spec #'var?))))
 
 (defmethod flow :var [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   ;; :var => the value the var holds
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (if-let [s (c/get-var-fn-spec (:var a))]
@@ -183,12 +183,12 @@
                           (c/value @(:var a))))))
 
 (defmethod flow :with-meta [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (::ret-spec (:expr a)))))
 
 (defmethod flow :fn [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/parse-spec (s/and fn? ifn?)))))
 
@@ -320,7 +320,7 @@
         spec))))
 
 (defmethod flow :invoke [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [v (-> a :fn :var)
         spec (when v
                (c/get-var-fn-spec v))
@@ -342,7 +342,7 @@
       (assoc a ::ret-spec (c/unknown (:form a) (a-loc a))))))
 
 (defmethod flow :protocol-invoke [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [v (-> a :fn :var)
         spec (when v
                (c/get-var-fn-spec v))
@@ -391,7 +391,7 @@
         ret))))
 
 (defmethod flow :if [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
         then-ret-spec (-> a :then ::ret-spec)
         else-ret-spec (-> a :else ::ret-spec)
@@ -413,28 +413,29 @@
                                                 else-ret-spec])))))))
 
 (defmethod flow :const [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/value (:val a)))))
 
 (defmethod flow :do [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (-> a :ret ::ret-spec))))
 
 (defmethod flow :catch [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (if (:body a)
                           (-> a :body ::ret-spec)
                           (c/value nil)))))
 (defmethod flow :try [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/or- (map (fn [e]
                                       (::ret-spec e)) (concat (:body a) (:catches a)))))))
 
 (defmethod flow :instance? [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
         s (c/class-spec (:class a))
         arg-spec (-> a :target ::ret-spec)]
@@ -562,11 +563,11 @@
                ::args-spec (:args spec)))))
 
 (defmethod flow :static-call [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (flow-java-call a))
 
 (defmethod flow :instance-call [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (flow-java-call a))
 
 (declare assoc-form-spec)
@@ -618,7 +619,7 @@
       false)))
 
 (defmethod flow :binding [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (when (:init a)
       (assert (-> a :init ::ret-spec)))
@@ -633,12 +634,13 @@
 (defn assoc-spec-bindings
   "Given the :bindings from a let, assoc ::flow/spec to the binding, based on the right-hand value"
   [a]
-  {:post [(every? ::ret-spec (:bindings %))]}
+  {:post [(every? (fn [b]
+                    (c/spect? (::ret-spec b))) (:bindings %))]}
   (reduce (fn [a b]
             (update-in a [:bindings] conj (flow (with-meta b {:a a})))) (assoc a :bindings []) (:bindings a)))
 
 (defn flow-loop-let [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (assoc-spec-bindings a)
         a (flow-walk a)
         ret-spec (::ret-spec (:body a))]
@@ -647,11 +649,11 @@
         (assoc ::ret-spec ret-spec))))
 
 (defmethod flow :let [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (flow-loop-let a))
 
 (defmethod flow :loop [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (flow-loop-let a))
 
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
@@ -707,6 +709,7 @@
     s))
 
 (defn flow-method [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [v (-> a meta :a ::var)
         s (when v
             (c/get-var-fn-spec v))
@@ -721,19 +724,20 @@
     (assoc a ::ret-spec (strip-control-flow (::ret-spec (:body a))))))
 
 (defmethod flow :fn-method [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (flow-method a))
 
 (defmethod flow :method [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (flow-method a))
 
 (defmethod flow :vector [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/value (mapv ::ret-spec (:items a))))))
 
 (defmethod flow :map [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
         ret-keys (reduce (fn [ret-keys [k-a v-a]]
                            (let [k-s (::ret-spec k-a)]
@@ -748,12 +752,12 @@
     (assoc a ::ret-spec ret-spec)))
 
 (defmethod flow :recur [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (recur-form (analysis-args->spec (:exprs a))))))
 
 (defmethod flow :throw [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (throw-form (:exception a)))))
 
@@ -774,45 +778,50 @@
        (c/unknown (:form a) (a-loc a))))))
 
 (defmethod flow :keyword-invoke [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (keyword-invoke-ret-spec a))))
 
 (defmethod flow :new [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/class-spec (-> a :class :val)))))
 
 (defmethod flow :set! [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (::ret-spec (:val a)))))
 
 (defmethod flow :set [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/coll-of (c/or- (map ::ret-spec (:items a))) #{}))))
 
 (defmethod flow :case [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/or- (map ::ret-spec (:thens a))))))
 
 (defmethod flow :case-test [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (-> a :test ::ret-spec))))
 
 (defmethod flow :case-then [a]
-  {:post [(::ret-spec %)]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (-> a :then ::ret-spec))))
 
 (defmethod flow :monitor-enter [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (assoc (flow-walk a) ::ret-spec (c/value nil)))
 
 (defmethod flow :monitor-exit [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (assoc (flow-walk a) ::ret-spec (c/value nil)))
 
 (defmethod flow :import [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/class-spec Class))))
 
@@ -828,19 +837,23 @@
            first))
 
 (defmethod flow :static-field [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
         {:keys [field class]} a]
     (assoc a ::ret-spec (c/class-spec (:type (get-java-field class field {:static? true}))))))
 
 (defmethod flow :instance-field [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
         {:keys [field class]} a]
     (assoc a ::ret-spec (c/class-spec (:type (get-java-field class field))))))
 
 (defmethod flow :reify [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/and-spec (mapv c/class-spec (:interfaces a))))))
 
 (defmethod flow :deftype [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/class-spec (:class-name a)))))
