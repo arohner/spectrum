@@ -1128,12 +1128,15 @@
 (s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret or-spec?)
 (defn or- [ps]
   (if (>= (count ps) 2)
-    (map->OrSpec {:ps ps})
+    (map->OrSpec {:ps ps
+                  :ks (take (count ps) (repeat nil))})
     (first ps)))
 
 (defn or-spec [ks ps]
-  (map->OrSpec {:ks ks
-                :ps ps}))
+  (if (>= (count ps) 2)
+    (map->OrSpec {:ks ks
+                  :ps ps})
+    (first ps)))
 
 (s/fdef or-disj :args (s/cat :s or-spec? :p ::spect-like) :ret or-spec?)
 (defn or-disj
