@@ -29,9 +29,15 @@
   (let [{{:keys [file line column]} :env} a]
     (str "file " file " line " line " col " column)))
 
-(defrecord RecurForm [args])
+(defrecord RecurForm [args]
+  c/Spect
+  (conform* [this x]
+    false))
 
-(defrecord ThrowForm [exception])
+(defrecord ThrowForm [exception]
+  c/Spect
+  (conform* [this x]
+    false))
 
 (s/fdef recur? :args (s/cat :x any?) :ret boolean?)
 (defn recur? [x]
@@ -698,14 +704,17 @@
       (mapv (fn [p]
               (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
 
+(s/fdef strip-control-flow :args (s/cat :s c/spect?) :ret (s/nilable c/spect?))
 (defn strip-control-flow
   "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
   [s]
-  (if (satisfies? c/Compound s)
-    (->> s
-         (c/remove* (fn [p]
-                      (control-flow? p)))
-         (c/map* strip-control-flow))
+  {:post [(do (println "strip-control-flow:" s "=>" %) true) (s/nilable (c/spect? %))]}
+  (let [s (if (satisfies? c/Compound s)
+            (c/remove* (fn [p] (control-flow? p)) s)
+            s)
+        s (if (satisfies? c/Compound s)
+            (c/map* strip-control-flow s)
+            s)]
     s))
 
 (defn flow-method [a]

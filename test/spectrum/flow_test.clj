@@ -118,3 +118,10 @@
       #'print
       #'int
       #'str)))
+
+(deftest strip-control-flow
+  (are [in out] (= out (flow/strip-control-flow in))
+    (c/or- [(c/pred-spec #'int?) (flow/recur-form 'x)]) (c/or- [(c/pred-spec #'int?)])
+
+    (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)])
+    (c/or- []) (c/or- [])))
