@@ -69,7 +69,7 @@
                (fn []
                  (gen/elements [#'int? #'println #'str]))))
 
-(s/def ::analysis (s/and ::ana.jvm/analysis (s/keys :opt [::var ::args-spec ::ret-spec])))
+(s/def ::analysis (s/merge ::ana.jvm/analysis (s/keys :opt [::var ::args-spec ::ret-spec])))
 
 (s/def ::analysis? (s/nilable ::analysis))
 
