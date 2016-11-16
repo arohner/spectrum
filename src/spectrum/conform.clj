@@ -1427,7 +1427,7 @@
           (println "no ret-spec on:" v a)
           (unknown [v dispatch-value])))
       (do
-        (println "could not find analysis found for" v dispatch-value ", returning unknown")
+        (println "no analysis found for" v dispatch-value ", returning unknown")
         (unknown [v dispatch-value])))))
 
 (defn multispec-dispatch-invoke [ms v]
