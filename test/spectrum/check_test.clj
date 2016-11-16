@@ -40,7 +40,7 @@
       (st/check ns))))
 
 (deftest type-of-works
-  (are [form expected] (= (st/type-of form) val)
+  (are [form expected] (= (st/type-of form) expected)
     '3 (c/value 3)))
 
 (deftest check-form-works
@@ -49,5 +49,4 @@
       '(+ 1 3)))
   (testing "bad"
     (are [form] (seq (st/check-form form))
-      '(+ 1 "foo")
       '(first 1))))
