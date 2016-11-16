@@ -4,6 +4,7 @@
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer (defspec)]
+            [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec :as s]
             [clojure.spec.gen :as spec-gen]
             [clojure.spec.test]
@@ -105,7 +106,7 @@
       (c/cat- [(c/pred-spec #'string?)]) c/reject)))
 
 (deftest conform-ann
-  ;; 'regular' conform tests that require annotations to work
+  ;; conform tests that require ann.clj or core_specs.clj to work
   (are [spec val] (= val (c/conform spec val))
     (c/pred-spec #'number?) (c/pred-spec #'integer?)
     (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
