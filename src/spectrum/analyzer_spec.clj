@@ -8,7 +8,8 @@
 (s/def :ana.jvm.env/file string?)
 (s/def :ana.jvm.env/line int?)
 (s/def :ana.jvm.env/column int?)
-(s/def ::ana.jvm/env (s/keys :req-un [:ana.jvm.env/file :ana.jvm.env/line :ana.jvm.env/column]))
+(s/def :ana.jvm.env/ns symbol?)
+(s/def ::ana.jvm/env (s/keys :opt-un [:ana.jvm.env/file :ana.jvm.env/line :ana.jvm.env/column :ana.jvm.env/ns]))
 
 (s/def ::ana.jvm/children (s/coll-of keyword? :into []))
 
