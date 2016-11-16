@@ -454,10 +454,10 @@
 
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?
-  "True if args conforming to spec s can be passed to a method that takes method-types"
+  "True if args conforming to spec arg-spec can be passed to a method that takes method-types"
   [arg-spec method-types]
   (let [spec (c/cat- (mapv java-type->spec method-types))
-        argv (-> arg-spec :ps)]
+        argv (mapv c/parse-spec (-> arg-spec :ps))]
     (assert argv)
     (c/valid? spec argv)))
 
