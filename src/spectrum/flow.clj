@@ -720,7 +720,9 @@
             (update-in a [:params] destructure-fn-params (:args s) a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
-                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))]
+                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
+        a (update-in a [:body] (fn [body]
+                                 (flow (with-meta body {:a a}))))]
     (assoc a ::ret-spec (strip-control-flow (::ret-spec (:body a))))))
 
 (defmethod flow :fn-method [a]
