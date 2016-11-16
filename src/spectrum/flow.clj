@@ -62,8 +62,8 @@
 (defn control-flow? [x]
   (or (throw? x) (recur? x)))
 
-(s/def ::args-spec ::c/spect)
-(s/def ::ret-spec (s/or :s ::c/spect :cf control-flow?))
+(s/def ::args-spec ::c/spect-like)
+(s/def ::ret-spec ::c/spect-like)
 
 (s/def ::var (s/with-gen (s/spec var?)
                (fn []
@@ -75,7 +75,7 @@
 
 (s/def ::analyses (s/coll-of ::analysis))
 
-(s/fdef flow-dispatch :args (s/cat :a ::analysis) :ret keyword?)
+(s/fdef flow-dispatch :args (s/cat :a ::ana.jvm/analysis) :ret keyword?)
 (defn flow-dispatch [a]
   (assert (:op a))
   (:op a))
@@ -291,6 +291,7 @@
 (defn find-binding
   "recursively unwrap a, looking for a :binding for 'name"
   [a name]
+  {:post [(s/valid? (s/nilable ::analysis) %)]}
   (loop [a* a]
     (when a*
       (if-let [b (find-binding* a* name)]
@@ -599,20 +600,13 @@
              ::ret-spec (:ret s))
       a)))
 
-;; (s/fdef get-form-spec :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
-;; (defn get-form-spec
-;;   "Given the :init of a binding, return the spec for the form, if any"
-;;   [a]
-;;   (or (::spec a) (assoc-form-spec a)))
-
 (defmethod flow :local [a]
-  {:post [(::ret-spec %) ;; (do (println "flow :local" (:form a) (::ret-spec %)) true)
-          ]}
+  {:post [(c/spect? (::ret-spec %))]}
   (let [b (find-binding a (:name a))]
     (assert b (format "flow :local: failed to find binding: %s %s" (:name a) (a-loc-str a)))
     (when-not (::ret-spec b)
       (println "error: no ret-spec on:" (:name b) (:op b)))
-    (assert (::ret-spec b))
+    (assert (c/spect? (::ret-spec b)))
     (assoc a ::ret-spec (::ret-spec b))))
 
 (defn deftype?
@@ -651,8 +645,7 @@
         a (flow-walk a)
         ret-spec (::ret-spec (:body a))]
     (assert ret-spec)
-    (-> a
-        (assoc ::ret-spec ret-spec))))
+    (assoc a ::ret-spec ret-spec)))
 
 (defmethod flow :let [a]
   {:post [(c/spect? (::ret-spec %))]}
@@ -704,11 +697,11 @@
       (mapv (fn [p]
               (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
 
-(s/fdef strip-control-flow :args (s/cat :s c/spect?) :ret (s/nilable c/spect?))
+(s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
 (defn strip-control-flow
   "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
   [s]
-  {:post [(do (println "strip-control-flow:" s "=>" %) true) (s/nilable (c/spect? %))]}
+  {:post [(s/nilable (c/spect? %))]}
   (let [s (if (satisfies? c/Compound s)
             (c/remove* (fn [p] (control-flow? p)) s)
             s)
@@ -727,9 +720,7 @@
             (update-in a [:params] destructure-fn-params (:args s) a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
-                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
-        a (update-in a [:body] (fn [body]
-                                 (flow (with-meta body {:a a}))))]
+                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))]
     (assoc a ::ret-spec (strip-control-flow (::ret-spec (:body a))))))
 
 (defmethod flow :fn-method [a]

@@ -109,7 +109,7 @@
   (and (seq? x) (symbol? (first x))))
 
 ;; a thing that parse-spec will return a valid ::spect on
-(s/def ::spect-like (s/or :spec s/spec? :spect ::spect :key keyword? :sym symbol? :var var? :fn fn-invoke?))
+(s/def ::spect-like (s/or :spec s/spec? :spect ::spect :key keyword? :sym symbol? :var var? :fn fn-invoke? :nil nil?))
 
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
 
@@ -1620,7 +1620,7 @@
 (defmethod conform-compound :simple [spec args]
   (conform* spec args))
 
-(s/fdef conform :args (s/cat :spec (s/or :spec s/spec? :re s/regex? :spect ::spect :key keyword?) :args any?) :ret any?)
+(s/fdef conform :args (s/cat :spec ::spect-like :args any?) :ret any?)
 (defn conform
   "Given a spec and args, return the conforming parse. Behaves similar to s/conform, but args may be clojure literals, or specs, but not variables that contain values.
 
