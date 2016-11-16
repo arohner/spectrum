@@ -11,11 +11,20 @@
 
 (spec-test/instrument)
 
+(def dummy-env {:file "spectrum.flow-test.clj"
+                :line 15
+                :column 1})
 (def dummy-analysis {:op :invoke
                      :form '(dummy data)
-                     :env {:file "spectrum.flow-test.clj"
-                           :line 15
-                           :column 1}})
+                     :env dummy-env
+                     :fn {:op :const
+                          :form nil
+                          :env dummy-env}
+                     :args [{:op :const
+                             :form nil
+                             :env {:file "spectrum.flow-test.clj"
+                                   :line 15
+                                   :column 1}}]})
 
 (deftest basic
   (is (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x))))))
@@ -84,7 +93,8 @@
   (merge
    {:name name
     :op :binding
-    :form name}
+    :form name
+    :env dummy-env}
    opts))
 
 (deftest arity-conform?
