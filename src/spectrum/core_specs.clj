@@ -30,6 +30,7 @@
 (s/fdef clojure.core/class? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/dorun :args (s/cat :x ::seq-like) :ret nil?)
 (s/fdef clojure.core/doall :args (s/cat :x ::seq-like) :ret seq)
+(s/fdef clojure.core/double? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/even? :args (s/cat :n integer?) :ret boolean?)
 (s/fdef clojure.core/false? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/first :args (s/cat :coll ::seq-like) :ret any?)
