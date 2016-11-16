@@ -74,7 +74,7 @@
   [v]
   (boolean (get @data/var-analysis v)))
 
-(s/fdef a-multimethod? :args (s/cat :a ::analysis) :ret boolean?)
+(s/fdef a-multimethod? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
 (defn a-multimethod? [a]
   (and (-> a :init :op (= :new))
        (-> a :init :class :val (= clojure.lang.MultiFn))))
