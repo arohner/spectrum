@@ -400,9 +400,9 @@
 (defmethod flow :if [a]
   {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
+        test-ret-spec (-> a :test ::ret-spec)
         then-ret-spec (-> a :then ::ret-spec)
         else-ret-spec (-> a :else ::ret-spec)
-        test-ret-spec (-> a :test ::ret-spec)
         _ (when (:test a)
             (assert then-ret-spec (format "missing then-ret-spec: %s %s %s" (-> a :then :op) (-> a :then :form)
                                           (a-loc-str a))))

@@ -70,8 +70,13 @@
     (is (= (c/pred-spec #'seqable?) (-> (c/parse-spec '(clojure.spec/* clojure.core/seqable?)) :ps first c/parse-spec)))))
 
 (deftest any-spec-works
-  (are [s] (c/any-spec? s)
-    (c/pred-spec #'any?)))
+  (testing "truthy"
+    (are [s] (c/any-spec? s)
+      (c/pred-spec #'any?)
+      (-> (c/pred-spec #'any?) (c/resolve-pred-spec) :args c/first*)))
+  (testing "falsey"
+    (are [s] (not (c/any-spec? s))
+      (c/pred-spec #'integer?))))
 
 (deftest conform-args-works
   (are [spec val] (c/conform-args? spec val)

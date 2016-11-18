@@ -724,10 +724,13 @@
       #'any? :ambiguous
       :truthy)))
 
-(s/fdef pred-spec :args (s/cat :v var?) :ret ::spect)
-(defn pred-spec [v]
-  (map->PredSpec {:pred v
-                  :form (var-name v)}))
+(s/def ::pred (s/or :v var? :fn fn? :nil nil?))
+
+(s/fdef pred-spec :args (s/cat :p ::pred) :ret ::spect)
+(defn pred-spec [p]
+  (map->PredSpec {:pred p
+                  :form (when (var? p)
+                          (var-name p))}))
 
 (s/fdef pred-spec? :args (s/cat :x any?) :ret boolean?)
 (defn pred-spec? [x]
@@ -745,11 +748,14 @@
             fnspec))))
     s))
 
+(def any?-form '(= '(clojure.core/fn [x] (do true))))
+
 (s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
 (defn any-spec?
   "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
   [pred-spec]
-  (-> pred-spec :pred (= #'any?)))
+  (or (-> pred-spec :pred (= #'any?))
+      (-> pred-spec :pred (= any?-form))))
 
 (extend-protocol DependentSpecs
   PredSpec
@@ -927,8 +933,11 @@
     (map? x) (parse-spec-map x)))
 
 (defmethod parse-spec* 'clojure.core/fn [x]
-  (map->PredSpec {:pred (eval x)
-                  :form x}))
+  (if (= x any?-form)
+    (pred-spec #'any?)
+    (do
+      (map->PredSpec {:pred nil ;;(eval x)
+                      :form x}))))
 
 (defmethod parse-spec* 'quote [x]
   (parse-spec* (second x)))
@@ -1039,7 +1048,7 @@
     this)
   Truthyness
   (truthyness [this]
-    (let [b (distinct (map truthyness ps))]
+    (let [b (distinct (->> ps (map parse-spec) (map truthyness)))]
       (if (= 1 (count b))
         (first b)
         :ambiguous))))
@@ -1527,7 +1536,8 @@
 (extend-protocol SpecToClass
   spectrum.conform.PredSpec
   (spec->class [s]
-    (data/pred->class (:pred s)))
+    (when (var? (:pred s))
+      (data/pred->class (:pred s))))
   spectrum.conform.OrSpec
   (spec->class [s]
     (spec->class-seq (:ps s)))

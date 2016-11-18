@@ -31,7 +31,7 @@
   (get @type-transformers v))
 
 (defonce
-  ^{:doc "map of preds to java classes."}
+  ^{:doc "map of predicates to java classes."}
   pred->class-
   (atom {}))
 
