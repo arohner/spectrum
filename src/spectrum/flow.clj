@@ -552,6 +552,7 @@
 (defn flow-java-call
   "Handles both :static-call and :instance-call"
   [a]
+  {:post [(c/spect? (::ret-spec %))]}
   (let [{:keys [class method instance]} a
         a (flow-walk a)
         a (maybe-flow-multi-method a)
