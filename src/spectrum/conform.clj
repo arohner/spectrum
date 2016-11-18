@@ -1256,8 +1256,10 @@
 (defn keys-get
   "clojure.core/get, for key-spec"
   [ks key]
-  (some (fn [key-type]
-          (get-in ks [key-type key])) [:req :req-un :opt :opt-un]))
+  (some->> [:req :req-un :opt :opt-un]
+           (some (fn [key-type]
+                   (get-in ks [key-type key])))
+           (parse-spec)))
 
 (s/fdef conform-collof-coll :args (s/cat :collof ::spect :x (s/nilable coll?)))
 (defn conform-collof-coll [collof x]
