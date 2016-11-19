@@ -34,7 +34,7 @@
   (conform* [this x]
     false))
 
-(defrecord ThrowForm [exception]
+(defrecord ThrowForm [exception-class]
   c/Spect
   (conform* [this x]
     false))
@@ -54,9 +54,9 @@
 (defn throw? [x]
   (instance? ThrowForm x))
 
-(s/fdef throw-form :args (s/cat :e throwable?) :ret throw?)
+(s/fdef throw-form :args (s/cat :e class?) :ret throw?)
 (defn throw-form [e]
-  (map->ThrowForm {:exception e}))
+  (map->ThrowForm {:exception-class e}))
 
 (s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
 (defn control-flow? [x]
@@ -762,7 +762,7 @@
 (defmethod flow :throw [a]
   {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
-    (assoc a ::ret-spec (throw-form (:exception a)))))
+    (assoc a ::ret-spec (throw-form (-> a :exception :class :val)))))
 
 (defn keyword-invoke-ret-spec
   [a]
