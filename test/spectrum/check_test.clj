@@ -30,10 +30,12 @@
     (testing (str "testing: " ns)
       (is (seq (st/check ns))))))
 
-(def self-checking-nses ['spectrum.conform
+;; can't check anything with defprotocol/defrecord yet, requires pods.
+(def self-checking-nses [;; 'spectrum.conform
                          ;;'spectrum.flow
                          'spectrum.check])
 (deftest test-self
+  (st/ensure-analysis 'spectrum.analyzer-spec)
   (doseq [ns self-checking-nses]
     (testing (str "testing: " ns)
       ;; currently only testing for non-explosion. Testing for no errors is on the roadmap!
