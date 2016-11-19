@@ -256,6 +256,7 @@
 (defn maybe-disj-pred
   "If s is an or-spec, remove p if present"
   [s p]
+  {:post [(s/valid? ::c/spect %)]}
   (if (c/or-spec? s)
     (c/or-disj s p)
     s))

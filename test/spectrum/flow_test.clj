@@ -135,3 +135,9 @@
 
     (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)])
     (c/or- []) (c/or- [])))
+
+(deftest maybe-disj-works
+  (are [spec pred expected] (= expected (flow/maybe-disj-pred spec pred))
+    (c/pred-spec #'integer?) (c/pred-spec #'nil?) (c/pred-spec #'integer?)
+    (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'seq?) (c/pred-spec #'nil?)
+    (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'integer?) (c/or- [(c/pred-spec #'seq?) (c/pred-spec #'nil?)])))

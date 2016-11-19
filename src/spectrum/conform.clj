@@ -1151,12 +1151,14 @@
                   :ps ps})
     (first ps)))
 
-(s/fdef or-disj :args (s/cat :s or-spec? :p ::spect-like) :ret or-spec?)
+(s/fdef or-disj :args (s/cat :s or-spec? :p spect?) :ret spect?)
 (defn or-disj
   "Remove pred from the set of preds"
   [s pred]
-  (filter* (fn [p]
-             (= p pred)) s))
+  (->> s
+       (map* parse-spec)
+       (filter* (fn [p]
+                  (not= p pred)))))
 
 (s/fdef conform-keys-keys :args (s/cat :s ::keys-spec :x ::keys-spec) :ret any?)
 (defn conform-keys-keys [this x]
