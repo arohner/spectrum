@@ -246,7 +246,9 @@
       (c/coll-of (c/pred-spec #'int?)) nil
 
       (c/parse-spec ::ana.jvm/analysis) 3
-      (c/parse-spec ::ana.jvm/analysis) {})))
+      (c/parse-spec ::ana.jvm/analysis) {}
+
+      (c/regex-seq (c/pred-spec #'integer?)) (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]))))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
@@ -304,3 +306,6 @@
   (is (c/conform (c/parse-spec ::recursive-cat) ["a"]))
   (is (c/conform (c/parse-spec ::recursive-cat) ["a" "a" "a"]))
   (is (c/conform (c/parse-spec ::recursive-cat) (c/parse-spec ::recursive-cat))))
+
+(deftest re-conform-works
+  (is (= ::c/invalid (c/re-conform (c/regex-seq (c/pred-spec #'integer?)) (c/pred-spec #'string?)))))

@@ -1555,7 +1555,7 @@
 
 (defn re-conform [spec data]
   (let [data (maybe-strip-value data)]
-    (if (or (nil? data) (sequential? data) (spect? data) (regex? data))
+    (if (or (nil? data) (sequential? data) (regex? data))
       (let [[x & xs] (if (:ps data)
                        (if (or (spect? data) (regex? data))
                          (map parse-spec (:ps data))
