@@ -452,6 +452,12 @@
 (defn regex-seq? [x]
   (instance? RegexSeq x))
 
+(defn regex-seq [s & [{:keys [splice]}]]
+  (map->RegexSeq {:ps [s]
+                  :forms nil
+                  :ret nil
+                  :splice splice}))
+
 (defn filter-alt [ps ks forms f]
   (if (or ks forms)
     (let [pks (->> (map vector ps
