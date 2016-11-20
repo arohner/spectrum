@@ -748,7 +748,7 @@
             fnspec))))
     s))
 
-(def any?-form '(= '(clojure.core/fn [x] (do true))))
+(def any?-form '(clojure.core/fn [x] (do true)))
 
 (s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
 (defn any-spec?
