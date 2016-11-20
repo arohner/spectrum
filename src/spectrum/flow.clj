@@ -718,7 +718,7 @@
         s (when v
             (c/get-var-fn-spec v))
         a (flow-walk a)
-        a (if s
+        a (if (:args s)
             (update-in a [:params] destructure-fn-params (:args s) a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
