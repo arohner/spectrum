@@ -1162,22 +1162,15 @@
 
 (s/fdef conform-keys-keys :args (s/cat :s ::keys-spec :x ::keys-spec) :ret any?)
 (defn conform-keys-keys [this x]
-  (when (and
-         (keys-spec? x)
-         ;; x keys conform to spec
-         (every? (fn [[key spec]]
-                   (valid? (parse-spec spec) (parse-spec (get-in x [:req key])))) (:req this))
-         (every? (fn [[key spec]]
-                   (valid? (parse-spec spec) (parse-spec (get-in x [:req-un (strip-namespace key)])))) (:req-un this))
-         ;; x keys conform to their own spec
-         (->> [:req :opt]
-              (map (fn [key-type]
-                     (get x key-type)))
-              (apply concat)
-              (every? (fn [[key val]]
-                        (if (s/get-spec key)
-                          (valid? key (parse-spec val))
-                          true)))))
+  (when (or
+         (= this x) ;; short circuit
+         (and
+          (keys-spec? x)
+          ;; x keys conform to spec
+          (every? (fn [[key spec]]
+                    (valid? (parse-spec spec) (parse-spec (get-in x [:req key])))) (:req this))
+          (every? (fn [[key spec]]
+                    (valid? (parse-spec spec) (parse-spec (get-in x [:req-un (strip-namespace key)])))) (:req-un this))))
     x))
 
 (defn conform-keys-value [s x]
