@@ -1125,12 +1125,12 @@
   (map- [this f]
     (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
                    (map (fn [[k p]]
-                          [k (f p)])))]
+                          [k (f (parse-spec p))])))]
       (or-spec (map first kps) (map second kps))))
   (filter- [this f]
     (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
                    (filter (fn [[k p]]
-                             (f p))))]
+                             (f (parse-spec p)))))]
       (or-spec (map first kps) (map second kps))))
   KeywordInvoke
   (keyword-invoke [this k]
