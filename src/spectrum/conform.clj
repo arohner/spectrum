@@ -17,14 +17,12 @@
 
 (declare and-spec?)
 (declare class-spec?)
-(declare keys-spec?)
 (declare pred-spec?)
 (declare unknown?)
 (declare regex?)
 
 (declare or-spec)
 (declare class-spec)
-(declare keys-spec)
 (declare pred-spec)
 (declare spect-generator)
 (declare maybe-transform-pred)
@@ -229,21 +227,6 @@
 
 (def reject (map->Reject {}))
 
-(extend-protocol Regex
-  spectrum.conform.Spect
-  (derivative [spec x]
-    (if (valid? spec x)
-      (map->Accept {:ret x})
-      reject))
-  (empty-regex [this]
-    reject)
-  (accept-nil? [this]
-    false)
-  (return [this]
-    this)
-  (add-return [this ret k]
-    nil))
-
 (extend-type nil
   Regex
   (derivative [spec x]
@@ -265,15 +248,25 @@
   (truthyness [this]
     :falsey))
 
+(defn object-dx [obj x]
+  (if-let [s (and (keyword? obj) (#'s/maybe-spec obj))]
+    (let [s (parse-spec s)]
+      (derivative s x))
+    (if (= obj x)
+      (accept x)
+      reject)))
+
+(defn spec-dx [spec x]
+  (if (valid? spec x)
+    (map->Accept {:ret x})
+    reject))
+
 (extend-type Object
   Regex
   (derivative [obj x]
-    (if-let [s (and (keyword? obj) (#'s/maybe-spec obj))]
-      (let [s (parse-spec s)]
-        (derivative s x))
-      (if (= obj x)
-        (accept x)
-        reject)))
+    (if (spect? obj)
+      (spec-dx obj x)
+      (object-dx obj x)))
   (empty-regex [_]
     reject)
   (accept-nil? [_]
@@ -288,6 +281,22 @@
   Truthyness
   (truthyness [this]
     :ambiguous))
+
+(def spect-regex-impl
+  {:derivative spec-dx
+   :empty-regex (fn [this]
+                  reject)
+   :accept-nil? (fn [this]
+                  false)
+   :return (fn [this]
+             this)
+   :add-return (fn [this ret k]
+                 nil)})
+
+(defn extend-regex
+  "extend's the regex protocol to a non-regex Spect"
+  [s]
+  (extend s Regex spect-regex-impl))
 
 (defn maybe-alt-
   "If both regexes are valid, returns Alt r1 r2, else first non-reject one"
@@ -730,6 +739,8 @@
       #'any? :ambiguous
       :truthy)))
 
+(extend-regex PredSpec)
+
 (s/def ::pred (s/or :v var? :fn fn? :nil nil?))
 
 (s/fdef pred-spec :args (s/cat :p ::pred) :ret ::spect)
@@ -791,6 +802,8 @@
   SpecToClass
   (spec->class [this]
     clojure.lang.IFn))
+
+(extend-regex FnSpec)
 
 (s/fdef fn-spec? :args (s/cat :x any?) :ret boolean?)
 (defn fn-spec? [x]
@@ -896,6 +909,8 @@
       nil :falsey
       :truthy)))
 
+(extend-regex ClassSpec)
+
 (defn class-spec [c]
   (map->ClassSpec {:cls c}))
 
@@ -918,25 +933,6 @@
 (defmethod parse-spec* :fn-literal [x]
   (map->PredSpec {:pred (eval x)
                   :form x}))
-
-(defn parse-spec-seq [x]
-  (let [v (mapv parse-spec* x)]
-    (if (list? x)
-      (value (list* v))
-      (value (into (or (empty x) []) v)))))
-
-(defn parse-spec-map [x]
-  (let [state (reduce (fn [state [k v]]
-                        (cond
-                          (qualified-keyword? k) (assoc-in state [:req k] v)
-                          (simple-keyword? k) (assoc-in state [:req-un k] v))) {:req {}
-                                                                                :req-un {}} x)]
-    (apply keys-spec [(:req state) (:req-un state) {} {}])))
-
-(defmethod parse-spec* :coll [x]
-  (cond
-    (sequential? x) (parse-spec-seq x)
-    (map? x) (parse-spec-map x)))
 
 (defmethod parse-spec* 'clojure.core/fn [x]
   (if (= x any?-form)
@@ -1059,6 +1055,8 @@
         (first b)
         :ambiguous))))
 
+(extend-regex AndSpec)
+
 (defn and-spec? [x]
   (instance? AndSpec x))
 
@@ -1071,29 +1069,6 @@
 
 (defmethod parse-spec* 'clojure.spec/and [x]
   (and-spec (rest x)))
-
-(defrecord NotSpec [s]
-  Spect
-  (conform* [this x]
-    (when (not (valid? s x))
-      x))
-  SpecToClass
-  (spec->class [this]
-    nil)
-  Truthyness
-  (truthyness [this]
-    (let [v (truthyness s)]
-      (condp = v
-        :truthy :falsey
-        :falsey :truthy
-        :ambiguous :ambiguous))))
-
-(defn not-spec [s]
-  (map->NotSpec {:s s}))
-
-(s/fdef not-spec :args (s/cat :x any?) :ret boolean?)
-(defn not-spec? [x]
-  (instance? NotSpec x))
 
 (declare or-)
 
@@ -1141,6 +1116,8 @@
          (distinct)
          (or-))))
 
+(extend-regex OrSpec)
+
 (defn or-spec? [x]
   (instance? OrSpec x))
 
@@ -1165,6 +1142,27 @@
        (map* parse-spec)
        (filter* (fn [p]
                   (not= p pred)))))
+
+
+
+(defrecord KeysSpec [req req-un opt opt-un]
+  WillAccept
+  (will-accept [this]
+    this)
+  SpecToClass
+  (spec->class [this]
+    clojure.lang.PersistentHashMap)
+  Truthyness
+  (truthyness [this]
+    :truthy)
+  KeywordInvoke
+  (keyword-invoke [this k]
+    (some (fn [key-type]
+            (get-in this [key-type k])) [:req :req-un :opt :opt-un])))
+
+(s/fdef keys-spec? :args (s/cat :x any?) :ret boolean?)
+(defn keys-spec? [x]
+  (instance? KeysSpec x))
 
 (s/fdef conform-keys-keys :args (s/cat :s ::keys-spec :x ::keys-spec) :ret any?)
 (defn conform-keys-keys [this x]
@@ -1213,32 +1211,6 @@
              (when-not (valid? spec val)
                (explain* spec (conj path key) via in val)))))))
 
-(defrecord KeysSpec [req req-un opt opt-un]
-  Spect
-  (conform* [this x]
-    (cond
-      (keys-spec? x) (conform-keys-keys this x)
-      (not (spect? x)) (conform-keys-value this x)))
-  (explain* [spec path via in x]
-    (explain-keys spec path via in x))
-  WillAccept
-  (will-accept [this]
-    this)
-  SpecToClass
-  (spec->class [this]
-    clojure.lang.PersistentHashMap)
-  Truthyness
-  (truthyness [this]
-    :truthy)
-  KeywordInvoke
-  (keyword-invoke [this k]
-    (some (fn [key-type]
-            (get-in this [key-type k])) [:req :req-un :opt :opt-un])))
-
-(s/fdef keys-spec :args (s/cat :x any?) :ret boolean?)
-(defn keys-spec? [x]
-  (instance? KeysSpec x))
-
 (s/def ::keys-spec keys-spec?)
 
 
@@ -1255,6 +1227,17 @@
                   :opt opt
                   :opt-un (into {} (map (fn [[k s]]
                                           [(strip-namespace k) s]) opt-un))}))
+
+(extend-type KeysSpec
+  Spect
+  (conform* [this x]
+    (cond
+      (keys-spec? x) (conform-keys-keys this x)
+      (not (spect? x)) (conform-keys-value this x)))
+  (explain* [spec path via in x]
+    (explain-keys spec path via in x)))
+
+(extend-regex KeysSpec)
 
 (defn keys-contains?
   "clojure.core/contains? for keys-spec"
@@ -1300,6 +1283,8 @@
   Truthyness
   (truthyness [this]
     :truthy))
+
+(extend-regex CollOfSpec)
 
 (s/fdef coll-of :args (s/cat :s ::spect :kind (s/? (s/nilable coll?))) :ret ::spect)
 (defn coll-of
@@ -1350,11 +1335,47 @@
                (:opt args)
                (:opt-un args))))
 
+(defn parse-spec-seq [x]
+  (let [v (mapv parse-spec* x)]
+    (if (list? x)
+      (value (list* v))
+      (value (into (or (empty x) []) v)))))
+
+(defn parse-spec-map [x]
+  (let [state (reduce (fn [state [k v]]
+                        (cond
+                          (qualified-keyword? k) (assoc-in state [:req k] v)
+                          (simple-keyword? k) (assoc-in state [:req-un k] v))) {:req {}
+                                                                                :req-un {}} x)]
+    (apply keys-spec [(:req state) (:req-un state) {} {}])))
+
+(defmethod parse-spec* :coll [x]
+  (cond
+    (sequential? x) (parse-spec-seq x)
+    (map? x) (parse-spec-map x)))
+
+(s/fdef merge-keys :args (s/cat :ks (s/coll-of keys-spec?)) :ret keys-spec?)
 (defn merge-keys [ks]
   (->> ks
-       (map parse-spec)
+       (mapv parse-spec)
        (apply merge-with merge)
        (map->KeysSpec)))
+
+(declare merge-specs)
+(s/fdef merge-or-keys :args (s/cat :or or-spec? :key keys-spec?) :ret or-spec?)
+(defn merge-or-keys [o k]
+  (or- (mapv (fn [p]
+               (merge-specs p k)) (:ps o))))
+
+(defn merge-specs [& specs]
+  (reduce (fn [s1 s2]
+            (let [s1 (parse-spec s1)
+                  s2 (parse-spec s2)]
+              (cond
+                (and (keys-spec? s1) (keys-spec? s2)) (merge-keys [s1 s2])
+                (and (or-spec? s1) (keys-spec? s2)) (merge-or-keys s1 s2)
+                (and (keys-spec? s1) (or-spec? s2)) (merge-or-keys s2 s1)
+                :else (throw (ex-info (str "don't know how to merge:" s1 s2) {:specs [s1 s2]}))))) specs))
 
 (s/fdef conform-map-of :args (s/cat :m ::spect :v value?) :ret any?)
 (defn conform-map-of [map-of v]
@@ -1386,6 +1407,8 @@
   (truthyness [this]
     :truthy))
 
+(extend-regex MapOf)
+
 (defn map-of [key-pred val-pred]
   (map->MapOf {:ks key-pred
                :vs val-pred}))
@@ -1396,7 +1419,7 @@
     (map-of k v)))
 
 (defmethod parse-spec* 'clojure.spec/merge [x]
-  (merge-keys (rest x)))
+  (apply merge-specs (rest x)))
 
 (defmethod parse-spec* 'clojure.spec/merge-spec-impl [x]
   (let [[forms preds & _] (rest x)
@@ -1495,7 +1518,6 @@
                    (let [s (multispec-resolve-spec this x)
                          x (if (multispec? x)
                              (multispec-resolve-spec ))]
-                     (println "multispec conform" s x)
                      (conform s x)))
         :fn (when (valid-invoke? (:retag this) x)
               (conform (multispec-resolve-spec this x) x)))))
@@ -1503,14 +1525,20 @@
   (keyword-invoke [this k]
     (keyword-invoke (multispec-default-spec this) k)))
 
+(extend-regex MultiSpec)
+
+(defn multispec [method retag]
+  (map->MultiSpec {:multimethod method
+                   :retag retag}))
+
 (defmethod parse-spec* 'clojure.spec/multi-spec [x]
   (let [retag (nth x 2)
         retag (cond
                 (keyword? retag) retag
-                (symbol? retag) (resolve retag))]
+                (symbol? retag) (resolve retag))
+        method (resolve (nth x 1))]
     (assert retag)
-    (multispec-default-spec (map->MultiSpec {:multimethod (resolve (nth x 1))
-                                             :retag retag}))))
+    (multispec-default-spec (multispec method retag))))
 
 (extend-protocol Spect
   clojure.spec.Spec
