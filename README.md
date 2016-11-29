@@ -1,5 +1,5 @@
-
-[![Clojars Project](https://img.shields.io/clojars/v/spectrum.svg)](https://clojars.org/spectrum) [![CircleCI](https://circleci.com/gh/arohner/spectrum/tree/master.svg?style=svg)](https://circleci.com/gh/arohner/spectrum/tree/master)
+[![CircleCI](https://circleci.com/gh/arohner/spectrum.svg?style=svg)](https://circleci.com/gh/arohner/spectrum)
+[![Clojars Project](https://img.shields.io/clojars/v/spectrum.svg)](https://clojars.org/spectrum)
 
 # spectrum
 
@@ -17,8 +17,6 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 
 ## Current Status
 
-[![CircleCI](https://circleci.com/gh/arohner/spectrum.svg?style=svg)](https://circleci.com/gh/arohner/spectrum)
-[![Clojars Project](https://img.shields.io/clojars/v/spectrum.svg)](https://clojars.org/spectrum)
 
 Developer Preview. I'm now convinced it's theoretically sound, and
 *most* of the core language semantics are done. The main thing it
