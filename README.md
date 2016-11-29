@@ -58,6 +58,13 @@ Use clojure.spec as normal. Then, at the repl or during tests:
 
 Returns a seq of Error defrecords.
 
+There is also
+
+```clojure
+(:spectrum.flow/ret-spec (check/analyze-form '(map inc (range 5))))
+```
+which is useful when you want to debug the signature of a form
+
 ### Requirements
 
 - if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
@@ -303,6 +310,17 @@ things spec won't warn about
 
 - spectrum is 'viral'. Once you start checking, it encourages you to write specs for everything
 
+
+## Changelog
+
+- 0.1.1
+  - multispec support
+  - parse-spec is now lazy, recursive specs should work
+  - 150 more commits worth of stuff
+  - spectrum.check/analyze-form
+  - spectrum.check/check-form
+
+- 0.1.0 First release
 
 ## License
 
