@@ -33,7 +33,8 @@
 ;; can't check anything with defprotocol/defrecord yet, requires pods.
 (def self-checking-nses [;; 'spectrum.conform
                          ;;'spectrum.flow
-                         'spectrum.check])
+                         ;; 'spectrum.check
+                         ])
 (deftest test-self
   (st/ensure-analysis 'spectrum.analyzer-spec)
   (doseq [ns self-checking-nses]
