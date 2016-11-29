@@ -312,3 +312,13 @@
 
 (deftest merge-works
   (is (= (c/parse-spec (s/keys :req [::a ::b])) (c/parse-spec (s/merge (s/keys :req [::a]) (s/keys :req [::b]))))))
+
+(deftest keyword-invoke
+
+  (is (= (c/value nil) (c/keyword-invoke (c/value 3) ::a)))
+
+  (is (= (c/value 5) (c/keyword-invoke (c/value {:foo 5}) :foo)))
+
+  (is (= (c/pred-spec #'string?) (c/keyword-invoke (c/parse-spec (s/keys :req [::a])) ::a)))
+
+  (is (c/valid? (c/or- [(c/value nil) (c/pred-spec #'string?)]) (c/keyword-invoke (c/parse-spec (s/nilable (s/keys :req [::a]))) ::a))))

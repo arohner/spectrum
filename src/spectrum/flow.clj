@@ -372,7 +372,6 @@
 (defn maybe-strip-meta
   "If a is a :op :with-meta, strip it and return the :expr, or a"
   [a]
-
   (if (-> a :op (= :with-meta))
     (-> a :expr)
     a))
@@ -770,19 +769,17 @@
 
 (defn keyword-invoke-ret-spec
   [a]
-  {:post [(c/spect? %)]}
+  {:post [(do (when (or (not (c/spect? %)) (not (::ret-spec %)))
+                (println "keyword-invoke-ret-spec:" (:form a) (a-loc-str a) "=>" % (c/spect? %))) true) (c/spect? %)]}
   (let [a (update-in a [:target] (fn [t]
                                    (flow (with-a t a))))
         spec (-> a :target ::ret-spec)
         k (-> a :keyword :val)]
     (assert k)
     (assert spec)
-    (or
-     (when (c/keyword-invoke? spec)
-       (c/keyword-invoke spec k))
-     (do
-       (println "unknown keyword-invoke:" (:form a) "on" spec (a-loc-str a))
-       (c/unknown (:form a) (a-loc a))))))
+    (if (c/keyword-invoke? spec)
+      (c/keyword-invoke spec k)
+      (c/value nil))))
 
 (defmethod flow :keyword-invoke [a]
   {:post [(c/spect? (::ret-spec %))]}

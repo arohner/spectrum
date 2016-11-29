@@ -280,7 +280,10 @@
     this)
   Truthyness
   (truthyness [this]
-    :ambiguous))
+    :ambiguous)
+  KeywordInvoke
+  (keyword-invoke [this k]
+    (value nil)))
 
 (def spect-regex-impl
   {:derivative spec-dx
@@ -628,8 +631,7 @@
       :falsey))
   KeywordInvoke
   (keyword-invoke [this k]
-    (when (map? (:v this))
-      (parse-spec (get-in this [:v k])))))
+    (value (k (:v this)))))
 
 (s/fdef value? :args (s/cat :x any?) :ret boolean?)
 (defn value? [s]
@@ -1109,12 +1111,17 @@
       (or-spec (map first kps) (map second kps))))
   KeywordInvoke
   (keyword-invoke [this k]
-    (->> ps
-         (filter keyword-invoke?)
-         (map (fn [p]
-                (keyword-invoke p k)))
-         (distinct)
-         (or-))))
+    (let [non-invoke? (pos? (- (count ps) (count (filter keyword-invoke? ps))))
+          rets (->> ps
+                    (map parse-spec)
+                    (filter keyword-invoke?)
+                    (map (fn [p]
+                           (keyword-invoke p k)))
+                    (distinct))
+          rets (if non-invoke?
+                 (conj rets (value nil))
+                 rets)]
+      (or- rets))))
 
 (extend-regex OrSpec)
 
@@ -1123,10 +1130,11 @@
 
 (s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret or-spec?)
 (defn or- [ps]
-  (if (>= (count ps) 2)
-    (map->OrSpec {:ps ps
-                  :ks (take (count ps) (repeat nil))})
-    (first ps)))
+  (cond
+    (>= (count ps) 2) (map->OrSpec {:ps ps
+                                    :ks (take (count ps) (repeat nil))})
+    (= 1 (count ps)) (first ps)
+    :else (unknown [])))
 
 (defn or-spec [ks ps]
   (if (>= (count ps) 2)
