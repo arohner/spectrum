@@ -629,7 +629,7 @@
   KeywordInvoke
   (keyword-invoke [this k]
     (when (map? (:v this))
-      (get-in this [:v k]))))
+      (parse-spec (get-in this [:v k])))))
 
 (s/fdef value? :args (s/cat :x any?) :ret boolean?)
 (defn value? [s]
@@ -1157,8 +1157,8 @@
     :truthy)
   KeywordInvoke
   (keyword-invoke [this k]
-    (some (fn [key-type]
-            (get-in this [key-type k])) [:req :req-un :opt :opt-un])))
+    (parse-spec (some (fn [key-type]
+                        (get-in this [key-type k])) [:req :req-un :opt :opt-un]))))
 
 (s/fdef keys-spec? :args (s/cat :x any?) :ret boolean?)
 (defn keys-spec? [x]
