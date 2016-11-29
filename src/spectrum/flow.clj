@@ -724,8 +724,11 @@
                                      (mapv (fn [p]
                                              (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
         a (update-in a [:body] (fn [body]
-                                 (flow (with-meta body {:a a}))))]
-    (assoc a ::ret-spec (strip-control-flow (::ret-spec (:body a))))))
+                                 (flow (with-meta body {:a a}))))
+        body-ret-spec (strip-control-flow (::ret-spec (:body a)))]
+    (when (c/unknown? body-ret-spec)
+      (println "flow-method:" (a-loc-str a) "storing ::ret-spec:" body-ret-spec))
+    (assoc a ::ret-spec body-ret-spec)))
 
 (defmethod flow :fn-method [a]
   {:post [(c/spect? (::ret-spec %))]}
