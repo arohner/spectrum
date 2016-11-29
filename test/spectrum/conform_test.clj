@@ -309,3 +309,6 @@
 
 (deftest re-conform-works
   (is (= ::c/invalid (c/re-conform (c/regex-seq (c/pred-spec #'integer?)) (c/pred-spec #'string?)))))
+
+(deftest merge-works
+  (is (= (c/parse-spec (s/keys :req [::a ::b])) (c/parse-spec (s/merge (s/keys :req [::a]) (s/keys :req [::b]))))))

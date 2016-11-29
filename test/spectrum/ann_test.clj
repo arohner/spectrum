@@ -9,6 +9,7 @@
             [clojure.spec.gen :as spec-gen]
             [clojure.spec.test]
             [spectrum.ann :as ann]
+            [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.check :as check]
             [spectrum.flow :as flow]
@@ -19,9 +20,9 @@
                              AndSpec
                              OrSpec)))
 
-(clojure.spec.test/instrument)
-
 (check/ensure-analysis 'spectrum.analyzer-spec)
+
+(clojure.spec.test/instrument)
 
 (deftest instance?-transformer
   (is (-> (c/maybe-transform #'instance? (c/cat- [(c/class-spec String) (c/parse-spec #'string?)])) :ret :v))
