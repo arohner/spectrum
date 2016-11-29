@@ -43,8 +43,8 @@ bugs. It aims to have low false positives, at the expense of
 potentially not catching 100% of type errors.
 
 A tool that catches 80% of bugs that you use every day is better
-than a 100% tool that you don't use. Spectrum will converge on 100%,
-but won't guarantee 100% correctness for a while.
+than a 100% tool that you don't use. Spectrum will converge on 100% correct,
+but won't guarantee correctness for a while.
 
 ## Usage
 
@@ -61,7 +61,6 @@ Returns a seq of Error defrecords.
 ### Requirements
 
 - if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
-- if you check code that uses s/multi-spec, you must have previously called `check/ensure-analysis` or `check/check` on the namespace containing the multimethod code
 
 #### Defrecord / instance?
 
@@ -118,13 +117,12 @@ literals and specs (i.e. the things we have access to at compile
 time). For now, the best documentation is the tests,
 `test/spectrum/conform_test.clj`. Spectrum conform will have 100%
 coverage of clojure.spec, but isn't done yet. If you encounter a spec
-that spectrum can't conform, please file a bug.
+that spectrum can't `c/parse-spec`, please file a bug.
 
-In the code, the result of c/parse-spec are called `spect` rather than
-`spec`, just to differentiate the implementation. Spects convey
-exactly the same information, but are more data-driven. Spects are
-defrecords, so it's easy to assoc, dissoc, merge, etc types, which
-we'll take advantage of.
+In the code, the result of `c/parse-spec` are called `spect` rather
+than `spec`, just to differentiate the implementation. Spects convey
+exactly the same information, but are defrecords, so it's easy to
+assoc, dissoc, merge, etc types, which we'll take advantage of.
 
 ### spectrum.flow
 
@@ -152,9 +150,9 @@ in the `let`.
 Where the magic happens. It takes a flow, and performs checks. Returns a seq of ParseError records.
 
 The checking process just `c/conform`s the inputs to every function
-call, and the return value of functions. Using our previous
-example, `y` has the spec `long`, and (c/conform #'int? long) returns
-truthy, so the function checks.
+call, and the return value of functions. Using our previous example,
+`y` has the spec `(c/and (c/value 3) (c/class Long))`, and (c/conform
+#'int? x) returns truthy, so the function checks.
 
 ## Transformers
 
@@ -180,7 +178,7 @@ checking process. For example,
 ann takes a var, and a fn of two arguments, the original fnspec, and
 the arguments to a specific invocation of the function (map). The
 transformer should return an updated fnspec, presumably with the more
-specific type. In this example, it would `update` the
+specific type. In this example, it would `clojure.core/update` the
 `:ret` spec from `seq?` to `(coll-of y?)`. Since map also requires the
 input type of `f` match the type of the seq passed in, we can
 similarly update the expected type of the second argument in
