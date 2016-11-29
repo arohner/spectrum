@@ -1458,16 +1458,11 @@
   "Given a dispatch value, return the spec"
   [ms dispatch-value]
   (let [v (:multimethod ms)
-        a (data/get-defmethod-fn-analysis v dispatch-value)]
-    (if a
-      (if-let [s (-> a :methods first :spectrum.flow/ret-spec maybe-resolve-keyword-spec)]
-        (parse-spec s)
-        (do
-          (println "no ret-spec on:" v a)
-          (unknown [v dispatch-value])))
-      (do
-        (println "no analysis found for" v dispatch-value ", returning unknown")
-        (unknown [v dispatch-value])))))
+        s (v dispatch-value)
+        s (parse-spec s)]
+    (if s
+      s
+      (unknown [v dispatch-value]))))
 
 (defn multispec-dispatch-invoke [ms v]
   (assert (fn? (:retag ms)))
