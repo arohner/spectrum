@@ -1,7 +1,5 @@
 
-[![Clojars Project](https://img.shields.io/clojars/v/spectrum.svg)](https://clojars.org/spectrum)
-
-[![CircleCI](https://circleci.com/gh/arohner/spectrum/tree/master.svg?style=svg)](https://circleci.com/gh/arohner/spectrum/tree/master)
+[![Clojars Project](https://img.shields.io/clojars/v/spectrum.svg)](https://clojars.org/spectrum) [![CircleCI](https://circleci.com/gh/arohner/spectrum/tree/master.svg?style=svg)](https://circleci.com/gh/arohner/spectrum/tree/master)
 
 # spectrum
 
