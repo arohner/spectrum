@@ -1,4 +1,8 @@
 
+[![Clojars Project](https://img.shields.io/clojars/v/spectrum.svg)](https://clojars.org/spectrum)
+
+[![CircleCI](https://circleci.com/gh/arohner/spectrum/tree/master.svg?style=svg)](https://circleci.com/gh/arohner/spectrum/tree/master)
+
 # spectrum
 
 A library for doing static analysis of Clojure code, catching clojure.spec conform errors at compile time.
@@ -63,7 +67,7 @@ There is also
 ```clojure
 (:spectrum.flow/ret-spec (check/analyze-form '(map inc (range 5))))
 ```
-which is useful when you want to debug the signature of a form
+which is useful when you want to debug the signature of a form.
 
 ### Requirements
 
