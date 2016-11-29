@@ -68,7 +68,7 @@
           :init
           flow/maybe-strip-meta))
 
-(s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
+(s/fdef var-analysis? :args (s/cat :v var?) :ret boolean?)
 (defn var-analysis?
   "True if we have analysis on v"
   [v]
