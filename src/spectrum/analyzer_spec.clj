@@ -16,7 +16,6 @@
 (s/def ::analysis-common (s/keys :req-un [::ana.jvm/op ::ana.jvm/form ::ana.jvm/env]
                                  :opt-un [::ana.jvm/children]))
 
-(s/fdef analysis-type :args (s/cat :a ::analysis-common) :ret (s/or :s s/spec? :k keyword?))
 (defmulti analysis-type :op)
 
 (s/def ::ana.jvm/analysis (s/multi-spec analysis-type :op))
