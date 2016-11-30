@@ -164,16 +164,8 @@
 (ann-instance-or #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
 
-(defn maybe-convert-value
-  "If the spect checks for a single value, i.e. nil? false?, return the value instead"
-  [s]
-  (if (c/pred-spec? s)
-    (condp = (:pred s)
-      #'nil? (c/value nil)
-      #'false? (c/value false)
-      #'true? (c/value true)
-      s)
-    s))
+(defn maybe-convert-value [x]
+  (or (c/pred->value x) x))
 
 (defn ann-nil-false [val]
   (fn [spect args-spect]

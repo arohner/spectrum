@@ -617,14 +617,23 @@
     (parse-spec (s/get-spec x))
     (value x)))
 
+(defn pred->value
+  "If the spec is a pred that checks for a single value, nil? false?, return the value, else nil"
+  [s]
+  (when (pred-spec? s)
+    (condp = (:pred s)
+      #'nil? (value nil)
+      #'false? (value false)
+      #'true? (value true)
+      nil)))
+
 (defrecord Value [v]
   Spect
   (conform* [this x]
-    (if (= (:v this) (if (instance? Value x)
-                       (:v x)
-                       x))
-      x
-      false))
+    (cond
+      (instance? Value x) (= (:v this) (:v x))
+      (pred->value x) (= this (pred->value x))
+      :else (= (:v this) x)))
   SpecToClass
   (spec->class [this]
     (class (:v this)))
@@ -1142,6 +1151,10 @@
                   :ps ps})
     (first ps)))
 
+(defn equivalent? [s1 s2]
+  (and (valid? s1 s2)
+       (valid? s2 s1)))
+
 (s/fdef or-disj :args (s/cat :s or-spec? :p spect?) :ret spect?)
 (defn or-disj
   "Remove pred from the set of preds"
@@ -1153,7 +1166,7 @@
                  (or-disj p pred)
                  p)))
        (filter* (fn [p]
-                  (not= p pred)))))
+                  (not (equivalent? p pred))))))
 
 (defrecord KeysSpec [req req-un opt opt-un]
   WillAccept

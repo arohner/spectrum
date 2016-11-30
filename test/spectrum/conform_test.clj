@@ -323,3 +323,21 @@
     (c/or- [(c/pred-spec #'string?) (c/value nil)]) (c/parse-spec (s/keys :opt [::a])) ::a
 
     (c/or- [(c/pred-spec #'string?) (c/value nil)]) (c/parse-spec (s/nilable (s/keys :opt [::a]))) ::a))
+
+(deftest equivalent?
+  (testing "truthy"
+    (are [s1 s2] (c/equivalent? s1 s2)
+      (c/pred-spec #'nil?) (c/value nil)))
+  (testing "falsey"
+    (are [s1 s2] (not (c/equivalent? s1 s2))
+      (c/pred-spec #'integer?) (c/value 3)
+      (c/value 3) (c/pred-spec #'integer?))))
+
+(deftest or-disj
+  (is (= (c/pred-spec #'int?) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil)]) (c/value nil))))
+
+  (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/value nil))))
+
+  (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/pred-spec #'nil?))))
+
+  (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/value nil)))))
