@@ -61,7 +61,7 @@ Returns a seq of Error defrecords.
 There is also
 
 ```clojure
-(:spectrum.flow/ret-spec (check/analyze-form '(map inc (range 5))))
+(check/type-of '(map inc (range 5)))
 ```
 which is useful when you want to debug the signature of a form.
 

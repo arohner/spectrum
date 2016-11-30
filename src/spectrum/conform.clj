@@ -37,6 +37,10 @@
   (map- [spec f])
   (filter- [spec f]))
 
+(s/fdef compound-spec :args (s/cat :x any?) :ret boolean?)
+(defn compound-spec? [x]
+  (satisfies? Compound x))
+
 (defprotocol DependentSpecs
   (dependent-specs* [spec]))
 
@@ -1144,10 +1148,12 @@
   [s pred]
   (->> s
        (map* parse-spec)
+       (map* (fn [p]
+               (if (compound-spec? p)
+                 (or-disj p pred)
+                 p)))
        (filter* (fn [p]
                   (not= p pred)))))
-
-
 
 (defrecord KeysSpec [req req-un opt opt-un]
   WillAccept
