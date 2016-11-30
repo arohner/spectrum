@@ -1111,17 +1111,13 @@
       (or-spec (map first kps) (map second kps))))
   KeywordInvoke
   (keyword-invoke [this k]
-    (let [non-invoke? (pos? (- (count ps) (count (filter keyword-invoke? ps))))
-          rets (->> ps
-                    (map parse-spec)
-                    (filter keyword-invoke?)
-                    (map (fn [p]
-                           (keyword-invoke p k)))
-                    (distinct))
-          rets (if non-invoke?
-                 (conj rets (value nil))
-                 rets)]
-      (or- rets))))
+    (->> ps
+         (map parse-spec)
+         (filter keyword-invoke?)
+         (map (fn [p]
+                (keyword-invoke p k)))
+         (distinct)
+         (or-))))
 
 (extend-regex OrSpec)
 
@@ -1165,8 +1161,15 @@
     :truthy)
   KeywordInvoke
   (keyword-invoke [this k]
-    (parse-spec (some (fn [key-type]
-                        (get-in this [key-type k])) [:req :req-un :opt :opt-un]))))
+    (let [[key-type val] (some (fn [key-type]
+                           (when-let [v (get-in this [key-type k])]
+                             [key-type v])) [:req :req-un :opt :opt-un])
+          val (parse-spec val)]
+      (if val
+        (if (contains? #{:opt :opt-un} key-type)
+          (or- [val (value nil)])
+          val)
+        (value nil)))))
 
 (s/fdef keys-spec? :args (s/cat :x any?) :ret boolean?)
 (defn keys-spec? [x]
