@@ -1465,12 +1465,25 @@
 
 (s/fdef multispec-dispatch-ret-value :args (s/cat :ms multispec? :val any?) :ret spect?)
 
+(defn multispec-assoc-retag
+  "Given a concrete instance of a multispec, update it to include the dispatch value"
+  [ms spec dispatch-value]
+  (let [{:keys [retag]} ms
+        key-type (if (simple-keyword? retag)
+                   :req-un
+                   :req)
+        existing-key-spec (get-in spec [key-type retag])]
+    (assert existing-key-spec)
+    (assert (valid? (parse-spec existing-key-spec) (value dispatch-value)))
+    (assoc-in spec [key-type retag] (value dispatch-value))))
+
 (defn multispec-dispatch-ret-value
   "Given a dispatch value, return the spec"
   [ms dispatch-value]
   (let [v (:multimethod ms)
         s (v dispatch-value)
-        s (parse-spec s)]
+        s (parse-spec s)
+        s (multispec-assoc-retag ms s dispatch-value)]
     (if s
       s
       (unknown [v dispatch-value]))))
