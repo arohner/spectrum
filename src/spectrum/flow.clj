@@ -144,6 +144,15 @@
        (-> a :method (= 'identical))
        (-> a :args (nth 1) :val (= nil))))
 
+(def variable-bindings
+  "The set of analyzer ops that are derefing a variable"
+  #{:local :var})
+
+(defn invoke-truthy?
+  "Truth if the analysis is just a simple 'foo, like (if foo...)"
+  [a]
+  (contains? variable-bindings (:op a)))
+
 ;; TODO should be (s/fspec :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis), need analysis gen
 
 (s/fdef walk-a :args (s/cat :f fn? :a ::ana.jvm/analysis) :ret ::analysis)
@@ -274,6 +283,14 @@
     (c/or-disj s p)
     s))
 
+(defn maybe-disj-truthy
+  "If s is an or-spec remove all unambiguously truthy specs, because this just failed an `if"
+  [s]
+  (if (c/or-spec? s)
+    (c/filter* (fn [p]
+                 (not= :truthy (c/truthyness p))) s)
+    s))
+
 (defn binding-update-if-specs
   "Given a :binding, walk up the tree to find all :if predicate tests it contains, and update the spec"
   [a binding]
@@ -290,16 +307,30 @@
                             (and (= (:form a) (:form else)) (= (a-loc a) (a-loc else))) :else
                             :else (do
                                     (assert false)))
-                this (get parent this-expr)]
-            (if (and (or (invoke-predicate? test)
-                         (invoke-nil? test))
-                     (-> test :args first :name (= (:name binding))))
+                this (get parent this-expr)
+                test-type (cond
+                            (invoke-predicate? test) :pred
+                            (invoke-nil? test) :nil
+                            (invoke-truthy? test) :truthy
+                            :else nil)]
+            (println "buifs:" (:form test) (a-loc-str a) binding)
+            (if (and test-type
+                     (or (-> test :form (= (:name binding)))
+                         (-> test :args first :name (= (:name binding)))))
               (let [test-pred (cond
                                 (invoke-predicate? test) (c/pred-spec (-> test :fn :var))
-                                (invoke-nil? test) (c/pred-spec #'nil?))]
+                                (invoke-nil? test) (c/pred-spec #'nil?))
+                    updated-spec-then (condp = test-type
+                                        :pred (c/and-spec [spec test-pred])
+                                        :nil (c/and-spec [spec test-pred])
+                                        :truthy (-> spec (maybe-disj-pred (c/pred-spec #'nil?)) (maybe-disj-pred (c/pred-spec #'false?))))
+                    updated-spec-else (condp = test-type
+                                        :pred (maybe-disj-pred spec test-pred)
+                                        :nil (maybe-disj-pred spec test-pred)
+                                        :truthy (maybe-disj-truthy spec))]
                 (if (= this-expr :then)
-                  (recur parent (c/and-spec [spec (c/pred-spec (-> test :fn :var))]))
-                  (recur parent (maybe-disj-pred spec test-pred))))
+                  (recur parent updated-spec-then)
+                  (recur parent updated-spec-else)))
               (recur parent spec)))
           (recur parent spec)))
       (assoc binding ::ret-spec spec))))

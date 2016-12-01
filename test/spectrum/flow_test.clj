@@ -151,4 +151,7 @@
   (is (not (flow/invoke-nil? (ana.jvm/analyze '(= nil 3))))))
 
 (deftest binding-update
-  (is (= [] (check/check-form '(some-> x (format)) {:x (c/parse-spec (s/nilable string?))}))))
+  (is (= [] (check/check-form '(some-> x (format)) {:x (c/parse-spec (s/nilable string?))})))
+
+  (is (= [] (check/check-form '(if x
+                                 (format x)) {:x (c/parse-spec (s/nilable string?))}))))
