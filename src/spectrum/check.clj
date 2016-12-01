@@ -83,11 +83,12 @@
 (defn var-fn?
   "True if this var holds a fn"
   [v]
-  (let [a (get @data/var-analysis v)]
-    (when-not a
-      (println (format "Couldn't find var %s in analysis cache:" v)))
-    (or (-> a :init flow/maybe-strip-meta :op (= :fn))
-        (a-multimethod? a))))
+  (if-let [a (data/get-var-analysis v)]
+    (or (some-> a :init flow/maybe-strip-meta :op (= :fn))
+        (a-multimethod? a))
+    (do
+      (println (format "Couldn't find var %s in analysis cache:" v))
+      false)))
 
 (s/fdef wrong-number-args-error :args (s/cat :f ::flow/analysis :a ::flow/analysis) :ret check-error?)
 (defn wrong-number-args-error [f a]
