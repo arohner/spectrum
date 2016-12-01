@@ -631,9 +631,12 @@
   Spect
   (conform* [this x]
     (cond
-      (instance? Value x) (= (:v this) (:v x))
-      (pred->value x) (= this (pred->value x))
-      :else (= (:v this) x)))
+      (instance? Value x) (when (= (:v this) (:v x))
+                            x)
+      (pred->value x) (when (= this (pred->value x))
+                        x)
+      :else (when (= (:v this) x)
+              x)))
   SpecToClass
   (spec->class [this]
     (class (:v this)))
