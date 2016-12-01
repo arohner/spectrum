@@ -769,8 +769,7 @@
 
 (defn keyword-invoke-ret-spec
   [a]
-  {:post [(do (when (or (not (c/spect? %)) (not (::ret-spec %)))
-                (println "keyword-invoke-ret-spec:" (:form a) (a-loc-str a) "=>" % (c/spect? %))) true) (c/spect? %)]}
+  {:post [(c/spect? %)]}
   (let [a (update-in a [:target] (fn [t]
                                    (flow (with-a t a))))
         spec (-> a :target ::ret-spec)
