@@ -136,6 +136,14 @@
        (-> a :args count (= 1))
        (some-> a :fn :var var-predicate?)))
 
+(defn invoke-nil?
+  "True if the analysis is invoking the inlined version of #'nil?, which is a :static-call to clojure.lang.Util/identical"
+  [a]
+  (and (-> a :op (= :static-call))
+       (-> a :class (= clojure.lang.Util))
+       (-> a :method (= 'identical))
+       (-> a :args (nth 1) :val (= nil))))
+
 ;; TODO should be (s/fspec :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis), need analysis gen
 
 (s/fdef walk-a :args (s/cat :f fn? :a ::ana.jvm/analysis) :ret ::analysis)
@@ -203,8 +211,13 @@
 
 (defmulti find-binding* #'find-binding*-dispatch)
 
+(defn find-binding-default [a name]
+  (when-let [b (get-in a [:env :locals name])]
+    (when (::ret-spec b)
+      b)))
+
 (defmethod find-binding* :default [a name]
-  nil)
+  (find-binding-default a name))
 
 (defmethod find-binding* :let [a name]
   (->> a
@@ -278,9 +291,12 @@
                             :else (do
                                     (assert false)))
                 this (get parent this-expr)]
-            (if (and (invoke-predicate? test)
+            (if (and (or (invoke-predicate? test)
+                         (invoke-nil? test))
                      (-> test :args first :name (= (:name binding))))
-              (let [test-pred (c/pred-spec (-> test :fn :var))]
+              (let [test-pred (cond
+                                (invoke-predicate? test) (c/pred-spec (-> test :fn :var))
+                                (invoke-nil? test) (c/pred-spec #'nil?))]
                 (if (= this-expr :then)
                   (recur parent (c/and-spec [spec (c/pred-spec (-> test :fn :var))]))
                   (recur parent (maybe-disj-pred spec test-pred))))

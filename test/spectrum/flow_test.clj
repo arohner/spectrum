@@ -141,3 +141,14 @@
     (c/pred-spec #'integer?) (c/pred-spec #'nil?) (c/pred-spec #'integer?)
     (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'seq?) (c/pred-spec #'nil?)
     (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'integer?) (c/or- [(c/pred-spec #'seq?) (c/pred-spec #'nil?)])))
+
+(deftest invoke-pred?
+  (is (flow/invoke-predicate? (ana.jvm/analyze '(string? "foo"))))
+  (is (not (flow/invoke-predicate? (ana.jvm/analyze '(str 3))))))
+
+(deftest invoke-nil?
+  (is (flow/invoke-nil? (ana.jvm/analyze '(nil? 3))))
+  (is (not (flow/invoke-nil? (ana.jvm/analyze '(= nil 3))))))
+
+(deftest binding-update
+  (is (= [] (check/check-form '(some-> x (format)) {:x (c/parse-spec (s/nilable string?))}))))

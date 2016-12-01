@@ -65,7 +65,7 @@ There is also
 ```
 which is useful when you want to debug the signature of a form.
 
-`type-of` can optionally also take a map of keywordized variables to specs
+`type-of` can optionally also take a map of keywordized variables to spects
 
 ```clojure
 (check/type-of '(string? x) {:x (c/pred-spec #'string?)})
