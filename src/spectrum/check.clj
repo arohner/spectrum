@@ -84,8 +84,9 @@
   "True if this var holds a fn"
   [v]
   (if-let [a (data/get-var-analysis v)]
-    (or (some-> a :init flow/maybe-strip-meta :op (= :fn))
-        (a-multimethod? a))
+    (boolean
+     (or (some-> a :init flow/maybe-strip-meta :op (= :fn))
+         (a-multimethod? a)))
     (do
       (println (format "Couldn't find var %s in analysis cache:" v))
       false)))
@@ -95,6 +96,7 @@
   (let [arities (-> f :methods (->> (map :arglist) (str/join " or ")))]
     (new-error {:message (format "Function %s called with incorrect number of args. Expected %s, got %s" (-> a :form first) arities (->> a :form rest vec))} a)))
 
+(s/fdef check-invoke-fn-arity :args (s/cat :f ::flow/analysis :args ::flow/analysis))
 (defn check-invoke-fn-arity
   "check the fn invoke for correct arity. Takes the :fn analysis, and the caller args"
   [f a]
@@ -170,8 +172,6 @@
               :local (check-invoke-local a)
               :invoke (check-invoke-invoke a)
               (println "unknown invoke expr" (:form a) (:op a))))))
-
-
 
 (defn check-fn-method-return [method-a]
   (let [f (unwrap-a method-a)
