@@ -154,4 +154,10 @@
   (is (= [] (check/check-form '(some-> x (format)) {:x (c/parse-spec (s/nilable string?))})))
 
   (is (= [] (check/check-form '(if x
-                                 (format x)) {:x (c/parse-spec (s/nilable string?))}))))
+                                 (format x)) {:x (c/parse-spec (s/nilable string?))})))
+
+  (let [a (check/analyze-form '(if-let [x foo] x) {:foo (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)])})
+        binding-name (-> a :bindings first :name)]
+    (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]) (-> (flow/find-binding (-> a :body :test) binding-name) ::flow/ret-spec)))
+    (is (c/equivalent? (c/pred-spec #'string?) (-> (flow/find-binding (-> a :body :then) binding-name) ::flow/ret-spec)))
+    (is (c/equivalent? (c/pred-spec #'nil?) (-> (flow/find-binding (-> a :body :else) binding-name) ::flow/ret-spec)))))

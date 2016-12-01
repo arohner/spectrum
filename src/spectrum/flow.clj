@@ -314,7 +314,7 @@
                             (invoke-truthy? test) :truthy
                             :else nil)]
             (if (and test-type
-                     (or (-> test :form (= (:name binding)))
+                     (or (-> test :form (= (:form binding)))
                          (-> test :args first :name (= (:name binding)))))
               (let [test-pred (cond
                                 (invoke-predicate? test) (c/pred-spec (-> test :fn :var))
@@ -327,9 +327,10 @@
                                         :pred (maybe-disj-pred spec test-pred)
                                         :nil (maybe-disj-pred spec test-pred)
                                         :truthy (maybe-disj-truthy spec))]
-                (if (= this-expr :then)
-                  (recur parent updated-spec-then)
-                  (recur parent updated-spec-else)))
+                (cond
+                  (= this-expr :then) (recur parent updated-spec-then)
+                  (= this-expr :else) (recur parent updated-spec-else)
+                  :else (recur parent spec)))
               (recur parent spec)))
           (recur parent spec)))
       (assoc binding ::ret-spec spec))))
