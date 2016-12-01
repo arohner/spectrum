@@ -13,7 +13,7 @@
 
 (s/def ::ana.jvm/children (s/coll-of keyword? :into []))
 
-(s/def ::analysis-common (s/keys :req-un [::ana.jvm/op ::ana.jvm/form ::ana.jvm/env]
+(s/def ::ana.jvm/analysis-common (s/keys :req-un [::ana.jvm/op ::ana.jvm/form ::ana.jvm/env]
                                  :opt-un [::ana.jvm/children]))
 
 (defmulti analysis-type :op)
@@ -21,16 +21,16 @@
 (s/def ::ana.jvm/analysis (s/multi-spec analysis-type :op))
 
 (defmethod analysis-type :default [_]
-  ::analysis-common)
+  ::ana.jvm/analysis-common)
 
 (s/def ::ana.jvm/init ::ana.jvm/analysis)
-(s/def ::ana.jvm/analysis-def (s/merge ::analysis-common (s/keys :opt-un [::ana.jvm/init])))
+(s/def ::ana.jvm/analysis-def (s/merge ::ana.jvm/analysis-common (s/keys :opt-un [::ana.jvm/init])))
 
 (s/def ::ana.jvm/fn ::ana.jvm/analysis)
 (s/def ::ana.jvm/args (s/coll-of ::ana.jvm/analysis :into []))
 
 (defmethod analysis-type :invoke [_]
-  (s/merge ::analysis-common (s/keys :req-un [::ana.jvm/fn ::ana.jvm/args])))
+  (s/merge ::ana.jvm/analysis-common (s/keys :req-un [::ana.jvm/fn ::ana.jvm/args])))
 
 (defmethod analysis-type :def [_]
   ::ana.jvm/analysis-def)

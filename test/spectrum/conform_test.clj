@@ -4,6 +4,7 @@
             [clojure.test :refer :all]
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.conform :as c]
+            [spectrum.check :as check]
             [spectrum.flow :as flow])
   (:import clojure.lang.Keyword))
 
@@ -341,3 +342,6 @@
   (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/pred-spec #'nil?))))
 
   (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/value nil)))))
+
+(deftest multispecs
+  (is (c/equivalent? (c/parse-spec (s/nilable (s/spec ::ana.jvm/analysis))) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)}))))

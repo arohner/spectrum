@@ -1503,7 +1503,8 @@
   "Given a dispatch value, return the spec"
   [ms dispatch-value]
   (let [v (:multimethod ms)
-        s (v dispatch-value)
+        retag (:retag ms)
+        s (v {retag dispatch-value})
         s (parse-spec s)
         s (multispec-assoc-retag ms s dispatch-value)]
     (if s
