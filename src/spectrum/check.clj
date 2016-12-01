@@ -255,8 +255,30 @@
 
 ;; check recur values conform to bindings
 
-(defn analyze-form [form]
-  (flow/flow (ana.jvm/analyze form)))
+(defn analyze-form
+  "Analyze and flow a form.
+
+   (analyze-form '(string? 3))
+
+   Optionally takes a map of keywordized variables to specs:
+
+   (analyze-form '(string? x) {:x (c/pred-spec #'string?)})
+"
+  ([form]
+   (flow/flow (ana.jvm/analyze form)))
+  ([form specs]
+   (let [locals (into {} (map (fn [[binding spec]]
+                                (let [binding (symbol (name binding))]
+                                  [binding {:op :binding
+                                            :name binding
+                                            :form binding
+                                            :env {}
+                                            :local :let
+                                            ::flow/ret-spec spec}])) specs))]
+     (-> form
+         (ana.jvm/analyze (assoc (ana.jvm/empty-env)
+                                 :locals locals))
+         (flow/flow)))))
 
 (defn analyze-ns [ns]
   (mapv flow/flow (ana.jvm/analyze-ns ns)))
@@ -269,14 +291,18 @@
 
 (defn type-of
   "Given a quoted form, returns spectrum's expected type for evaluating the form"
-  [f]
-  (->> f
-       (analyze-form)
-       ::flow/ret-spec))
+  ([form]
+   (->> (analyze-form form)
+        ::flow/ret-spec))
+  ([form specs]
+   (->> (analyze-form form specs)
+        ::flow/ret-spec)))
 
 (defn check-form
   "Given a quoted form, returns any typechecking errors, or nil"
-  [f]
-  (->> f
-       (analyze-form)
-       (check*)))
+  ([form]
+   (->> (analyze-form form)
+        (check*)))
+  ([form specs]
+   (->> (analyze-form form specs)
+        (check*))))

@@ -65,6 +65,16 @@ There is also
 ```
 which is useful when you want to debug the signature of a form.
 
+`type-of` can optionally also take a map of keywordized variables to specs
+
+```clojure
+(check/type-of '(string? x) {:x (c/pred-spec #'string?)})
+#Value[true]
+
+(check/type-of '(string? x) {:x (c/value 3)})
+#Value[false]
+```
+
 ### Requirements
 
 - if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
