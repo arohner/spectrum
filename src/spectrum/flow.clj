@@ -313,7 +313,6 @@
                             (invoke-nil? test) :nil
                             (invoke-truthy? test) :truthy
                             :else nil)]
-            (println "buifs:" (:form test) (a-loc-str a) binding)
             (if (and test-type
                      (or (-> test :form (= (:name binding)))
                          (-> test :args first :name (= (:name binding)))))
