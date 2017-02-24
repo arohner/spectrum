@@ -801,7 +801,7 @@
                                  (assoc-in ret-keys [key-type (:v k-s)] (::ret-spec v-a)))
                                ret-keys))) {:req {}
                                             :req-un {}} (map vector (:keys a) (:vals a)))
-        ret-spec (c/and-spec [(c/pred-spec #'map?) (apply c/keys-spec (concat (vals ret-keys) [{} {}]))])]
+        ret-spec (c/keys-spec (:req ret-keys) (:req-un ret-keys) {} {})]
     (assoc a ::ret-spec ret-spec)))
 
 (defmethod flow :recur [a]
