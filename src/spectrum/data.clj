@@ -42,14 +42,14 @@
 
 (s/fdef register-pred->class :args (s/cat :p var? :cls class?))
 (defn register-pred->class
-  "Register pred as checking for instances of class c. Use this for preds that correspond *directly* to classes. "
+  "Register pred as checking for instances of class c. Use this for predicaess that are exactly (instance? c x)"
   [pred cls]
   (swap! pred->class- assoc pred cls)
   nil)
 
 (s/fdef register-protocol->pred :args (s/cat :p var? :protocol protocol?))
 (defn register-pred->protocol
-  "Register pred as checking for protocol p. Use this for preds that are exactly equivalent to (satisfies? p x)"
+  "Register pred as checking for protocol p. Use this for predicatess that are exactly equivalent to (satisfies? p x)"
   [pred protocol]
   (swap! pred->protocol- assoc pred protocol)
   nil)
@@ -58,11 +58,11 @@
 (defn pred->class [v]
   (get @pred->class- v))
 
-(s/fdef pred->protocol :args (s/cat :p var?) :ret (s/nilable protocol?))
+(s/fdef pred->protocol :args (s/cat :p any?) :ret (s/nilable protocol?))
 (defn pred->protocol [v]
   (get @pred->protocol- v))
 
-(s/fdef pred->protocol :args (s/cat :p var?) :ret boolean?)
+(s/fdef pred->protocol :args (s/cat :p any?) :ret boolean?)
 (defn pred->protocol? [x]
   (boolean (pred->protocol x)))
 
