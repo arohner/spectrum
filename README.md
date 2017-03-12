@@ -168,8 +168,8 @@ Where the magic happens. It takes a flow, and performs checks. Returns a seq of 
 
 The checking process just `c/conform`s the inputs to every function
 call, and the return value of functions. Using our previous example,
-`y` has the spec `(c/and (c/value 3) (c/class Long))`, and (c/conform
-#'int? x) returns truthy, so the function checks.
+`y` has the spec `(c/and (c/value 3) (c/class Long))`, and
+`(c/conform #'int? x)` returns truthy, so the function checks.
 
 ## Transformers
 
@@ -220,7 +220,7 @@ indicate that maps are seqable. We know `seq` should work on anything
 where `seqable?` returns true, and from reading Clojure's
 implementation, we know seq will accept values that are `(instance?
 Map %)` (defined in `clojure.lang.RT/seqFrom`, if you're curious). We
-can and do use an instance transformer for `(seq)` and `(seqable?`),
+can and do use an instance transformer for `(seq)` and `(seqable?)`,
 but those don't help us in the situation where `seqable?` isn't the
 function being invoked. Continuing our example:
 
