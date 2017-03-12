@@ -9,12 +9,13 @@
 (s/def :ana.jvm.env/line int?)
 (s/def :ana.jvm.env/column int?)
 (s/def :ana.jvm.env/ns symbol?)
+
 (s/def ::ana.jvm/env (s/keys :opt-un [:ana.jvm.env/file :ana.jvm.env/line :ana.jvm.env/column :ana.jvm.env/ns]))
 
 (s/def ::ana.jvm/children (s/coll-of keyword? :into []))
 
 (s/def ::ana.jvm/analysis-common (s/keys :req-un [::ana.jvm/op ::ana.jvm/form ::ana.jvm/env]
-                                 :opt-un [::ana.jvm/children]))
+                                         :opt-un [::ana.jvm/children]))
 
 (defmulti analysis-type :op)
 
@@ -39,7 +40,8 @@
 
 (s/def ::variadic boolean?)
 
-(s/def ::ana.jvm/binding (s/and ::ana.jvm/analysis #(= (:op %) :binding)))
+(s/def ::ana.jvm/name symbol?)
+(s/def ::ana.jvm/binding (s/merge ::ana.jvm/analysis (s/keys :req-un [::ana.jvm/name])))
 
 (s/def ::ana.jvm/bindings (s/coll-of ::ana.jvm/binding))
 

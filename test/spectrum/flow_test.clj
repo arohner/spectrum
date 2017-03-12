@@ -8,6 +8,7 @@
             [spectrum.check :as check]))
 
 (check/maybe-load-clojure-builtins)
+(check/ensure-analysis 'spectrum.flow)
 
 (spec-test/instrument)
 
@@ -161,3 +162,43 @@
     (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]) (-> (flow/find-binding (-> a :body :test) binding-name) ::flow/ret-spec)))
     (is (c/equivalent? (c/pred-spec #'string?) (-> (flow/find-binding (-> a :body :then) binding-name) ::flow/ret-spec)))
     (is (c/equivalent? (c/pred-spec #'nil?) (-> (flow/find-binding (-> a :body :else) binding-name) ::flow/ret-spec)))))
+
+(deftest get-fn-method-invoke-works
+  (testing "truthy"
+    (are [f spec] (flow/get-fn-method-invoke (ana.jvm/analyze f) (c/parse-spec spec))
+      '(fn [x] (inc x)) (s/cat :x int?)
+      '(fn
+         ([x] (inc x))
+         ([x y] (+ x y))) (s/cat :x int?)
+      '(fn
+         ([x] (inc x))
+         ([x y] (+ x y))) (s/cat :x int? :y int?))
+
+  (testing "falsey"
+    (are [f spec] (nil? (flow/get-fn-method-invoke (ana.jvm/analyze f) (c/parse-spec spec)))
+      '(fn [x] (min x)) (s/cat)
+      '(fn [x] (inc x)) (s/cat)
+      '(fn [x] (inc x)) (s/cat :x int? :y int?)
+      '(fn [x y & z] (inc x)) (s/cat :x int?)))))
+
+(s/def ::foo string?)
+(deftest invoke-with
+  (testing "truthy"
+    (are [f args-spec expected] (= (flow/invoke-with f (c/parse-spec args-spec)) (c/parse-spec expected))
+      #'inc (s/cat :x 1.5) (c/class-spec Double)
+      #'inc (s/cat :x 3) (c/class-spec Long)
+
+      ;; TODO
+      ;; :foo {:foo "foo"} string?
+      ;; :foo (s/keys :req-un [::foo]) string?
+      ;; :foo (s/keys :opt-un [::foo]) (s/nilable string?)
+      ;; :foo (s/map-of keyword? string?) (s/nilable string?)
+      ;; (c/value {:foo 3}) (c/value :foo) (c/value 3)
+      ))
+  (testing "falsey"
+    (are [f args-spec] (c/invalid? (flow/invoke-with f (c/parse-spec args-spec)))
+      #'inc (s/cat :x #'string?)
+      #'inc (s/cat))))
+
+(deftest basic-maps
+  (is (= [] (check/check-form '(def empty-fn-spec {:args nil, :ret nil, :fn nil})))))

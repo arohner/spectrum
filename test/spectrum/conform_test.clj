@@ -81,7 +81,7 @@
 
 (deftest conform-args-works
   (are [spec val] (c/conform-args? spec val)
-    (c/pred-spec #'c/spect?) (c/value true)))
+    (c/pred-spec #'c/spect?) (c/cat- [(c/value true)])))
 
 (deftest conform-works
   (testing "should return val"
@@ -105,7 +105,8 @@
       (c/class-spec Long) (c/value 3)
       (c/class-spec Integer) (c/value 0)
       (c/pred-spec #'int?) (c/class-spec Long)
-      (c/class-spec String) (c/class-spec String)))
+      (c/class-spec String) (c/class-spec String)
+      (c/pred-spec #'class?) (c/class-spec String)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))
@@ -164,7 +165,6 @@
          (s/cat :x integer?) (c/parse-spec (s/cat :x integer?)) {:x (c/parse-spec 'integer?)}
 
          (s/cat :x string?) [(c/class-spec String)] {:x (c/class-spec String)}
-
 
          (s/keys :req [::integer]) {::integer 3} {::integer 3}
 
@@ -263,7 +263,10 @@
   (is (nil? (c/rest* (c/parse-spec (s/cat :x int?)))))
   (is (= (c/value false) (c/second* (c/cat- [(c/pred-spec #'false?) (c/value false)]))))
 
-  (is (= (c/value true) (c/second* (c/parse-spec (s/cat :x (s/spec (s/* keyword?)) :y true))))))
+  (is (= (c/value true) (c/second* (c/parse-spec (s/cat :x (s/spec (s/* keyword?)) :y true)))))
+
+  (is (= (c/value 1) (c/first* (c/value [1 2 3]))))
+  (is (= (c/value [2 3]) (c/rest* (c/value [1 2 3])))))
 
 (deftest truthyness
   (are [s expected] (= expected (c/truthyness s))
@@ -341,7 +344,32 @@
 
   (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/pred-spec #'nil?))))
 
-  (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/value nil)))))
+  (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/value nil))))
+
+  (is (c/spect? (c/or-disj (c/or- [(c/value nil) (c/value nil)]) (c/value nil)))))
 
 (deftest multispecs
-  (is (c/equivalent? (c/parse-spec (s/nilable (s/spec ::ana.jvm/analysis))) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)}))))
+  (is (c/equivalent? (c/parse-spec (s/nilable (s/spec ::ana.jvm/analysis))) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
+  (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second))))
+
+(deftest infinite-works
+  (are [in expected] (= expected (c/infinite? (c/parse-spec in)))
+    (s/* integer?) true
+    (s/+ integer?) false
+    (c/rest* (c/parse-spec (s/+ integer?))) true
+    (s/cat :x integer?) false
+    (s/cat :x integer? :y (s/* string?)) false
+    (s/coll-of (s/or :x integer? :y (s/* string?))) true
+    (c/rest* (c/parse-spec (s/cat :x integer? :y (s/* string?)))) true
+    (c/rest* (c/rest* (c/parse-spec (s/cat :x integer? :y (s/+ string?))))) true))
+
+(deftest every-distinct-works
+  (are [in out] (= out (c/every-distinct (c/parse-spec in)))
+    (s/* integer?) #{(c/pred-spec #'integer?)}
+    (s/+ integer?) #{(c/pred-spec #'integer?)}
+    (s/cat :i integer? :s string?) #{(c/pred-spec #'integer?) (c/pred-spec #'string?)}
+
+    (s/coll-of integer?) #{(c/pred-spec #'integer?)}
+    ;; this can't work yet, due to spec bug not evaluating `s/every` form properly
+    ;; (s/coll-of (s/or :i integer? :s string?)) #{(c/pred-spec #'integer?) (c/pred-spec #'string?)}
+    ))

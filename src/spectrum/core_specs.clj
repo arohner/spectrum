@@ -22,8 +22,8 @@
 
 (s/def ::seq-like (s/nilable (s/or :seq seq? :seqable seqable?)))
 
-(s/fdef clojure.core/any? :args (s/cat :x (fn [x] (do true))) :ret boolean?)
-(s/fdef clojure.core/boolean? :args (s/cat :x #(do % true)) :ret boolean?)
+(s/fdef clojure.core/any? :args (s/cat :x (fn [x] true)) :ret boolean?)
+(s/fdef clojure.core/boolean? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/coll? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/concat :args (s/* ::seq-like) :ret seq?)
 (s/fdef clojure.core/chunked-seq? :args (s/cat :x any?) :ret boolean?)

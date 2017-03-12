@@ -415,7 +415,7 @@
         (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
         (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))))
 
-(s/fdef maybe-strip-meta :args (s/cat :a ::analysis) :ret ::analysis)
+(s/fdef maybe-strip-meta :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
 (defn maybe-strip-meta
   "If a is a :op :with-meta, strip it and return the :expr, or a"
   [a]
@@ -703,6 +703,30 @@
   {:post [(c/spect? (::ret-spec %))]}
   (flow-loop-let a))
 
+(s/fdef method-arity-conform :args (s/cat :params (s/coll-of ::ana.jvm/binding) :args c/spect?))
+(defn method-arity-conform?
+  "Given the :fn-method params and invoke spec args, return true if this call conforms"
+  [params args]
+  (loop [params params
+         args args]
+    (if (and params args)
+      (if (:variadic? (first params))
+        true
+        (if (empty? params)
+          (if (c/accept-nil? args)
+            true
+            false)
+          (if (and (first params) (c/first* args))
+            (let [params* (rest params)
+                  args* (c/rest* args)]
+              (if (and params* args*)
+                (recur params* args*)
+                (if (and (nil? (seq params*)) (nil? args*))
+                  true
+                  false)))
+            false)))
+      false)))
+
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
 (defn arity-conform?
   "Without knowing the types of args, return true if it's possible for args to conform, based on arity alone"
@@ -735,7 +759,6 @@
                spec)
         (let [param (first params)
               s (c/first* spec)]
-          (assert s)
           (if (:variadic? param)
             (conj ret (assoc param ::ret-spec (c/rest* spec)))
             (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
@@ -758,23 +781,75 @@
             s)]
     s))
 
-(defn flow-method [a]
-  {:post [(c/spect? (::ret-spec %))]}
-  (let [v (-> a meta :a ::var)
-        s (when v
-            (c/get-var-fn-spec v))
-        a (flow-walk a)
-        a (if (:args s)
-            (update-in a [:params] destructure-fn-params (:args s) a)
+(defn flow-method* [a args]
+  (let [a (flow-walk a)
+        a (if args
+            (update-in a [:params] destructure-fn-params args a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
                                              (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
         a (update-in a [:body] (fn [body]
                                  (flow (with-meta body {:a a}))))
         body-ret-spec (strip-control-flow (::ret-spec (:body a)))]
-    (when (c/unknown? body-ret-spec)
-      (println "flow-method:" (a-loc-str a) "storing ::ret-spec:" body-ret-spec))
     (assoc a ::ret-spec body-ret-spec)))
+
+(defn flow-method [a]
+  {:post [(c/spect? (::ret-spec %))]}
+  (let [v (-> a meta :a ::var)
+        s (when v
+            (c/get-var-fn-spec v))
+        a (flow-method* a (:args s))
+        ret-spec (::ret-spec a)]
+    (when (c/unknown? ret-spec)
+      (println "flow-method:" (a-loc-str a) "storing ::ret-spec:" ret-spec))
+    a))
+
+(s/fdef get-fn-method-invoke :args (s/cat :a ::ana.jvm/fn :args c/spect?))
+(defn get-fn-method-invoke
+  "given an :fn analysis and spect args, return the :fn-method that would be invoked"
+  [a args]
+  (assert (= :fn (:op a)))
+  (let [methods (:methods a)]
+    (->> methods
+         (filter (fn [m]
+                   (method-arity-conform? (:params m) args)))
+         first)))
+
+(s/fdef invoke-with-var :args (s/cat :v var? :args any?) :ret c/spect?)
+(defn invoke-with-var
+  "v must already be analyzed"
+  [v args]
+  (if-let [s (c/get-var-fn-spec v)]
+    (if (c/conform-var-args? v args)
+      (if-let [a (data/get-var-analysis v)]
+        (let [a (-> a :init :expr)]
+          (if-let [method (get-fn-method-invoke a args)]
+            (-> (flow-method* method args) ::ret-spec)
+            (do
+              (println "invoke-with-var args don't conform")
+              (c/invalid {:form `(v ~args)}))))
+        (do
+          (println "invoke-with-var:" v "not analyzed")
+          (c/unknown `(~v ~args))))
+      (do
+        (println "invoke-with-var does not conform:" v args)
+        (c/invalid {:form `(~v ~args)})))
+    (do
+      (println "invoke-with-var:" v "no spec")
+      (c/unknown `(v ~args)))))
+
+(defn invoke-with-keyword [k args]
+  )
+
+(s/fdef invoke-with :args (s/cat :f (s/or :v var? :f fn? :k keyword?) :args c/spect?) :ret c/spect?)
+(defn invoke-with
+  "Given an invokable (fn, var, keyword) predict the return type of the expression."
+  [f args]
+  (cond
+    (var? f) (invoke-with-var f args)
+    (:var f) (invoke-with-var (:var f) args)
+    (keyword? f) (invoke-with-keyword f args)
+    :else (throw (Exception. (format "Don't know how to invoke: %s" f)))))
 
 (defmethod flow :fn-method [a]
   {:post [(c/spect? (::ret-spec %))]}
@@ -812,7 +887,7 @@
 (defmethod flow :throw [a]
   {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
-    (assoc a ::ret-spec (throw-form (-> a :exception :class :val)))))
+    (assoc a ::ret-spec (c/invalid {:form {:exception (-> a :exception :class :val)}}))))
 
 (defn keyword-invoke-ret-spec
   [a]

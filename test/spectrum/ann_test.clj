@@ -20,9 +20,9 @@
                              AndSpec
                              OrSpec)))
 
-(check/ensure-analysis 'spectrum.analyzer-spec)
-
 (clojure.spec.test/instrument)
+
+(check/ensure-analysis 'spectrum.analyzer-spec)
 
 (deftest instance?-transformer
   (is (-> (c/maybe-transform #'instance? (c/cat- [(c/class-spec String) (c/parse-spec #'string?)])) :ret :v))

@@ -139,6 +139,17 @@
 (defn known? [x]
   (not (unknown? x)))
 
+(defrecord Invalid [form]
+  Spect
+  (conform* [this x]
+    false)
+  Truthyness
+  (truthyness [this]
+    :falsey))
+
+(defn invalid [& [{:keys [form] :as args}]]
+  (map->Invalid args))
+
 (defn first-rest? [x]
   (satisfies? FirstRest x))
 
@@ -230,6 +241,12 @@
   (instance? Reject x))
 
 (def reject (map->Reject {}))
+
+(s/fdef invalid? :args (s/cat :x any?) :ret boolean?)
+(defn invalid? [x]
+  (or (instance? Invalid x)
+      (= ::invalid x)
+      (reject? x)))
 
 (extend-type nil
   Regex
@@ -653,6 +670,17 @@
 (defn value? [s]
   (instance? Value s))
 
+(extend-type Value
+  FirstRest
+  (first* [{:keys [v] :as this}]
+    (if (or (seq? v) (seqable? v))
+      (value (first v))
+      (invalid {:form `(first ~v)})))
+  (rest* [{:keys [v] :as this}]
+    (if (or (seq? v) (seqable? v))
+      (value (rest v))
+      (invalid {:form `(rest ~v)}))))
+
 (s/fdef value :args (s/cat :x any?) :ret value?)
 (defn value
   "spec representing a single value"
@@ -718,8 +746,7 @@
 (defn conformy?
   "True if the conform result returns anything other than ::invalid or reject"
   [x]
-  (and (not= ::invalid x)
-       (not (reject? x))))
+  (not (invalid? x)))
 
 (defrecord PredSpec [pred form]
   Spect
@@ -731,6 +758,7 @@
       (cond
         truthy x
         (= #'any? pred) x
+        (and (= #'class? pred) (class-spec? x)) x
         (and (pred-spec? x) (= pred (:pred x))) x
         (class-spec? x) (when-let [pred-class (spec->class spec)]
                           (when (isa? (:cls x) pred-class)
@@ -740,7 +768,8 @@
         (and (satisfies? SpecToClass x) (valid? spec (class-spec (spec->class x)))) (conform spec (class-spec (spec->class x)))
         (and (satisfies? DependentSpecs x) (some (fn [px] (valid? spec px)) (dependent-specs* x))) x
         ;; calling the pred should always be last resort
-        (and (conform-args? spec x) (valuey? x)) (when (pred (get-value x))
+        ;; TODO remove this, or restrict to only using w/ pure functions. Not technically 'static' analysis.
+        (and (conform-args? spec (cat- [x])) (valuey? x)) (when (pred (get-value x))
                                                    x))))
   (explain* [spec path via in x]
     (when (not (valid? spec x))
@@ -783,7 +812,7 @@
             fnspec))))
     s))
 
-(def any?-form '(clojure.core/fn [x] (do true)))
+(def any?-form '(clojure.core/fn [x] true))
 
 (s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
 (defn any-spec?
@@ -843,14 +872,49 @@
     (spec-spec x)
     x))
 
+(s/fdef conform-fn-args? :args (s/cat :s fn-spec? :x spect?) :ret boolean?)
+(defn conform-fn-args?
+  "True if x conforms to the :args of the fn, i.e. it's valid to call the fn with x as args"
+  [fn-spec args-spect]
+  (if (:args fn-spec)
+    (valid? (:args fn-spec) args-spect)
+    (do (println "no :args for fn-spec" fn-spec)
+        false)))
+
+(s/fdef conform-pred-args? :args (s/cat :p pred-spec? :x spect?) :ret boolean?)
+(defn conform-pred-args?
+  [pred-spec args-spect]
+  (if-let [fn-spec (resolve-pred-spec pred-spec)]
+    (conform-fn-args? fn-spec args-spect)
+    (do (println "couldn't resolve fn-spec for pred" pred-spec)
+        false)))
+
+(s/fdef conform-var-args? :args (s/cat :v var? :x spect?) :ret boolean?)
+(defn conform-var-args? [v args-spect]
+  (if-let [fn-spec (get-var-fn-spec v)]
+    (conform-fn-args? fn-spec args-spect)
+    false))
+
+(s/fdef conform-args? :args (s/cat :s (s/or :f fn-spec? :p pred-spec? :v var?) :args spect?) :ret boolean?)
+(defn conform-args? [spec args-spect]
+  (cond
+    (pred-spec? spec) (conform-pred-args? spec args-spect)
+    (fn-spec? spec) (conform-fn-args? spec args-spect)
+    (var? spec) (conform-var-args? spec args-spect)
+    :else (throw (Exception. (format "dont' know how to conform-args %s" spec)))))
+
 (s/fdef maybe-transform :args (s/cat :v (s/or :v var? :m j/reflect-method?) :args-spec ::spect) :ret (s/nilable fn-spec?))
 (defn maybe-transform
   "apply the var's spec transformer, if applicable"
   [v args-spec]
   (when-let [fn-spec (get-var-fn-spec v)]
     (if-let [t (data/get-invoke-transformer v)]
-      (let [fn-spec* (t fn-spec args-spec)]
-        fn-spec*)
+      (if (conform-args? fn-spec args-spec)
+        (let [fn-spec* (t fn-spec args-spec)]
+          fn-spec*)
+        (do
+          (println "conform-args?" fn-spec args-spec ", rejecting")
+          (invalid {:form `(~v ~args-spec)})))
       fn-spec)))
 
 (defn maybe-transform-method
@@ -860,19 +924,6 @@
     (let [spec* (t spec args-spec)]
       spec*)
     spec))
-
-(s/fdef conform-args :args (s/cat :s pred-spec? :x any?) :ret boolean?)
-(defn conform-args?
-  "True if x conforms to the :args of the pred's fn, i.e. it's valid to call the fn with x as args"
-  [pred-spec x]
-  (if (any-spec? pred-spec)
-    true
-    (let [fnspec (resolve-pred-spec pred-spec)]
-      (if fnspec
-        (if fnspec
-          (valid? (:args fnspec) (cat- [x]))
-          false)
-        (println "no fnspec for:" pred-spec)))))
 
 (s/fdef maybe-transform-pred :args (s/cat :s pred-spec? :arg (s/nilable ::spect)))
 (defn maybe-transform-pred
@@ -1146,13 +1197,14 @@
     (>= (count ps) 2) (map->OrSpec {:ps ps
                                     :ks (take (count ps) (repeat nil))})
     (= 1 (count ps)) (first ps)
-    :else (unknown [])))
+    :else (invalid)))
 
 (defn or-spec [ks ps]
-  (if (>= (count ps) 2)
-    (map->OrSpec {:ks ks
-                  :ps ps})
-    (first ps)))
+  (cond
+    (>= (count ps) 2) (map->OrSpec {:ks ks
+                                    :ps ps})
+    (= 1 (count ps)) (first ps)
+    :else (invalid)))
 
 (defn equivalent? [s1 s2]
   (and (valid? s1 s2)
@@ -1170,6 +1222,14 @@
                  p)))
        (filter* (fn [p]
                   (not (equivalent? p pred))))))
+
+(defmethod parse-spec* 'clojure.spec/or [x]
+  (println "parse-spec or" x)
+  (let [pairs (map vec (partition 2 (rest x)))
+        ks (map first pairs)
+        ps (map second pairs)]
+    (map->OrSpec {:ks ks
+                  :ps ps})))
 
 (defrecord KeysSpec [req req-un opt opt-un]
   WillAccept
@@ -1245,7 +1305,6 @@
                (explain* spec (conj path key) via in val)))))))
 
 (s/def ::keys-spec keys-spec?)
-
 
 (s/fdef keys-spec :args (s/cat :req (s/nilable (s/map-of qualified-keyword? ::spect-like))
                                :req-un (s/nilable (s/map-of keyword? ::spect-like))
@@ -1495,6 +1554,8 @@
                    :req-un
                    :req)
         existing-key-spec (get-in spec [key-type retag])]
+    (when-not existing-key-spec
+      (println "Multispec assoc retag:" ms spec key-type retag))
     (assert existing-key-spec)
     (assert (valid? (parse-spec existing-key-spec) (value dispatch-value)))
     (assoc-in spec [key-type retag] (value dispatch-value))))
@@ -1573,6 +1634,9 @@
   (map->MultiSpec {:multimethod method
                    :retag retag}))
 
+(defn multispec? [x]
+  (instance? MultiSpec x))
+
 (defmethod parse-spec* 'clojure.spec/multi-spec [x]
   (let [retag (nth x 2)
         retag (cond
@@ -1581,6 +1645,26 @@
         method (resolve (nth x 1))]
     (assert retag)
     (multispec-default-spec (multispec method retag))))
+
+(s/fdef infinite? :args (s/cat :r first-rest?) :ret boolean?)
+(defn infinite?
+  "True if this regex accepts infinite input"
+  [r]
+  (or (regex-seq? r)
+      (coll-of? r)
+      (if-let [n (some-> r :ps first)]
+        (recur n)
+        false)))
+
+(s/fdef every-distinct :args (s/cat :r first-rest?) :ret set?)
+(defn every-distinct [s]
+  "Every distinct value this spect can accept"
+  (loop [ret #{}
+         s s]
+    (let [ret (conj ret (first* s))]
+      (if (and (not (infinite? s)) (rest* s))
+        (recur ret (rest* s))
+        ret))))
 
 (extend-protocol Spect
   clojure.spec.Spec
@@ -1735,7 +1819,7 @@
       (throw e))))
 
 (defn valid? [spec x]
-  (conformy? (conform spec x)))
+  (not (invalid? (conform spec x))))
 
 (s/fdef valid-return? :args (s/cat :s ::spect :args ::spect) :ret boolean?)
 (defn valid-return?
