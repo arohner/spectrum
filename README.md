@@ -323,6 +323,12 @@ things spec won't warn about
 
 ## Changelog
 
+- 0.1.2
+  - adds type-of
+  - better `if` branch detection
+  - handle more clojure.specs
+  - lots of bug fixes
+
 - 0.1.1
   - multispec support
   - parse-spec is now lazy, recursive specs should work
