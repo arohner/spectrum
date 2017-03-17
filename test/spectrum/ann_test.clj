@@ -103,8 +103,11 @@
     (are [args ret] (= ret (:ret (c/maybe-transform #'inc args)))
       (c/cat- [(c/pred-spec #'integer?)]) (c/class-spec Long)
       (c/cat- [(c/pred-spec #'float?)]) (c/class-spec Double)
-      (c/cat- [(c/value 3)]) (c/class-spec Long)
-      (c/cat- [(c/pred-spec #'string?)]) c/reject)))
+      (c/cat- [(c/value 3)]) (c/class-spec Long)))
+  (testing "falsey"
+    (are [args ret] (c/invalid? (c/maybe-transform #'inc args))
+      (c/cat- [(c/pred-spec #'string?)])
+      (c/cat- [(c/pred-spec #'nil?)]))))
 
 (deftest conform-ann
   ;; conform tests that require ann.clj or core_specs.clj to work
@@ -113,4 +116,5 @@
     (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
     (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::flow/analysis)
     (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::ana.jvm/analysis)
+    (c/coll-of ::ana.jvm/analysis) (c/coll-of ::flow/analysis)
     (c/pred-spec #'c/spect?) (c/value false)))

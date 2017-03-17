@@ -1360,7 +1360,7 @@
   Spect
   (conform* [this x]
     (cond
-      (instance? CollOfSpec x) (when (valid? s (:s x))
+      (instance? CollOfSpec x) (when (valid? (parse-spec s) (parse-spec (:s x)))
                                  x)
       (or (value? x) (raw-value? x)) (conform-collof-coll this (maybe-strip-value x))
       :else false))
@@ -1378,7 +1378,7 @@
 
 (extend-regex CollOfSpec)
 
-(s/fdef coll-of :args (s/cat :s ::spect :kind (s/? (s/nilable coll?))) :ret ::spect)
+(s/fdef coll-of :args (s/cat :s ::spect-like :kind (s/? (s/nilable coll?))) :ret ::spect)
 (defn coll-of
   ([s]
    (coll-of s nil))
