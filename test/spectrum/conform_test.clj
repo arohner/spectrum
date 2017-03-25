@@ -106,7 +106,13 @@
       (c/class-spec Integer) (c/value 0)
       (c/pred-spec #'int?) (c/class-spec Long)
       (c/class-spec String) (c/class-spec String)
-      (c/pred-spec #'class?) (c/class-spec String)))
+      (c/pred-spec #'class?) (c/class-spec String)
+
+      (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/value ["foo" :bar])
+      (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)])
+
+      (c/tuple-spec []) (c/value [])
+      (c/tuple-spec []) (c/tuple-spec [])))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform spec val))
@@ -249,7 +255,14 @@
       (c/parse-spec ::ana.jvm/analysis) 3
       (c/parse-spec ::ana.jvm/analysis) {}
 
-      (c/regex-seq (c/pred-spec #'integer?)) (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]))))
+      (c/regex-seq (c/pred-spec #'integer?)) (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)])
+
+      (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'string?)])
+
+      (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/value 3)
+      (c/tuple-spec []) (c/value 1)
+      (c/tuple-spec []) (c/value [1])
+      (c/tuple-spec [(c/pred-spec #'integer?)]) (c/tuple-spec []))))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))

@@ -1231,6 +1231,34 @@
     (map->OrSpec {:ks ks
                   :ps ps})))
 
+(defrecord TupleSpec [ps])
+
+(defn tuple-spec [ps]
+  (map->TupleSpec {:ps ps}))
+
+(extend-type TupleSpec
+  Spect
+  (conform* [spec xs]
+    (let [xs-orig xs]
+      (loop [ps (:ps spec)
+             xs xs]
+        (let [p (first ps)
+              x (first* xs)]
+          (cond
+            (and p x) (if (valid? (parse-spec p) (parse-spec x))
+                        (recur (rest ps) (rest* xs))
+                        false)
+            (and (not p) (not x)) xs-orig
+            :else  false)))))
+  FirstRest
+  (first* [this]
+    (some-> this :ps first parse-spec))
+  (rest* [this]
+    (tuple-spec (-> this :ps rest))))
+
+(defmethod parse-spec* 'clojure.spec/tuple [x]
+  (let [preds (rest x)]
+    (map->TupleSpec {:ps (vec preds)})))
 (defrecord KeysSpec [req req-un opt opt-un]
   WillAccept
   (will-accept [this]
