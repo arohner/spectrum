@@ -51,3 +51,12 @@
        (var? (:var x))
        (class? (:on-interface x))
        (map? (:method-map x))))
+
+ (defn queue
+   ([] clojure.lang.PersistentQueue/EMPTY)
+   ([coll] (reduce conj clojure.lang.PersistentQueue/EMPTY coll)))
+
+(defmethod print-method clojure.lang.PersistentQueue
+  [q ^java.io.Writer w]
+  (.write w "#queue ")
+  (print-method (sequence q) w))

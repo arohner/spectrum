@@ -34,7 +34,7 @@
 (s/fdef clojure.core/even? :args (s/cat :n integer?) :ret boolean?)
 (s/fdef clojure.core/false? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/first :args (s/cat :coll ::seq-like) :ret any?)
-(s/fdef clojure.core/filter :args (s/cat :x any? :coll (s/? ::seq-like)) :ret (s/or :seq seq? :xf fn?))
+(s/fdef clojure.core/filter :args (s/cat :f any? :coll (s/? ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/format :args (s/cat :fmt string? :args (s/* any?)) :ret string?)
 (s/fdef clojure.core/fn? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/identity :args (s/cat :x any?) :ret any?)

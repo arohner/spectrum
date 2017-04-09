@@ -4,3 +4,5 @@
 (s/fdef foo :args (s/cat :a integer? :b integer?) :ret integer?)
 (defn foo [a]
   (inc a))
+
+(foo 1)

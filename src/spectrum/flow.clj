@@ -4,9 +4,10 @@
             [clojure.set :as set]
             [clojure.spec :as s]
             [clojure.spec.gen :as gen]
+            [clojure.string :as str]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
-            [spectrum.data :as data]
+            [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j]
             [spectrum.util :as util :refer (zip with-a unwrap-a print-once)])
   (:import clojure.lang.Var))
@@ -112,29 +113,13 @@
       (assoc-in a (conj path ::var) (:var a))
       a)))
 
-(defn var-named-predicate?
-  "True if the var's name looks like a predicate"
-  [v]
-  (boolean (re-find #"\?$" (name (.sym ^Var v)))))
-
-(s/fdef var-predicate? :args (s/cat :v var?) :ret boolean?)
-(defn var-predicate?
-  [v]
-  (let [s (c/get-var-fn-spec v)]
-    (if s
-      (and (-> s :args c/cat-spec?)
-           (-> s :args :ps count (= 1))
-           (-> s :ret (= (c/pred-spec #'boolean?)))
-           (var-named-predicate? v))
-      false)))
-
 (defn invoke-predicate?
   "True if the analysis is invoking a predicate"
   [a]
   (and (-> a :op (= :invoke))
        (-> a :fn :op (= :var))
        (-> a :args count (= 1))
-       (some-> a :fn :var var-predicate?)))
+       (some-> a :fn :var c/var-predicate?)))
 
 (defn invoke-nil?
   "True if the analysis is invoking the inlined version of #'nil?, which is a :static-call to clojure.lang.Util/identical"
@@ -170,7 +155,8 @@
 
 (defn flow-walk [a]
   (try
-    (walk-a flow a)
+    (binding [*a* a]
+      (walk-a flow a))
     (catch Throwable t
       (println "flow-walk exception while walking:" (a-loc-str a) (:form a))
       (throw t))))
@@ -195,7 +181,7 @@
   {:post [(c/spect? (::ret-spec %))]}
   ;; the-var => (var foo). Returns the actual var
   (let [a (flow-walk a)]
-    (assoc a ::ret-spec (c/pred-spec #'var?))))
+    (assoc a ::ret-spec (c/value (:var a)))))
 
 (defmethod flow :var [a]
   {:post [(c/spect? (::ret-spec %))]}
@@ -278,7 +264,8 @@
 (defn maybe-disj-pred
   "If s is an or-spec, remove p if present"
   [s p]
-  {:post [(s/valid? ::c/spect %)]}
+  {:post [(do (when-not (s/valid? ::c/spect %)
+             (println "maybe-disj-pred:" s p "=>" %)) true) (s/valid? ::c/spect %)]}
   (if (c/or-spec? s)
     (c/or-disj s p)
     s))
@@ -358,63 +345,6 @@
                                 (c/maybe-spec-spec (::ret-spec arg))) args)
                     :ret []}))
 
-(defn invoke-spec [v spec args-spec]
-  (let [s* (c/maybe-transform v args-spec)
-        transformed? (not= spec s*)
-        conf (c/conform spec args-spec)]
-    (if transformed?
-      s*
-      (if (and (var-predicate? v)
-               (c/valid? (c/pred-spec v) (c/first* args-spec)))
-        (let [c (c/conform (c/pred-spec v) (c/first* args-spec))
-              t (c/truthyness c)]
-          (if (not= :ambiguous t)
-            (assoc spec :ret (if (= t :truthy)
-                               (c/value true)
-                               (c/value false)))))
-        spec))))
-
-(defmethod flow :invoke [a]
-  {:post [(c/spect? (::ret-spec %))]}
-  (let [v (-> a :fn :var)
-        spec (when v
-               (c/get-var-fn-spec v))
-        a (flow-walk a)
-        args-spec (analysis-args->spec (:args a))
-        spec (when spec
-               (invoke-spec v spec args-spec))]
-    (if v
-      (if spec
-        (let [a (assoc a ::fn-spec spec)]
-          (if (:ret spec)
-            (assoc a ::ret-spec (:ret spec))
-            (do
-              (print-once "warning: no ret-spec for" (:var (:fn a)))
-              (assoc a ::ret-spec (c/unknown (:form a) (a-loc a))))))
-        (do
-          (print-once "warning: no spec for" (:var (:fn a)))
-          (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
-      (assoc a ::ret-spec (c/unknown (:form a) (a-loc a))))))
-
-(defmethod flow :protocol-invoke [a]
-  {:post [(c/spect? (::ret-spec %))]}
-  (let [v (-> a :fn :var)
-        spec (when v
-               (c/get-var-fn-spec v))
-        a (flow-walk a)
-        spec (when spec
-               (c/maybe-transform v (analysis-args->spec (:args a))))]
-    (if v
-      (if spec
-        (assoc a ::ret-spec (:ret spec)
-                 ::fn-spec spec)
-        (do
-          (print-once "warning: no spec for" (:var (:fn a)))
-          (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))
-      (do
-        (print-once "warning: invoke non-var unknown:" (:form (:fn a)) (a-loc-str a))
-        (assoc a ::ret-spec (c/unknown (:form a) (a-loc a)))))))
-
 (s/fdef maybe-strip-meta :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
 (defn maybe-strip-meta
   "If a is a :op :with-meta, strip it and return the :expr, or a"
@@ -422,6 +352,67 @@
   (if (-> a :op (= :with-meta))
     (-> a :expr)
     a))
+
+(s/fdef invoke-valid-arity? :args (s/cat :f ::analysis :arg-count integer?) :ret boolean?)
+(defn invoke-valid-arity?
+  "check the fn invoke for correct arity. Takes the :fn analysis, and the caller args"
+  [a arg-count]
+  (assert (= :fn (:op a)))
+  (let [args (:args a)]
+    (boolean (some (fn [m]
+                     (or (and (not (:variadic? m))
+                              (= arg-count (:fixed-arity m)))
+                         (and (:variadic? m)
+                              (>= arg-count (:fixed-arity m))))) (-> a :methods)))))
+
+(defn get-var-fn-analysis [a]
+  (-> a :init maybe-strip-meta))
+
+(defn invoke-get-fn-analysis [a]
+  (assert (= :invoke (:op a)))
+  (let [f (:fn a)
+        fn-op (-> a :fn :op)]
+    (condp = fn-op
+      :var (some-> a :fn :var data/get-var-analysis get-var-fn-analysis)
+      :the-var (some-> a :fn :var data/get-var-analysis get-var-fn-analysis)
+      :fn  (-> a :fn)
+      :local (-> a (find-binding (-> a :fn :name)) :init)
+      :const nil
+
+      (println "don't know how to find analysis for" fn-op))))
+
+(defmethod flow :invoke [a]
+  {:post [(c/spect? (::ret-spec %))]}
+  (let [a (flow-walk a)
+        fn-spec (-> a :fn ::ret-spec)
+        args-spec (analysis-args->spec (:args a))
+        arg-count (count (:args a))
+        f-a (invoke-get-fn-analysis a)]
+    (assert (c/spect? fn-spec))
+    (assert (c/spect? args-spec))
+    (if (or (and f-a (= :fn (:op f-a)) (invoke-valid-arity? f-a arg-count))
+            (not f-a)
+            (not= :fn (:op f-a)))
+      (if fn-spec
+        (let [a (assoc a ::fn-spec fn-spec)]
+          (assert (c/spect? fn-spec))
+          (assert (c/spect? args-spec))
+          (assoc a ::ret-spec (c/invoke fn-spec args-spec)))
+        (assoc a ::ret-spec (c/unknown {:message (format "no spec for %s" (:var (:fn a)))})))
+      (assoc a ::ret-spec (c/invalid {:message (format "wrong number of args %s" (:form a))})))))
+
+(defmethod flow :protocol-invoke [a]
+  {:post [(c/spect? (::ret-spec %))]}
+  (let [v (-> a :fn :var)
+        spec (when v
+               (c/get-var-fn-spec v))
+        a (flow-walk a)
+        args-spec (analysis-args->spec (:args a))]
+    (if spec
+      (assoc a ::ret-spec (c/invoke spec args-spec) ::fn-spec spec)
+      (do
+        (print-once "warning: no spec for" (:var (:fn a)))
+        (assoc a ::ret-spec (c/unknown {:message (format "no spec for %s" (:var (:fn a)))}))))))
 
 (s/fdef variadic? :args (s/cat :s c/spect?) :ret boolean?)
 (defn variadic?
@@ -499,12 +490,20 @@
         (assoc a ::ret-spec c/reject))
       (assoc a ::ret-spec (c/pred-spec #'boolean?)))))
 
+(s/fdef incompatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
+(defn incompatible-java-method?
+  "True if it is not legal to call. Returns truthy for unknown args"
+  [arg-spec method-types]
+  (not (every? (fn [[s a]]
+                 (or (c/unknown? a)
+                     (c/valid? s a))) (map vector (mapv java-type->spec method-types) (mapv c/parse-spec (-> arg-spec :ps))))))
+
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?
-  "True if args conforming to spec arg-spec can be passed to a method that takes method-types"
+  "True if args conforming to spec arg-spec can be passed to a method that takes method-types. Returns falsey for unknown args"
   [arg-spec method-types]
   (let [spec (c/cat- (mapv java-type->spec method-types))
-        argv (mapv c/parse-spec (-> arg-spec :ps))]
+        argv (c/cat- (mapv c/parse-spec (-> arg-spec :ps)))]
     (assert argv)
     (c/valid? spec argv)))
 
@@ -548,8 +547,8 @@
   [cls method arg-spec]
   (let [ms (get-java-method cls method)]
     (some->> (get-java-method cls method)
-             (filterv (fn [m]
-                        (compatible-java-method? arg-spec (:parameter-types m))))
+             (remove (fn [m]
+                       (incompatible-java-method? arg-spec (:parameter-types m))))
              (most-specific))))
 
 (s/fdef get-method! :args (s/cat :cls class? :method symbol? :spec ::c/spect) :ret j/reflect-method?)
@@ -561,7 +560,7 @@
       m
       (throw (Exception. (format "Couldn't find method: %s %s %s" cls method spec))))))
 
-(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect :a ::analysis) :ret c/fn-spec?)
+(s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect :a ::analysis) :ret c/spect?)
 (defn get-java-method-spec
   "Return a fake spec for a java interop call"
   [cls method arg-spec a]
@@ -573,9 +572,7 @@
                                    :ret []})
                  (c/parse-spec ret)
                  nil))
-    (do
-      (println "get-java-method-spec: no conforming:" cls method arg-spec "possible:" (mapv :parameter-types (get-java-method cls method)) (a-loc-str a))
-      (c/fn-spec (c/unknown nil) (c/unknown nil) nil))))
+    (c/invalid {:message (format "no conforming method for java call: %s %s w/ args %s" cls method (print-str arg-spec))})))
 
 (defn multimethod? [x]
   (instance? clojure.lang.MultiFn x))
@@ -599,23 +596,22 @@
 (defn flow-java-call
   "Handles both :static-call and :instance-call"
   [a]
-  {:post [(c/spect? (::ret-spec %))]}
+  {:post [(do (when-not (::ret-spec %) (println "flow-java-call:" (:form a) "=>" %)) true) (c/spect? (::ret-spec %))]}
   (let [{:keys [class method instance]} a
         a (flow-walk a)
         a (maybe-flow-multi-method a)
         args-spec (analysis-args->spec (util/zip a :args))
         meth (get-conforming-java-method class method args-spec)
         spec (get-java-method-spec class method args-spec a)
-
         spec (if (and meth spec (c/known? (:args spec)))
                (c/maybe-transform-method meth spec (analysis-args->spec (:args a)))
                spec)]
-    (when-not (:ret spec)
-      (println "flow-java-call: no spec:" class method args-spec))
-    (assert (:ret spec))
-    (-> a
-        (assoc ::ret-spec (:ret spec)
-               ::args-spec (:args spec)))))
+    (if (c/fn-spec? spec)
+      (assoc a ::ret-spec (or (:ret spec) (c/unknown {:message (format "no :ret spec for %s" spec)}))
+             ::args-spec (:args spec))
+      (do
+        (assert (c/invalid? spec))
+        (assoc a ::ret-spec spec)))))
 
 (defmethod flow :static-call [a]
   {:post [(c/spect? (::ret-spec %))]}
@@ -676,7 +672,7 @@
                           (-> a :local (= :this)) (c/class-spec (:tag a))
                           (and (= '__extmap (:name a)) (deftype? a)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
                           (and (= '__meta (:name a)) (deftype? a)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
-                          :else (c/unknown (:form a) (a-loc a))))))
+                          :else (c/unknown {:form (:form a) :a-loc (a-loc a)})))))
 
 (s/fdef assoc-spec-bindings :args (s/cat :a ::analysis) :ret ::analysis)
 (defn assoc-spec-bindings
@@ -763,10 +759,8 @@
             (conj ret (assoc param ::ret-spec (c/rest* spec)))
             (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
         ret))
-    (do
-      (println "destructure failed:" (a-loc-str a) "params are all unknown")
-      (mapv (fn [p]
-              (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
+    (mapv (fn [p]
+            (assoc p ::ret-spec (c/unknown {:form (:name p) :message "destructure failed"}))) params)))
 
 (s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
 (defn strip-control-flow
@@ -787,7 +781,7 @@
             (update-in a [:params] destructure-fn-params args a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
-                                             (assoc p ::ret-spec (c/unknown (:name p) (a-loc a)))) params))))
+                                             (assoc p ::ret-spec (c/unknown {:form (:name p) :a-loc (a-loc a)}))) params))))
         a (update-in a [:body] (fn [body]
                                  (flow (with-meta body {:a a}))))
         body-ret-spec (strip-control-flow (::ret-spec (:body a)))]
@@ -800,56 +794,7 @@
             (c/get-var-fn-spec v))
         a (flow-method* a (:args s))
         ret-spec (::ret-spec a)]
-    (when (c/unknown? ret-spec)
-      (println "flow-method:" (a-loc-str a) "storing ::ret-spec:" ret-spec))
     a))
-
-(s/fdef get-fn-method-invoke :args (s/cat :a ::ana.jvm/fn :args c/spect?))
-(defn get-fn-method-invoke
-  "given an :fn analysis and spect args, return the :fn-method that would be invoked"
-  [a args]
-  (assert (= :fn (:op a)))
-  (let [methods (:methods a)]
-    (->> methods
-         (filter (fn [m]
-                   (method-arity-conform? (:params m) args)))
-         first)))
-
-(s/fdef invoke-with-var :args (s/cat :v var? :args any?) :ret c/spect?)
-(defn invoke-with-var
-  "v must already be analyzed"
-  [v args]
-  (if-let [s (c/get-var-fn-spec v)]
-    (if (c/conform-var-args? v args)
-      (if-let [a (data/get-var-analysis v)]
-        (let [a (-> a :init :expr)]
-          (if-let [method (get-fn-method-invoke a args)]
-            (-> (flow-method* method args) ::ret-spec)
-            (do
-              (println "invoke-with-var args don't conform")
-              (c/invalid {:form `(v ~args)}))))
-        (do
-          (println "invoke-with-var:" v "not analyzed")
-          (c/unknown `(~v ~args))))
-      (do
-        (println "invoke-with-var does not conform:" v args)
-        (c/invalid {:form `(~v ~args)})))
-    (do
-      (println "invoke-with-var:" v "no spec")
-      (c/unknown `(v ~args)))))
-
-(defn invoke-with-keyword [k args]
-  )
-
-(s/fdef invoke-with :args (s/cat :f (s/or :v var? :f fn? :k keyword?) :args c/spect?) :ret c/spect?)
-(defn invoke-with
-  "Given an invokable (fn, var, keyword) predict the return type of the expression."
-  [f args]
-  (cond
-    (var? f) (invoke-with-var f args)
-    (:var f) (invoke-with-var (:var f) args)
-    (keyword? f) (invoke-with-keyword f args)
-    :else (throw (Exception. (format "Don't know how to invoke: %s" f)))))
 
 (defmethod flow :fn-method [a]
   {:post [(c/spect? (::ret-spec %))]}
@@ -887,8 +832,10 @@
 (defmethod flow :throw [a]
   {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
-    (assoc a ::ret-spec (c/invalid {:form {:exception (-> a :exception :class :val)}}))))
+    (assoc a ::ret-spec (c/unknown {:form {:exception (-> a :exception :class :val)}
+                                    :message "form thows exception"}))))
 
+(s/fdef keyword-invoke-ret-spec :args (s/cat :a ::analysis) :ret c/spect?)
 (defn keyword-invoke-ret-spec
   [a]
   {:post [(c/spect? %)]}
@@ -899,7 +846,7 @@
     (assert k)
     (assert spec)
     (if (c/keyword-invoke? spec)
-      (c/keyword-invoke spec k)
+      (c/keyword-invoke spec (c/cat- [k]))
       (c/value nil))))
 
 (defmethod flow :keyword-invoke [a]
@@ -982,3 +929,137 @@
   {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (c/class-spec (:class-name a)))))
+
+
+(s/fdef get-fn-method-invoke :args (s/cat :a ::ana.jvm/fn :args c/spect?))
+(defn get-fn-method-invoke
+  "given an :fn analysis and spect args, return the :fn-method that would be invoked"
+  [a args]
+  (assert (= :fn (:op a)))
+  (let [methods (:methods a)]
+    (->> methods
+         (filter (fn [m]
+                   (method-arity-conform? (:params m) args)))
+         first)))
+
+(s/fdef invoke-with-var :args (s/cat :v var? :args any?) :ret c/spect?)
+(defn invoke-with-var
+  "v must already be analyzed"
+  [v args]
+  (if-let [s (c/get-var-fn-spec v)]
+    (if (c/conform-var-args? v args)
+      (if-let [a (data/get-var-analysis v)]
+        (let [a (-> a :init :expr)]
+          (if-let [method (get-fn-method-invoke a args)]
+            (-> (flow-method* method args) ::ret-spec)
+            (c/invalid {:form `(v ~args) :message (format "invoke args don't conform: %s %s" v args)})))
+        (c/unknown {:form `(~v ~args) :message (format "var %s not analyzed" v)}))
+      (c/invalid {:form `(~v ~args) :message (format "invoke-with-var does not conform: %s %s" v args)}))
+    (c/unknown {:form `(v ~args) :message (format "invoke-with-var:" v "no spec")})))
+
+(s/fdef invoke-a-dispatch :args (s/cat :a ::analysis) :ret keyword?)
+(defn invoke-a-dispatch [x]
+  (:op x))
+
+(s/fdef invoke-a :args (s/cat :x ::analysis) :ret c/spect?)
+(defmulti invoke-a "Given an analysis form that's an invoke, predict the return type" #'invoke-a-dispatch)
+
+(defmethod invoke-a :default [a]
+  (c/unknown {:form (:form a) :a-loc a :message (format "don't know how to invoke %s" (:op a))}))
+
+(s/fdef a-multimethod? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
+(defn a-multimethod? [a]
+  (and (-> a :init :op (= :new))
+       (-> a :init :class :val (= clojure.lang.MultiFn))))
+
+(s/fdef var-fn? :args (s/cat :v var?) :ret boolean?)
+(defn var-fn?
+  "True if this var holds a fn"
+  [v]
+  (if-let [a (data/get-var-analysis v)]
+    (boolean
+     (or (some-> a :init maybe-strip-meta :op (= :fn))
+         (a-multimethod? a)))
+    (do
+      (println (format "Couldn't find var %s in analysis cache:" v))
+      false)))
+
+(s/fdef wrong-number-args-error :args (s/cat :f ::analysis :a ::analysis) :ret c/spect?)
+(defn wrong-number-args-error [f a]
+  (let [arities (-> f :methods (->> (map :arglist) (str/join " or ")))]
+    (c/invalid {:message (format "Function %s called with incorrect number of args. Expected %s, got %s" (-> a :form first) arities (->> a :form rest vec))})))
+
+(s/fdef check-invoke-fn-arity :args (s/cat :f ::analysis :args ::analysis) :ret (s/nilable c/spect?))
+(defn check-invoke-fn-arity
+  "check the fn invoke for correct arity. Takes the :fn analysis, and the caller args"
+  [f a]
+  (let [args (:args a)
+        valid? (some (fn [m]
+                       (or (and (not (:variadic? m))
+                                (= (count args) (:fixed-arity m)))
+                           (and (:variadic? m)
+                                (>= (count args) (:fixed-arity m))))) (-> f :methods))]
+    (when-not valid?
+      (wrong-number-args-error f a))))
+
+(s/fdef check-invoke-fn-spec :args (s/cat :v var? :s c/fn-spec? :a ::analysis) :ret c/spect?)
+(defn check-invoke-fn-spec
+  [v s a]
+  (let [a-args (zip a :args)
+        args-spec (analysis-args->spec a-args)]
+    (assert (:args s))
+    (if (c/valid? (:args s) a-args)
+      (if (:ret s)
+        (:ret s)
+        (c/unknown {:form (:form a) :a-loc (a-loc a) :message (format "no ret spec on %s" s)}))
+      (c/invalid {:form (:form a)
+                  :a-loc (a-loc a)
+                  :message (format "invoke of %s does not conform. expected %s, got %s. " v (print-str (-> s :args)) (print-str args-spec))} a))))
+
+(defmethod invoke-a :var [a]
+  (let [v (-> a :fn :var)
+        va (-> v data/get-var-analysis maybe-strip-meta)]
+    (or
+     (when-not va
+       (c/unknown {:form (:form a) :a-loc (a-loc a) :message (format "no analysis for %s" v)}))
+     (when (and va (not (var-fn? v)))
+       (c/invalid {:form (:form a)
+                   :error {:message (format "attempt to call non-fn var: %s" (:form a))}}))
+     (when va
+       (check-invoke-fn-arity va a))
+     (if-let [s (c/get-var-fn-spec v)]
+       (check-invoke-fn-spec v s a)
+       (c/unknown {:form (:form a) :a-loc (a-loc a) :message (format "invoke: no spec for %s" v)})))))
+
+(defn maybe-check-defmethod [a]
+  (if (defmethod? a)
+    (let [[dispatch-val f] (:args a)]
+      ;; TODO flow-default, check-default, :children. defmethod checking is broken because we don't recurse automatically.
+      ;;
+      )
+    (c/unknown {:form (:form a) :a-loc (a-loc a) :message (format "don't know how to check defmethod %s" (:form a))})))
+
+(defn java-methods-str [cls method]
+  (->> (get-java-method cls method)
+       (mapv :parameter-types)
+       (str/join ", ")))
+
+(defn a->java-static-method-name [a]
+  (str (:class a) "/" (:method a)))
+
+(defmethod invoke-a :static-call [a]
+  (let [a-args (zip a :args)
+        args-spec (analysis-args->spec a-args)
+        call-spec (::args-spec a)]
+    (if call-spec
+      (if (c/known? call-spec)
+        (if args-spec
+          (if-let [valid? (c/valid? call-spec args-spec)]
+            (if-let [ret (::ret-spec a)]
+              ret
+              (c/unknown {:form (:form a) :message (format "no ret-spec on %s" (:form a) :a-loc (a-loc a))}))
+            (c/invalid {:form (:form a)
+                        :a-loc (a-loc a)
+                        :message (format "Java Method %s cannot be called with args %s. Expected %s" (a->java-static-method-name a) (print-str args-spec) (print-str call-spec))} a))
+          (c/unknown {:form (:form a) :a-loc (a-loc a) :message (format "Calling Java method %s unknown spec, given %s, possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a)))
+      (c/invalid {:form (:form a) :a-loc (a-loc a) :message (format "Calling Java method: no compatible args for %s. Given %s Possible: %s" (a->java-static-method-name a) (print-str args-spec) (java-methods-str (:class a) (:method a)))} a))))

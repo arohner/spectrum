@@ -44,7 +44,15 @@
 ;;        (s/+ integer?) '[{:name x__#0 :variadic? false} {:name xs__#0, :variadic? true}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)} {:name 'xs__#0, :variadic? true ::flow/ret-spec (c/parse-spec (s/* integer?))}]))
 
 (deftest conforming-java-method
-  (is (flow/get-conforming-java-method clojure.lang.Var 'hasRoot (c/cat- []))))
+  (testing "truthy"
+    (are [cls method args] (c/conformy? (flow/get-conforming-java-method cls method args))
+      clojure.lang.Namespace 'find (c/cat- [(c/value 'clojure.core)])
+      clojure.lang.Namespace 'find (c/cat- [(c/unknown {})])
+      clojure.lang.Var 'hasRoot (c/cat- [])))
+  (testing "falsey"
+    (are [cls method args] (nil? (flow/get-conforming-java-method cls method args))
+      clojure.lang.Namespace 'find (c/cat- [(c/value 3)])
+      clojure.lang.Namespace 'bogus (c/cat- [(c/value 'clojure.core)]))))
 
 (deftest java-method-spec
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)) dummy-analysis)
@@ -114,22 +122,6 @@
       (s/cat :a int? :b int?) [(dummy-binding 'a)]
       #'int? [(dummy-binding 'a)])))
 
-(deftest var-predicate
-  (testing "truthy"
-    (are [v] (flow/var-predicate? v)
-      #'int?
-      #'string?
-      #'false?
-      #'nil?
-      #'boolean?))
-  (testing "falsey"
-    (are [v] (not (flow/var-predicate? v))
-      #'not
-      #'boolean
-      #'print
-      #'int
-      #'str)))
-
 (deftest strip-control-flow
   (are [in out] (= out (flow/strip-control-flow in))
     (c/or- [(c/pred-spec #'int?) (flow/recur-form 'x)]) (c/or- [(c/pred-spec #'int?)])
@@ -182,23 +174,10 @@
       '(fn [x y & z] (inc x)) (s/cat :x int?)))))
 
 (s/def ::foo string?)
-(deftest invoke-with
-  (testing "truthy"
-    (are [f args-spec expected] (= (flow/invoke-with f (c/parse-spec args-spec)) (c/parse-spec expected))
-      #'inc (s/cat :x 1.5) (c/class-spec Double)
-      #'inc (s/cat :x 3) (c/class-spec Long)
-
-      ;; TODO
-      ;; :foo {:foo "foo"} string?
-      ;; :foo (s/keys :req-un [::foo]) string?
-      ;; :foo (s/keys :opt-un [::foo]) (s/nilable string?)
-      ;; :foo (s/map-of keyword? string?) (s/nilable string?)
-      ;; (c/value {:foo 3}) (c/value :foo) (c/value 3)
-      ))
-  (testing "falsey"
-    (are [f args-spec] (c/invalid? (flow/invoke-with f (c/parse-spec args-spec)))
-      #'inc (s/cat :x #'string?)
-      #'inc (s/cat))))
 
 (deftest basic-maps
   (is (= [] (check/check-form '(def empty-fn-spec {:args nil, :ret nil, :fn nil})))))
+
+(deftest compatible-java-method
+  (testing "truthy"
+    ))

@@ -59,3 +59,16 @@
 
 (defn reflect-method? [x]
   (instance? clojure.reflect.Method x))
+
+(defn more-specific?
+  [a b]
+  (and (isa? a b) (not= a b)))
+
+(defn most-specific-class
+  "Given a seq of classes that share an inheritance, return the most specific"
+  [cls]
+  {:post [(every? (fn [c] (isa? % c)) cls)]}
+  (reduce (fn [a b]
+            (if (more-specific? a b)
+              a
+              b)) Object cls))

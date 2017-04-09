@@ -24,6 +24,9 @@
   type-transformers
   (atom {}))
 
+;; current ana.jvm/analysis, if any
+(def ^:dynamic *a* nil)
+
 (defn get-invoke-transformer [v]
   (get @invoke-transformers v))
 
@@ -122,9 +125,13 @@
 (s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis-def))
 (defn get-var-analysis
   [v]
-  {:post [(do (when-not %
-                (print-once "warning: no var analysis for %s" v)) true)]}
   (get @var-analysis v))
+
+(s/fdef var-analysis? :args (s/cat :v var?) :ret boolean?)
+(defn var-analysis?
+  "True if we have analysis on v"
+  [v]
+  (boolean (get @var-analysis v)))
 
 (s/fdef get-var-arities :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis))
 (defn get-var-arities

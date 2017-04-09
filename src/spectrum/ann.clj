@@ -9,37 +9,37 @@
 
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
-(s/fdef ann :args (s/cat :v var? :f ::transformer))
+(s/fdef ann :args (s/cat :v var? :f ::transformer) :ret nil?)
 (defn ann
   "Register a spec transformer. Takes a var or clojure.reflect.Method, and a transformer function
 
-  ransformer function: a function taking 2 args: the function's spect,
+  transformer function: a function taking 2 args: the function's declared spect,
   and the Spect for the fn args at this callsite. Returns an updated
-  spec. This is typically used to make :ret more specific.
-"
+  spec. This is typically used to make :args or :ret more specific.
+
+  The args must pass the original spect before transforming, so this can't
+  be used to make the spec less specific.
+  "
   [v f]
   (swap! data/invoke-transformers assoc v f)
   nil)
 
 (ann #'instance? (fn [spect args-spect]
-                   (let [c (c/maybe-class (c/first* args-spect))
-                         inst-spec (c/second* args-spect)
-                         inst-cls (if (satisfies? c/SpecToClass inst-spec)
-                                    (c/spec->class inst-spec)
-                                    nil)]
-                     (if inst-spec
-                       (if inst-cls
-                         (if (c/known? inst-spec)
-                           (if (isa? inst-cls c)
-                             (assoc spect :ret (c/value true))
-                             (assoc spect :ret (c/value false)))
-                           spect)
-                         (do
-                           (println "Can't spec->class:" inst-spec "Consider using ann/instance-transformer" )
-                           spect))
-                       (do
-                         (print-once "No spec for:" inst-spec)
-                         spect)))))
+                   (let [c (c/first* args-spect)
+                         x (c/second* args-spect)]
+                     (if (c/known? x)
+                       (if-let [c-spec (and c (c/spec->class? c) (c/spec->class c) (c/class-spec (c/spec->class c)))]
+                         (let [ret (c/conform c x)]
+                           (if (c/conformy? ret)
+                             (let [truth (c/truthyness ret)
+                                   ret (condp = truth
+                                         :truthy (c/value true)
+                                         :falsey (c/value false)
+                                         (c/pred-spec #'boolean?))]
+                               (assoc spect :ret ret))
+                             (assoc spect :ret (c/value false))))
+                         spect)
+                       spect))))
 
 (ann #'into (fn [spect args-spect]
               (let [to (c/first* args-spect)
@@ -48,23 +48,30 @@
                   (assoc spect :ret to)
                   spect))))
 
-(s/fdef instance-transformer :args (s/cat :c class?) :ret ::transformer)
-(defn instance-transformer
-  "Returns a spec-transformer for a simple (instance? c x) spec."
-  [cls]
+(s/fdef instance-or :args (s/cat :cls (s/coll-of class?)) :ret ::transformer)
+(defn instance-or
+  "spec-transformer for (or (instance? a) (instance? b)...) case. classes is a seq of classes."
+  [classes]
   (fn [spect args-spect]
-    (let [arg (if (satisfies? c/FirstRest args-spect)
-                (c/first* args-spect)
-                args-spect)
-          c (if (and (c/spect? arg) (c/spec->class? arg))
-              (c/spec->class arg)
-              (class arg))]
-      (if c
-        (if (isa? c cls)
-          (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
-        spect))))
+    (if (c/first-rest? args-spect)
+      (let [spect* (c/or- (map c/class-spec classes))
+            arg-spect (c/first* args-spect)
+            conform-ret (c/conform spect* arg-spect)]
+        (if (c/conformy? conform-ret)
+          (let [truth (c/truthyness conform-ret)
+                ret (condp = truth
+                      :truthy (c/value true)
+                      :falsey (c/value false)
+                      (c/pred-spec #'boolean?))]
+            (assoc spect :ret ret))
+          (assoc spect :ret (c/value false))))
+      (c/invalid {:message "args must support first-rest"}))))
 
+(s/fdef instance-transformer :args (s/cat :c class?) :ret ::transformer)
+(defn instance-transformer [cls]
+  (instance-or [cls]))
+
+(s/fdef protocol-transformer :args (s/cat :p any?) :ret ::transformer)
 (defn protocol-transformer [protocol]
   (fn [spect args-spect]
     (let [arg (if (satisfies? c/FirstRest args-spect)
@@ -72,21 +79,6 @@
                 args-spect)]
       (if arg
         (if (satisfies? protocol arg)
-          (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
-        spect))))
-
-(defn instance-or
-  "spec-transformer for (or (instance? a) (instance? b)...) case. classes is a seq of classes."
-  [classes]
-  (fn [spect args-spect]
-    (let [c (if (c/spect? args-spect)
-              (c/spec->class (if (c/regex? args-spect)
-                               (c/first* args-spect)
-                               args-spect))
-              (class args-spect))]
-      (if c
-        (if (some (fn [cls] (isa? c cls)) classes)
           (assoc spect :ret (c/value true))
           (assoc spect :ret (c/value false)))
         spect))))
@@ -133,7 +125,7 @@
 
 (doseq [[v cls] pred->class]
   (data/register-pred->class v cls)
-  (ann v (instance-transformer cls)))
+  (ann v (instance-or [cls])))
 
 (defn ann-instance?
   "Annotates var-predicate p as just a simple instanceof? check
@@ -141,7 +133,7 @@
    (ann-instance #'string? java.lang.String)
  "
   [v cls]
-  (ann v (instance-transformer cls)))
+  (ann v (instance-or [cls])))
 
 (defn ann-protocol?
   "Annotates var-predicate p as just a simple satisfies? check
@@ -252,7 +244,7 @@
              key (c/second* args-spect)
              not-found (c/nth* args-spect 2)
              ret (cond
-                   (and (c/keys-spec? coll) (c/value? key)) (or (c/keys-get coll key) not-found)
+                   (and (c/keys-spec? coll) (c/value? key) (keyword? (:v key))) (or (c/keys-get coll (:v key)) not-found)
                    :else (:ret spect))]
          (assoc spect :ret ret))))
 
@@ -271,25 +263,20 @@
 (defn filter-fn [spect args-spect]
   (let [f (c/first* args-spect)
         coll (c/second* args-spect)]
-    (if (and (c/fn-spec? f) (flow/var-predicate? (:var f)) (c/coll-of? coll))
+    (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/every-distinct coll)))
       (assoc spect :ret (c/coll-of (c/and-spec [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
-      spect)))
+      (c/invalid {:form `(filter ~f ~coll)}))))
 
 (defn ann-filter [spect args-spect]
   (if (= 1 (flow/cat-count args-spect))
     (assoc spect :ret transducer-fn-spec)
     (let [f (c/first* args-spect)
-          colls (c/rest* args-spect)
-          _ (assert (c/cat-spec? colls))
-          colls (:ps colls)
-          coll-count (count (:ps colls))]
-      (if (every? (fn [c] (not (empty-seq? c))) colls)
-        (cond
-          (c/fn-spec? f) (filter-fn spect args-spect)
-          :else (do
-                  ;;(println "ann filter don't know how to check:" f)
-                  spect))
-        (assoc spect :ret (c/value (list)))))))
+          coll (c/second* args-spect)]
+      (cond
+        (nil? coll) transducer-fn-spec
+        (c/equivalent? coll (c/value nil)) (assoc spect :ret (c/value '()))
+        (c/first-rest? coll) (filter-fn spect args-spect)
+        :else spect))))
 
 (ann #'filter ann-filter)
 
@@ -304,18 +291,12 @@
                         (every? c/value? colls) (let [colls (map :v colls)]
                                                             (when (seq colls)
                                                               (c/cat- (map (fn [p] (c/value (first (:v p)))) colls))))
-                        :else (c/unknown args-spect))]
+                        :else (c/unknown {:form args-spect}))]
       (if (every? (fn [c] (not (empty-seq? c))) colls)
         (if (c/valid? (:args f) invoke-args)
-          (if-let [v (:var f)]
-            (assoc spect :ret (c/coll-of (:ret (c/maybe-transform v invoke-args))))
-            spect)
-          (do
-            (println "ann map: not valid" (:args f) invoke-args "rejecting")
-            (assoc spect :ret c/reject)))
-        (do
-          (println "ann map empty seq")
-          (assoc spect :ret (c/value [])))))))
+          (assoc spect :ret (c/coll-of (c/invoke f invoke-args)))
+          (assoc spect :ret (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str invoke-args))})))
+        (assoc spect :ret (c/value []))))))
 
 ;; [[X->Y] [X] -> [Y]]
 (defn map-ann [spect args-spect]
@@ -328,12 +309,8 @@
       (if (pos? coll-count)
         (cond
           (c/fn-spec? f) (map-fn spect args-spect)
-          :else (do
-                  (println "ann map don't know how to check:" f)
-                  spect))
-        (do
-          (println "ann map empty seq")
-          (assoc spect :ret (c/value (list))))))))
+          :else spect)
+        (assoc spect :ret (c/value (list)))))))
 
 (ann #'map map-ann)
 
@@ -350,17 +327,12 @@
                         (every? c/value? colls) (let [colls (map :v colls)]
                                                             (when (seq colls)
                                                               (c/cat- (map (fn [p] (c/value (first (:v p)))) colls))))
-                        :else (do
-                                (println "mapcat-fn args unknown:" colls)
-                                (c/unknown args-spect)))]
+                        :else (c/unknown {:message (format "mapcat-fn args unknown: %s" colls)
+                                          :form args-spect}))]
       (if (every? (fn [c] (not (empty-seq? c))) colls)
         (if (and (c/valid? (:args f) invoke-args)
                  (c/conform (c/pred-spec #'seqable?) (:ret f)))
-          (if-let [v (:var f)]
-            (assoc spect :ret (:ret (c/maybe-transform v invoke-args)))
-            (do
-              (println "ann mapcat-fn: default" f)
-              spect))
+          (assoc spect :ret (c/invoke f invoke-args))
           (do
             (println "ann mapcat not valid, rejecting" (:args f) invoke-args (:ret f))
             (assoc spect :ret c/reject)))
@@ -384,6 +356,9 @@
                   spect))
         (assoc spect :ret (c/value (list)))))))
 
+(ann #'any? (fn [spect args-spect]
+              (assoc spect :ret (c/value true))))
+
 (ann #'mapcat mapcat-ann)
 
 (ann #'seq (fn [spect args-spect]
@@ -395,7 +370,7 @@
 (ann #'inc (fn [spect args-spect]
              (let [arg (c/first* args-spect)]
                (if (c/valid? (c/pred-spec #'number?) arg)
-                 (let [c (if (c/spect? arg)
+                 (let [c (if (and (c/spect? arg) (c/spec->class? arg))
                            (c/spec->class arg)
                            (class arg))
                        ret-class (condp = c

@@ -143,9 +143,9 @@ assoc, dissoc, merge, etc types, which we'll take advantage of.
 
 ### spectrum.flow
 
-Flow is an intermediate pass. It takes the output of tools.analyzer,
+Flow is where most of the work happens. It takes the output of tools.analyzer,
 and recursively walks the analysis, adding specs to every
-expression. The main thing it's responsible for is adding
+expression. It calls `Invoke` on every function call expression. The main thing it's responsible for is adding
 `::flow/ret-spec`, and any other useful annotations to every
 expression. For example:
 
@@ -157,19 +157,19 @@ expression. For example:
 ```
 
 Because foo has a spec, we destructure the arguments vector, and
-assign the spec `#'int?` to `x`. In the `let`, we identify inc takes
-an long and returns a long, and so assign `y` the
+assign the spec `#'int?` to `x`. In the `let`, we call Invoke on inc,
+validate that it takes a long and returns a long and so assign `y` the
 spec `long`. Finally, the `y` in the body has the same spec as the y
 in the `let`.
 
 ### spectrum.check
 
-Where the magic happens. It takes a flow, and performs checks. Returns a seq of ParseError records.
+It takes a flow an dreturns a seq of ParseError records.
 
-The checking process just `c/conform`s the inputs to every function
-call, and the return value of functions. Using our previous example,
-`y` has the spec `(c/and (c/value 3) (c/class Long))`, and
-`(c/conform #'int? x)` returns truthy, so the function checks.
+The flow process will attach specs, either valid, unknown or invalid
+to every expression, so the checking process just walks the flow and
+returns errors for unknown and invalid specs based on your configured
+strictness settings (TBD).
 
 ## Transformers
 
@@ -255,42 +255,6 @@ unknowns if desired.
 
 The return value of un-spec'd functions is `unknown`, and in general,
 unknown does not conform to any spec except `any?`.
-
-## Configuration
-
-(Planned. TBD. Didn't mean to commit this, leaving for informational purposes)
-
-Spectrum has configurable warning levels. Every check 'error' has
-:type and :level, indicating the kind of error, and the author's
-perceived importance of that error, for convenient
-filtering/whitelisting/blacklisting. In general, the severity level of
-an issue depends on how certain we are it will cause problems.
-
-The error levels are:
-
-- 0: informational
-- 1: warning
-- 2: error
-
-errors
-
-- 2 calling a fn with incorrect number of args (spec'd or not)
-- 2 calling a spec'd fn with incompatible type (no unknown)
-- 2 attempt to invoke a non-fn var (i.e. `(*print-level* 2)`)
-- 2 spec arity doesn't conform to fn arity
-- 2 return value of a spec'd fn doesn't conform
-- 2 return value of a spec'd fn is unknown
-- 2 calling a java method incompatible args
-
-- 1 calling a spec'd fn with `unknown` args
-- 1 calling a java method with unknown args
-
-- 0 non-spec'd defn in a namespace being checked
-- 0 fdef spec with no :ret
-
-non-errors:
-things spec won't warn about
-- calling a non-spec'd fn from a non-spec'd fn
 
 ## Todo
 

@@ -5,7 +5,8 @@
             [clojure.spec :as s]
             [clojure.spec.test :as spec-test]
             [spectrum.conform :as c]
-            [spectrum.check :as st]))
+            [spectrum.check :as st]
+            [spectrum.flow :as flow]))
 
 (spec-test/instrument)
 
@@ -14,7 +15,7 @@
 
 (deftest in-ns-works
   (st/maybe-load-clojure-builtins)
-  (is (st/var-fn? #'clojure.core/in-ns)))
+  (is (flow/var-fn? #'clojure.core/in-ns)))
 
 (deftest test-examples-good
   (doseq [ns (->> (example-namespaces)
