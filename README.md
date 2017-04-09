@@ -141,11 +141,19 @@ than `spec`, just to differentiate the implementation. Spects convey
 exactly the same information, but are defrecords, so it's easy to
 assoc, dissoc, merge, etc types, which we'll take advantage of.
 
+The second major protocol of spects is Invoke. It's used for 'if we
+call this function with these arguments, what is the return
+spect?'. It's primarily used for functions, but it also sees use when
+calling vars directly, i.e. (#'foo 1 2), and map/keyword lookup `(:foo
+{:foo 1})` and `({:foo 1} :foo)`
+
 ### spectrum.flow
 
-Flow is where most of the work happens. It takes the output of tools.analyzer,
-and recursively walks the analysis, adding specs to every
-expression. It calls `Invoke` on every function call expression. The main thing it's responsible for is adding
+Flow is where most of the work happens. It takes the output of
+tools.analyzer, and recursively walks the analysis, adding specs to
+every expression. It calls `conform` to make sure the arguments to
+every function call and valid, and calls `invoke` to get the return
+type of the function. The main thing it's responsible for is adding
 `::flow/ret-spec`, and any other useful annotations to every
 expression. For example:
 
@@ -157,7 +165,7 @@ expression. For example:
 ```
 
 Because foo has a spec, we destructure the arguments vector, and
-assign the spec `#'int?` to `x`. In the `let`, we call Invoke on inc,
+assign the spec `#'int?` to `x`. In the `let`, we call invoke on inc,
 validate that it takes a long and returns a long and so assign `y` the
 spec `long`. Finally, the `y` in the body has the same spec as the y
 in the `let`.
@@ -235,9 +243,10 @@ function being invoked. Continuing our example:
 We know this should pass, because maps are seqable?, but the predicate
 only gets us so far. Type transformers are used to attach additional
 specs to to values during the checking process. In this case, we add a
-type transformer to `seqable?` to specify values that are `seqable?` also have the spec `(or clojure.lang.ISeq java.util.Map <bunch of other classes>)`.
-The call to `bar` now checks, because passing a map to a spec expecting
-`(or java.util.Map...)` conforms.
+type transformer to `seqable?` to specify values that are `seqable?`
+also have the spec `(or clojure.lang.ISeq java.util.Map <bunch of
+other classes>)`.  The call to `bar` now checks, because passing a map
+to a spec expecting `(or java.util.Map...)` conforms.
 
 For the most part, you shouldn't need to use type transformers,
 because they are primarily used to flesh out operations in the Clojure
@@ -249,9 +258,8 @@ Spectrum doesn't insist that every var be spec'd immediately. There is
 a specific spec, `c/unknown` used in places where we don't know type,
 for example as the return value of an un-spec'd function. Passing
 unknown to a spec'd function is treated as a less severe error than a
-'real' type error, for example passing an `int` to a function expecting
-`keyword?`. Use configuration, described in the next section, to remove
-unknowns if desired.
+'real' type error, for example passing an `int` to a function
+expecting `keyword?`.
 
 The return value of un-spec'd functions is `unknown`, and in general,
 unknown does not conform to any spec except `any?`.
@@ -286,6 +294,16 @@ unknown does not conform to any spec except `any?`.
 
 
 ## Changelog
+- 0.1.3
+  - add support for s/tuple
+  - make 'Invoke' first class.
+  - Move invoke checking into flow
+  - simplify several anns to use Invoke directly, making it easier to
+    ann `map` & `filter`
+  - start using spects rather than clojure.spec special-cases in more
+    places (::s/nil, use fewer naked values, etc)
+  - better support for KeywordInvoke and Invoke on maps and values
+  - `conform` now performs a breadth first search, which helps with recursive dependent specs
 
 - 0.1.2
   - adds type-of
