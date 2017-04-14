@@ -21,15 +21,6 @@
 (s/def ::ret ::c/spect)
 (s/def ::fn (s/nilable ::c/spect))
 
-(defn a-loc [a]
-  (select-keys a [:file :line :column]))
-
-(defn a-loc-str
-  "A human-formatted string for the file & line of the current analysis"
-  [a]
-  (let [{{:keys [file line column]} :env} a]
-    (str "file " file " line " line " col " column)))
-
 (defrecord RecurForm [args]
   c/Spect
   (conform* [this x]
@@ -75,6 +66,16 @@
 (s/def ::analysis? (s/nilable ::analysis))
 
 (s/def ::analyses (s/coll-of ::analysis))
+
+(s/fdef a-loc :args (s/cat :a ::ana.jvm/analysis))
+(defn a-loc [a]
+  (select-keys a [:file :line :column]))
+
+(defn a-loc-str
+  "A human-formatted string for the file & line of the current analysis"
+  [a]
+  (let [{{:keys [file line column]} :env} a]
+    (str "file " file " line " line " col " column)))
 
 (s/fdef flow-dispatch :args (s/cat :a ::ana.jvm/analysis) :ret keyword?)
 (defn flow-dispatch [a]
