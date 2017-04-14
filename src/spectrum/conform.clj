@@ -2150,7 +2150,6 @@
 (defn resolve-dependent-specs
   "If s supports dependent specs, resolve them and return a seq of specs"
   [s]
-  {:post [(do (when (and % (not (set? %))) (println "resolve-dependent:" s "=>" %)) true) (or (set? %) (nil? %)) (every? spect? %)]}
   (let [specs #{}
         specs (if (and (dependent-specs? s) (seq (dependent-specs s)))
                 (do
