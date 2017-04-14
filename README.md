@@ -17,11 +17,9 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 
 ## Current Status
 
+Developer Preview, not yet ready for production use.
 
-Developer Preview. I'm now convinced it's theoretically sound, and
-*most* of the core language semantics are done. The main thing it
-needs now is polish and more precise specs for complicated functions,
-like `map`, `filter`, `update-in`, etc.
+Current development is working towards making spectrum self-check.
 
 ## Goals
 
@@ -75,203 +73,9 @@ which is useful when you want to debug the signature of a form.
 #Value[false]
 ```
 
-### Requirements
-
-- if you use a predicate in a spec, i.e. `(s/fdef foo :args (s/cat :x bar?))`, then `bar?` should be spec'd, or you'll get a warning
-
-#### Defrecord / instance?
-
-If you have a predicate that is just a simple simple `instance?` check for a class, i.e.
-
-```clojure
-(defrecord Foo ...)
-(defn foo? [x] (instance? Foo x))
-```
-You'll want to add:
-```clojure
-(:require [spectrum.ann :as ann])
-(ann/ann #'foo? (ann/instance-transformer Foo))
-```
-This tells the system that expressions tagged  w/ spec `#'foo?` are of class `Foo`, which is useful in java interop, both for Java methods that take Foo, and defrecord constructors: (`->Foo` and `map->Foo`).
-
-
 ## Limitations
 
 - It's still very early. Contributions welcome.
-
-
-## How It Works
-
-This section is for the curious, and potential contributors. Shouldn't be necessary to understand this to use spectrum.
-
-### spectrum.conform
-
-This contains a spec parser and a re-implementation of clojure.spec, except they work on literals and specs rather than normal clojure values.
-
-```clojure
-(:require [spectrum.conform :as c])
-(c/conform (s/cat :x integer?) [3])
-=> {:x 3}
-```
-
-```clojure
-(c/parse-spec (s/+ integer?))
-```
-
-Returns a defrecord, containing the parsed spec. This is basically a
-reimplementation of clojure.spec, except more data-driven. If you're
-not using spectrum, but want to do other analysis-y stuff with specs,
-you may find `spectrum.conform/parse-spec` useful.
-
-```clojure
-(c/conform (s/+ integer?) [1 2 3])
-
-(c/conform (s/+ integer?) '[integer? integer?])
-```
-
-`c/conform` behaves the same as `s/conform`, except it works on
-literals and specs (i.e. the things we have access to at compile
-time). For now, the best documentation is the tests,
-`test/spectrum/conform_test.clj`. Spectrum conform will have 100%
-coverage of clojure.spec, but isn't done yet. If you encounter a spec
-that spectrum can't `c/parse-spec`, please file a bug.
-
-In the code, the result of `c/parse-spec` are called `spect` rather
-than `spec`, just to differentiate the implementation. Spects convey
-exactly the same information, but are defrecords, so it's easy to
-assoc, dissoc, merge, etc types, which we'll take advantage of.
-
-The second major protocol of spects is Invoke. It's used for 'if we
-call this function with these arguments, what is the return
-spect?'. It's primarily used for functions, but it also sees use when
-calling vars directly, i.e. (#'foo 1 2), and map/keyword lookup `(:foo
-{:foo 1})` and `({:foo 1} :foo)`
-
-### spectrum.flow
-
-Flow is where most of the work happens. It takes the output of
-tools.analyzer, and recursively walks the analysis, adding specs to
-every expression. It calls `conform` to make sure the arguments to
-every function call and valid, and calls `invoke` to get the return
-type of the function. The main thing it's responsible for is adding
-`::flow/ret-spec`, and any other useful annotations to every
-expression. For example:
-
-```clojure
-(s/fdef foo :args (s/cat :x int?) :ret int?)
-(defn foo [x]
-  (let [y (inc x)]
-    y))
-```
-
-Because foo has a spec, we destructure the arguments vector, and
-assign the spec `#'int?` to `x`. In the `let`, we call invoke on inc,
-validate that it takes a long and returns a long and so assign `y` the
-spec `long`. Finally, the `y` in the body has the same spec as the y
-in the `let`.
-
-### spectrum.check
-
-It takes a flow an dreturns a seq of ParseError records.
-
-The flow process will attach specs, either valid, unknown or invalid
-to every expression, so the checking process just walks the flow and
-returns errors for unknown and invalid specs based on your configured
-strictness settings (TBD).
-
-## Transformers
-
-Spectrum has two kinds of transformers, to add more detail to types: invoke transformer and type transformer
-
-### Invoke
-
-clojure.spec doesn't have logic variables, which means some specs
-aren't as tight as they could be. Consider `map`, which takes a fn of
-one argument of type `X`, and returns a type `Y`, and a collection of
-`X`s, and returns a seq of `Y`s ([X->Y] [X]->[Y]). That's currently impossible to
-express in clojure.spec, the best we can do is specify the return type
-of map as `seq?`, with no reference to `seq of Y`, which is based on
-the return type of the mapping function.
-
-Spectrum introduces transformers. They are hooks into the
-checking process. For example,
-
-```clojure
-(ann #'map (fn [fnspec argspec]...))
-```
-
-ann takes a var, and a fn of two arguments, the original fnspec, and
-the arguments to a specific invocation of the function (map). The
-transformer should return an updated fnspec, presumably with the more
-specific type. In this example, it would `clojure.core/update` the
-`:ret` spec from `seq?` to `(coll-of y?)`. Since map also requires the
-input type of `f` match the type of the seq passed in, we can
-similarly update the expected type of the second argument in
-`:arg`. The updated spec will be used in place during the normal checking process.
-
-Invoke transformers are only run when checking a function invokation.
-
-#### type transformers
-
-Type transformers are a second kind of hook, used to attach additional
-specs to *values* during the checking process. Consider
-
-```clojure
-(s/fdef foo :args (s/cat :x map?))
-
-(defn foo [x]
-  (seq x))
-```
-
-Is this call legal? It is, but the `map?` predicate by itself doesn't
-indicate that maps are seqable. We know `seq` should work on anything
-where `seqable?` returns true, and from reading Clojure's
-implementation, we know seq will accept values that are `(instance?
-Map %)` (defined in `clojure.lang.RT/seqFrom`, if you're curious). We
-can and do use an instance transformer for `(seq)` and `(seqable?)`,
-but those don't help us in the situation where `seqable?` isn't the
-function being invoked. Continuing our example:
-
-```clojure
-(s/fdef foo :args (s/cat :x map?))
-(s/fdef bar :args (s/cat :y seqable?))
-
-(defn foo [x]
-  (bar x))
-```
-
-We know this should pass, because maps are seqable?, but the predicate
-only gets us so far. Type transformers are used to attach additional
-specs to to values during the checking process. In this case, we add a
-type transformer to `seqable?` to specify values that are `seqable?`
-also have the spec `(or clojure.lang.ISeq java.util.Map <bunch of
-other classes>)`.  The call to `bar` now checks, because passing a map
-to a spec expecting `(or java.util.Map...)` conforms.
-
-For the most part, you shouldn't need to use type transformers,
-because they are primarily used to flesh out operations in the Clojure
-implementation.
-
-## Unknown
-
-Spectrum doesn't insist that every var be spec'd immediately. There is
-a specific spec, `c/unknown` used in places where we don't know type,
-for example as the return value of an un-spec'd function. Passing
-unknown to a spec'd function is treated as a less severe error than a
-'real' type error, for example passing an `int` to a function
-expecting `keyword?`.
-
-The return value of un-spec'd functions is `unknown`, and in general,
-unknown does not conform to any spec except `any?`.
-
-## Todo
-
-- 100% coverage of all types returned by the analyzer
-- 100% spec coverage
-- pre/post post predicates
-- java methods are all (or nil?)
-- `updating` the type of variables in a recur
-- s/def, but for non-fn vars
 
 ## Justification
 
@@ -292,6 +96,9 @@ unknown does not conform to any spec except `any?`.
 
 - spectrum is 'viral'. Once you start checking, it encourages you to write specs for everything
 
+## Plan
+
+Spectrum is still very early, and not ready for production use. Current development is focused on making spectrum self-check.
 
 ## Changelog
 - 0.1.3
