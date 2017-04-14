@@ -1175,7 +1175,10 @@
       :truthy))
   SpecToClass
   (spec->class [s]
-    (:cls s)))
+    (:cls s))
+  Invoke
+  (invoke [this args]
+    (unknown-invoke this args)))
 
 (extend-regex ClassSpec)
 (first-rest-singular ClassSpec)

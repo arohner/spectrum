@@ -378,7 +378,7 @@
       :fn  (-> a :fn)
       :local (-> a (find-binding (-> a :fn :name)) :init)
       :const nil
-
+      :invoke (recur (:fn a))
       (println "don't know how to find analysis for" fn-op))))
 
 (defmethod flow :invoke [a]
