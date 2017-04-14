@@ -153,7 +153,9 @@
         binding-name (-> a :bindings first :name)]
     (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]) (-> (flow/find-binding (-> a :body :test) binding-name) ::flow/ret-spec)))
     (is (c/equivalent? (c/pred-spec #'string?) (-> (flow/find-binding (-> a :body :then) binding-name) ::flow/ret-spec)))
-    (is (c/equivalent? (c/pred-spec #'nil?) (-> (flow/find-binding (-> a :body :else) binding-name) ::flow/ret-spec)))))
+    (is (c/equivalent? (c/pred-spec #'nil?) (-> (flow/find-binding (-> a :body :else) binding-name) ::flow/ret-spec)))
+
+    (= (c/or-spec [(c/class-spec Integer) (c/value nil)]) (check/type-of '(if (instance? Integer x) x nil) {:x (c/pred-spec #'any?)}))))
 
 (deftest get-fn-method-invoke-works
   (testing "truthy"

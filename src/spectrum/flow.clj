@@ -299,21 +299,26 @@
                             (invoke-predicate? test) :pred
                             (invoke-nil? test) :nil
                             (invoke-truthy? test) :truthy
+                            (= :instance? (:op test)) :instance?
                             :else nil)]
             (if (and test-type
                      (or (-> test :form (= (:form binding)))
-                         (-> test :args first :name (= (:name binding)))))
+                         (-> test :args first :name (= (:name binding)))
+                         (-> test :target :name (= (:name binding)))))
               (let [test-pred (cond
                                 (invoke-predicate? test) (c/pred-spec (-> test :fn :var))
                                 (invoke-nil? test) (c/pred-spec #'nil?))
                     updated-spec-then (condp = test-type
                                         :pred (c/and-spec [spec test-pred])
                                         :nil (c/and-spec [spec test-pred])
-                                        :truthy (-> spec (maybe-disj-pred (c/pred-spec #'nil?)) (maybe-disj-pred (c/pred-spec #'false?))))
+                                        :truthy (-> spec (maybe-disj-pred (c/pred-spec #'nil?)) (maybe-disj-pred (c/pred-spec #'false?)))
+                                        :instance? (c/and-spec [spec (c/class-spec (:class test))]))
                     updated-spec-else (condp = test-type
                                         :pred (maybe-disj-pred spec test-pred)
                                         :nil (maybe-disj-pred spec test-pred)
-                                        :truthy (maybe-disj-truthy spec))]
+                                        :truthy (maybe-disj-truthy spec)
+                                        :instance? spec ;; todo not class-spec
+                                        )]
                 (cond
                   (= this-expr :then) (recur parent updated-spec-then)
                   (= this-expr :else) (recur parent updated-spec-else)
