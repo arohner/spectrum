@@ -265,7 +265,9 @@
         coll (c/second* args-spect)]
     (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/every-distinct coll)))
       (assoc spect :ret (c/coll-of (c/and-spec [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
-      (c/invalid {:form `(filter ~f ~coll)}))))
+      (c/invalid {:message (format "filter f does not conform: %s w/ %s" (print-str f) (print-str (first (filter (fn [arg]
+                                                                                                                   (c/invalid? (c/invoke f (c/cat- [arg])))) (c/every-distinct coll)))))
+                  :form `(filter ~f ~coll)}))))
 
 (defn ann-filter [spect args-spect]
   (if (= 1 (flow/cat-count args-spect))

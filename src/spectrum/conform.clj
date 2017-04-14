@@ -164,7 +164,7 @@
 (defn reject? [x]
   (instance? Reject x))
 
-(defrecord Invalid [form]
+(defrecord Invalid [a-loc form message]
   Spect
   (conform* [this x]
     false)
@@ -290,6 +290,7 @@
 (defn unknown? [x]
   (instance? Unknown x))
 
+(s/fdef unknown :args (s/cat :args (s/keys :req-un [:invalid/message] :opt-un [:invalid/form])))
 (defn unknown
   [{:keys [form a-loc message] :as args}]
   (let [a *a*
@@ -1056,9 +1057,9 @@
       (let [spec* (t spec args)
             transformed? (not= spec spec*)]
         (if transformed?
-          (if (valid? spec* spec)
+          (if (or (valid? spec* spec) (invalid? spec*) (unknown? spec*))
             spec*
-            (invalid {:message "transformed fn must conform to original spec"})))))))
+            (invalid {:message (format "transformed fn must conform to original spec. original: %s  with args %s transformed: %s" (print-str spec) (print-str args) (print-str spec*))})))))))
 
 (s/fdef invoke-fn-spec :args (s/cat :s fn-spec? :args spect?) :ret spect?)
 (defn invoke-fn-spec [spec invoke-args]

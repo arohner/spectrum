@@ -678,7 +678,7 @@
                           (-> a :local (= :this)) (c/class-spec (:tag a))
                           (and (= '__extmap (:name a)) (deftype? a)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
                           (and (= '__meta (:name a)) (deftype? a)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
-                          :else (c/unknown {:form (:form a) :a-loc (a-loc a)})))))
+                          :else (c/unknown {:message "unknown binding" :form (:form a) :a-loc (a-loc a)})))))
 
 (s/fdef assoc-spec-bindings :args (s/cat :a ::analysis) :ret ::analysis)
 (defn assoc-spec-bindings
@@ -787,7 +787,7 @@
             (update-in a [:params] destructure-fn-params args a)
             (update-in a [:params] (fn [params]
                                      (mapv (fn [p]
-                                             (assoc p ::ret-spec (c/unknown {:form (:name p) :a-loc (a-loc a)}))) params))))
+                                             (assoc p ::ret-spec (c/unknown {:message "flow-method*" :form (:name p) :a-loc (a-loc a)}))) params))))
         a (update-in a [:body] (fn [body]
                                  (flow (with-meta body {:a a}))))
         body-ret-spec (strip-control-flow (::ret-spec (:body a)))]
