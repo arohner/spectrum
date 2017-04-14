@@ -1175,7 +1175,13 @@
       :truthy))
   SpecToClass
   (spec->class [s]
-    (:cls s))
+    ;;; hack for the godawful clojure.lang.MapEquivalence
+    ;;; hack. deftype checks for MapEquivalence, an interface that is
+    ;;; only implemented by APersistentMap, even though the defrecord
+    ;;; constructor takes IPersistentMap.
+    (if (= clojure.lang.MapEquivalence (:cls s))
+      clojure.lang.APersistentMap
+      (:cls s)))
   Invoke
   (invoke [this args]
     (unknown-invoke this args)))
