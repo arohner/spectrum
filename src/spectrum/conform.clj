@@ -1121,7 +1121,10 @@
     clojure.lang.IFn)
   Invoke
   (invoke [this args]
-    (invoke-fn-spec this args)))
+    (invoke-fn-spec this args))
+  Truthyness
+  (truthyness [this]
+    :truthy))
 
 (defn maybe-spec-spec [x]
   (if (regex-seq? x)
