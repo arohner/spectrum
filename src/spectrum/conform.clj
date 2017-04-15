@@ -134,10 +134,6 @@
                  (fn []
                    spect-generator)))
 
-(defn fn-invoke? [x]
-  (and (seq? x) (symbol? (first x))))
-
-
 ;; spect-like is hard. It should be 'anything that can be parsed into
 ;; a spect (spec, symbol, var, keyword)' + 'anything that can be
 ;; parsed into a value (any?)'. That's pretty wide, so this is just
