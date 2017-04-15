@@ -173,7 +173,10 @@
     :ambiguous)
   WillAccept
   (will-accept [this]
-    reject))
+    reject)
+  Invoke
+  (invoke [spec args]
+    (invalid {:message "invoke on invalid"})))
 
 (s/def :invalid/message string?)
 (s/def :invalid/form any?)
