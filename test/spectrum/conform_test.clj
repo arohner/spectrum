@@ -438,3 +438,15 @@
     (c/pred-spec #'string?) String
     (c/class-spec String) String
     (c/and-spec [(c/pred-spec #'string?) (c/class-spec String)]) String))
+
+(deftest fnspec
+  (testing "truthy"
+    (are [spec args] (c/valid? spec args)
+      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil)
+      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) nil  nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil)
+      (c/fn-spec nil nil nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)))
+
+  (testing "falsey"
+    (are [spec args] (not (c/valid? spec args))
+      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/cat- [(c/pred-spec #'integer?)]) nil)
+      (c/fn-spec nil (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) nil nil))))

@@ -1057,7 +1057,7 @@
       (let [spec* (t spec args)
             transformed? (not= spec spec*)]
         (if transformed?
-          (if (or (valid? spec* spec) (invalid? spec*) (unknown? spec*))
+          (if (or (valid? spec spec*) (invalid? spec*) (unknown? spec*))
             spec*
             (invalid {:message (format "transformed fn must conform to original spec. original: %s  with args %s transformed: %s" (print-str spec) (print-str args) (print-str spec*))})))))))
 
@@ -1080,11 +1080,34 @@
 (extend-type FnSpec
   Spect
   (conform* [this x]
-    (if (and (instance? FnSpec x)
-             (conform (:args this) (:args x))
-             (conform (:ret this) (:ret x)))
-      x
-      false))
+    (and (instance? FnSpec x)
+         (or
+          (and (:var this)
+               (:var x)
+               (= (:var this)
+                  (:var x)))
+          (and
+           (if (:args this)
+             (if (:args x)
+               (if (valid? (:args this) (:args x))
+                 x
+                 false)
+               false)
+             x)
+           (if (:ret this)
+             (if (:ret x)
+               (if (valid? (:ret this) (:ret x))
+                 x
+                 false)
+               false)
+             x)
+           (if (:fn this)
+             (if (:fn x)
+               (if (valid? (:fn this) (:fn x))
+                 x
+                 false)
+               false)
+             x)))))
   (explain* [spec path via in x]
     (when-not (valid? spec x)
       [{:path path :pred spec :val x :via via :in in}]))
