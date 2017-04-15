@@ -46,6 +46,7 @@
 
 (def print-once (memoize print-once*))
 
+(s/fdef protocol? :args (s/cat :x any?) :ret boolean?)
 (defn protocol? [x]
   (and (map? x)
        (var? (:var x))

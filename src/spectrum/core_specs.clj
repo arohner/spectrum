@@ -1,7 +1,8 @@
 (ns spectrum.core-specs
   (:require [clojure.core :as core]
             [clojure.spec :as s]
-            [spectrum.ann :as ann])
+            [spectrum.ann :as ann]
+            [spectrum.util :refer (protocol?)])
   (:import (java.lang Iterable)
            (java.util Map)
            (clojure.lang ISeq
@@ -56,6 +57,7 @@
 (s/fdef clojure.core/nil? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/not :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/range :args (s/cat :start (s/? integer?) :end (s/? integer?) :step (s/? integer?)) :ret (s/coll-of integer?))
+(s/fdef clojure.core/satisfies? :args (s/cat :c protocol? :x any?) :ret boolean?)
 (s/fdef clojure.core/select-keys :args (s/cat :m (s/or :m map? :a associative? :_ nil?) :ks (s/coll-of any?)) :ret map?)
 (s/fdef clojure.core/seq :args (s/cat :coll ::seq-like) :ret (s/nilable seq?))
 (s/fdef clojure.core/seq? :args (s/cat :x any?) :ret boolean?)
