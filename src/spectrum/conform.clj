@@ -1803,7 +1803,10 @@
     :truthy)
   Invoke
   (invoke [this args]
-    (coll-of-invoke this args)))
+    (coll-of-invoke this args))
+  DependentSpecs
+  (dependent-specs [this]
+    #{(pred-spec #'seqable?)}))
 
 (defn parse-coll-of [x]
   (let [args (rest x)
