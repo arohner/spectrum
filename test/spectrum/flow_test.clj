@@ -114,12 +114,15 @@
 
       (s/cat :a (s/+ int?)) [(dummy-binding 'a) (dummy-binding 'as :variadic? true)]
 
-      (s/cat :a (s/keys :req [::integer])) [(dummy-binding 'a)]))
+      (s/cat :a (s/keys :req [::integer])) [(dummy-binding 'a)]
+
+      (s/tuple int?) [(dummy-binding 'a)]))
 
   (testing "should fail"
     (are [spec args] (= false (flow/arity-conform? (c/parse-spec spec) args))
       (s/cat :a int?) [(dummy-binding 'a) (dummy-binding 'b)]
       (s/cat :a int? :b int?) [(dummy-binding 'a)]
+      (s/tuple int? int?) [(dummy-binding 'a)]
       #'int? [(dummy-binding 'a)])))
 
 (deftest strip-control-flow

@@ -734,7 +734,7 @@
 (defn arity-conform?
   "Without knowing the types of args, return true if it's possible for args to conform, based on arity alone"
   [spec args]
-  (if (and spec args (c/regex? spec))
+  (if (and spec args (c/first-rest? spec))
     (if (:variadic? (first args))
       true
       (if (empty? args)

@@ -1552,7 +1552,9 @@
   (first* [this]
     (some-> this :ps first parse-spec))
   (rest* [this]
-    (tuple-spec (-> this :ps rest)))
+    (if-let [r (-> this :ps rest seq)]
+      (tuple-spec r)
+      nil))
   (seq*? [this]
     (pos? (count (:ps this)))))
 
