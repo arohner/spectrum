@@ -77,7 +77,8 @@
 (defn store-defmethod-analysis
   [a]
   (let [v (-> a :args (get 1) :spectrum.flow/var)
-        dispatch-val (-> a :args first :val)]
+        dispatch-val (or (-> a :args first :val)
+                         (-> a :args first :expr :val))]
     (assert v)
     (assert dispatch-val)
     (swap! defmethod-analysis assoc [v dispatch-val] a)))
