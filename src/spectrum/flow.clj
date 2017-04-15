@@ -54,6 +54,9 @@
 (defn control-flow? [x]
   (or (throw? x) (recur? x)))
 
+(defn spect-or-control-flow? [x]
+  (or (c/spect? x) (control-flow? x)))
+
 (s/def ::args-spec ::c/spect-like)
 (s/def ::ret-spec ::c/spect-like)
 
@@ -250,8 +253,6 @@
         (:this a))))
 
 (defmethod find-binding* :deftype [a name]
-  {:post [(do (when %
-                (print-once "warning: no spec for deftype field" name)) true)]}
   (->> a
        :fields
        (filter (fn [b] (= name (:name b))))
@@ -372,7 +373,7 @@
                               (>= arg-count (:fixed-arity m))))) (-> a :methods)))))
 
 (defn get-var-fn-analysis [a]
-  (-> a :init maybe-strip-meta))
+  (some-> a :init maybe-strip-meta))
 
 (defn invoke-get-fn-analysis [a]
   (assert (= :invoke (:op a)))
@@ -690,7 +691,7 @@
             (update-in a [:bindings] conj (flow (with-meta b {:a a})))) (assoc a :bindings []) (:bindings a)))
 
 (defn flow-loop-let [a]
-  {:post [(c/spect? (::ret-spec %))]}
+  {:post [(spect-or-control-flow? (::ret-spec %))]}
   (let [a (assoc-spec-bindings a)
         a (flow-walk a)
         ret-spec (::ret-spec (:body a))]
@@ -698,11 +699,11 @@
     (assoc a ::ret-spec ret-spec)))
 
 (defmethod flow :let [a]
-  {:post [(c/spect? (::ret-spec %))]}
+  {:post [(spect-or-control-flow? (::ret-spec %))]}
   (flow-loop-let a))
 
 (defmethod flow :loop [a]
-  {:post [(c/spect? (::ret-spec %))]}
+  {:post [(spect-or-control-flow? (::ret-spec %))]}
   (flow-loop-let a))
 
 (s/fdef method-arity-conform :args (s/cat :params (s/coll-of ::ana.jvm/binding) :args c/spect?))
@@ -831,7 +832,6 @@
     (assoc a ::ret-spec ret-spec)))
 
 (defmethod flow :recur [a]
-  {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)]
     (assoc a ::ret-spec (recur-form (analysis-args->spec (:exprs a))))))
 
