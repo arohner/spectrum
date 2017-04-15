@@ -934,11 +934,12 @@
   [s]
   (if (pred-spec? s)
     (let [fnspec (s/get-spec (:pred s))]
-      (when fnspec
+      (if fnspec
         (let [fnspec (parse-spec fnspec)]
           (if (var? (:pred s))
             (assoc fnspec :var (:pred s))
-            fnspec))))
+            fnspec))
+        (invalid {:message (format "no spec for %s used as pred-spec" (print-str s))})))
     s))
 
 (def any?-form '(clojure.core/fn [x] true))
