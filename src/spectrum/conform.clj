@@ -320,7 +320,12 @@
     reject)
   Invoke
   (invoke [spec args]
-    (unknown-invoke spec args)))
+    (unknown-invoke spec args))
+  FirstRest
+  (first* [this]
+    (unknown {:message "first* unknown"}))
+  (rest* [this]
+    (unknown {:message "rest* unknown"})))
 
 (no-dependent-specs Unknown)
 
