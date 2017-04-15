@@ -1482,6 +1482,7 @@
 
 (extend-regex OrSpec)
 
+(s/fdef or-spec? :args (s/cat :x any?) :ret boolean?)
 (defn or-spec? [x]
   (instance? OrSpec x))
 
