@@ -1408,21 +1408,23 @@
 
 (declare or-)
 
-(defrecord OrSpec [ps ks]
+(defrecord OrSpec [ps ks])
+
+(extend-type OrSpec
   Spect
   (conform* [this x]
     (->>
-     ps
+     (:ps this)
      (map parse-spec)
-     (mapv vector (or ks (repeat nil)))
+     (mapv vector (or (:ks this) (repeat nil)))
      (some (fn [[k p]]
              (when (valid? p x)
                (if k
                  [k x]
                  x))))))
   DependentSpecs
-  (dependent-specs [spec]
-    (->> ps
+  (dependent-specs [this]
+    (->> (:ps this)
          (map parse-spec)
          (map dependent-specs)
          (apply set/intersection)))
@@ -1443,24 +1445,28 @@
   ;;   nil)
   Compound
   (map- [this f]
-    (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
+    (let [kps (->> (mapv vector (or (:ks this) (repeat nil)) (:ps this))
                    (map (fn [[k p]]
                           [k (f (parse-spec p))])))]
       (or-spec (map first kps) (map second kps))))
   (filter- [this f]
-    (let [kps (->> (mapv vector (or ks (repeat nil)) ps)
+    (let [kps (->> (mapv vector (or (:ks this) (repeat nil)) (:ps this))
                    (filter (fn [[k p]]
                              (f (parse-spec p)))))]
       (or-spec (map first kps) (map second kps))))
   KeywordInvoke
   (keyword-invoke [this args]
-    (->> ps
+    (->> (:ps this)
          (map parse-spec)
          (filter keyword-invoke?)
          (map (fn [p]
                 (keyword-invoke p args)))
          (distinct)
-         (or-))))
+         (or-)))
+  Invoke
+  (invoke [this args]
+    (unknown-invoke this args)))
+
 
 (extend-regex OrSpec)
 
