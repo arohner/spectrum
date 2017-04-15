@@ -282,7 +282,7 @@
 
 (ann #'filter ann-filter)
 
-(s/fdef map-fn :args (s/cat :s c/fn-spec? :args ::c/spect) :ret c/fn-spec?)
+(s/fdef map-fn :args (s/cat :s c/invoke? :args ::c/spect) :ret c/fn-spec?)
 (defn map-fn [spect args-spect]
   (let [f (c/first* args-spect)
         colls (c/rest* args-spect)
