@@ -1902,8 +1902,8 @@
   Spect
   (conform* [this x]
     (cond
-      (instance? MapOf x) (when (and (valid? ks (:ks x))
-                                     (valid? vs (:vs x)))
+      (instance? MapOf x) (when (and (valid? (parse-spec ks) (parse-spec (:ks x)))
+                                     (valid? (parse-spec vs) (parse-spec (:vs x))))
                                  x)
       (value? x) (conform-map-of this x)
       :else false))
