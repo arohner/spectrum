@@ -2312,8 +2312,11 @@
 
 (defmethod print-method Unknown [spec ^Writer w]
   (let [{:keys [file line column]} spec]
-    (.write w (str "#Unknown[" (print-str (:form spec)) (when file
-                                                          (str file line column)) "]"))))
+    (.write w (str "#Unknown[" (if (seq (:message spec))
+                                 (:message spec)
+                                 (print-str (:form spec)))
+                   (when file
+                     (str file line column)) "]"))))
 
 (defn regex-print-method [re-name spec ^Writer writer]
   (.write writer (str "#" re-name "[" (str/join ", " (map print-str (:ps spec))) "]")))
