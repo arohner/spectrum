@@ -41,7 +41,7 @@
   (map- [spec f])
   (filter- [spec f]))
 
-(s/fdef compound-spec :args (s/cat :x any?) :ret boolean?)
+(s/fdef compound-spec? :args (s/cat :x any?) :ret boolean?)
 (defn compound-spec? [x]
   (satisfies? Compound x))
 
