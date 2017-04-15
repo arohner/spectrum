@@ -47,7 +47,7 @@
   (testing "truthy"
     (are [cls method args] (c/conformy? (flow/get-conforming-java-method cls method args))
       clojure.lang.Namespace 'find (c/cat- [(c/value 'clojure.core)])
-      clojure.lang.Namespace 'find (c/cat- [(c/unknown {})])
+      clojure.lang.Namespace 'find (c/cat- [(c/unknown {:message ""})])
       clojure.lang.Var 'hasRoot (c/cat- [])))
   (testing "falsey"
     (are [cls method args] (nil? (flow/get-conforming-java-method cls method args))

@@ -222,7 +222,7 @@
       ;;(s/spec #(< % 10)) 12
       (c/pred-spec #'integer?) (c/parse-spec #'keyword?)
       (c/pred-spec #'integer?) (c/parse-spec (s/or :int integer? :str string?))
-      (c/pred-spec #'even?) (c/unknown nil)
+      (c/pred-spec #'even?) (c/unknown {:message ""})
       (c/parse-spec (s/and integer? even?)) (c/value 13)
       (c/parse-spec (s/and integer? even?)) (c/pred-spec #'integer?)
       (s/* integer?) (c/value ["foo"])
@@ -247,7 +247,7 @@
 
       (s/coll-of int?) (c/parse-spec (s/coll-of string?))
       (c/pred-spec #'string?) (c/or- [(c/class-spec Number) (c/value :foo)])
-      (c/coll-of (c/pred-spec #'int?)) (c/unknown {:form '(mapv flow as)})
+      (c/coll-of (c/pred-spec #'int?)) (c/unknown {:form '(mapv flow as) :message ""})
       (c/coll-of (c/pred-spec #'int?)) nil
 
       (c/parse-spec ::ana.jvm/analysis) (c/value 3)

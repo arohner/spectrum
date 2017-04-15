@@ -29,7 +29,7 @@
     (c/class-spec String) (c/pred-spec #'string?) (c/value true)
     (c/class-spec String) (c/class-spec String) (c/value true)
     (c/class-spec String) (c/pred-spec #'integer?) (c/value false)
-    (c/class-spec String) (c/unknown {}) (c/pred-spec #'boolean?)))
+    (c/class-spec String) (c/unknown {:message ""}) (c/pred-spec #'boolean?)))
 
 (defn transform-identical [args]
   (c/maybe-transform-method (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
@@ -50,7 +50,7 @@
       (c/cat- [(c/pred-spec #'integer?) (c/value nil)])))
   (testing "unknown"
     (are [args] (= (c/class-spec Boolean) (:ret (transform-identical args)))
-      (c/cat- [(c/pred-spec #'nil?) (c/or- [(c/pred-spec #'nil?) (c/unknown nil)])])
+      (c/cat- [(c/pred-spec #'nil?) (c/or- [(c/pred-spec #'nil?) (c/unknown {:message ""})])])
       (c/cat- [(c/pred-spec #'false?) (c/class-spec Boolean)])
       (c/cat- [(c/pred-spec #'boolean?) (c/pred-spec #'boolean?)])
       (c/cat- [(c/pred-spec #'boolean?) (c/value true)]))))
