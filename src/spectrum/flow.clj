@@ -24,12 +24,18 @@
 (defrecord RecurForm [args]
   c/Spect
   (conform* [this x]
-    false))
+    false)
+  c/Truthyness
+  (truthyness [this]
+    :ambiguous))
 
 (defrecord ThrowForm [exception-class]
   c/Spect
   (conform* [this x]
-    false))
+    false)
+  c/Truthyness
+  (truthyness [this]
+    :ambiguous))
 
 (s/fdef recur? :args (s/cat :x any?) :ret boolean?)
 (defn recur? [x]
