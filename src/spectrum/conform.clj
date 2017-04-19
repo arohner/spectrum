@@ -2353,6 +2353,11 @@
 (defmethod print-method OrSpec [v ^Writer w]
   (.write w (format "#Or[%s]" (str/join ", " (map print-str (:ps v))))))
 
+(defmethod print-method FnSpec [s ^Writer w]
+  (.write w (format "#Fn[%s]" (->> (map #(find s %) [:var :args :ret :fn])
+                                   (map (fn [[k v]]
+                                          (str k " " (print-str v))))))))
+
 (defmethod print-method KeysSpec [spec ^Writer w]
   (.write w (format "#Keys{%s}" (->> [:req :req-un :opt :opt-un]
                                           (map (fn [k]

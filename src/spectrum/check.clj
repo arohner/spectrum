@@ -51,6 +51,32 @@
 
 (s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
 
+(defn analyze-form
+  "Analyze and flow a form.
+
+   (analyze-form '(string? 3))
+
+   Optionally takes a map of keywordized variables to specs:
+
+   (analyze-form '(string? x) {:x (c/pred-spec #'string?)})
+"
+  ([form]
+   (let [a (ana.jvm/analyze form)]
+     (binding [*a* a]
+       (flow/flow a))))
+  ([form specs]
+   (let [locals (into {} (map (fn [[binding spec]]
+                                (let [binding (symbol (name binding))]
+                                  [binding {:op :binding
+                                            :name binding
+                                            :form binding
+                                            :env {}
+                                            :local :let
+                                            ::flow/ret-spec spec}])) specs))
+         a (ana.jvm/analyze form (assoc (ana.jvm/empty-env) :locals locals))]
+     (binding [*a* a]
+       (flow/flow a)))))
+
 (defn check [ns]
   (maybe-load-clojure-builtins)
   (println "checking " ns)
@@ -151,39 +177,13 @@
 
 ;; check recur values conform to bindings
 
-(defn analyze-form
-  "Analyze and flow a form.
-
-   (analyze-form '(string? 3))
-
-   Optionally takes a map of keywordized variables to specs:
-
-   (analyze-form '(string? x) {:x (c/pred-spec #'string?)})
-"
-  ([form]
-   (let [a (ana.jvm/analyze form)]
-     (binding [*a* a]
-       (flow/flow a))))
-  ([form specs]
-   (let [locals (into {} (map (fn [[binding spec]]
-                                (let [binding (symbol (name binding))]
-                                  [binding {:op :binding
-                                            :name binding
-                                            :form binding
-                                            :env {}
-                                            :local :let
-                                            ::flow/ret-spec spec}])) specs))
-         a (ana.jvm/analyze form (assoc (ana.jvm/empty-env) :locals locals))]
-     (binding [*a* a]
-       (flow/flow a)))))
-
-(defn analyze-ns [ns]
+(defn flow-ns [ns]
   (mapv flow/flow (ana.jvm/analyze-ns ns)))
 
 (defn ensure-analysis [ns]
   (when-not (data/analyzed-ns? ns)
     (println "analyzing" ns)
-    (analyze-ns ns)
+    (flow-ns ns)
     (data/mark-ns-analyzed! ns)))
 
 (defn type-of
