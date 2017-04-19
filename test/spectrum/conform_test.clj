@@ -425,7 +425,9 @@
 
       (s/map-of integer? string?) (c/cat- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
 
-      (c/value #'string?) (c/cat- [(c/value "foo")]) (c/value true)))
+      (c/value #'string?) (c/cat- [(c/value "foo")]) (c/value true)
+
+      (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)))
 
   (testing "falsey"
     (are [spec args] (c/invalid? (c/invoke spec args))

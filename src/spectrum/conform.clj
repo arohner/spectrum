@@ -1081,7 +1081,7 @@
       (if-let [args (parse-spec (:args spec))]
         (if (valid? args invoke-args)
           (if-let [ret (:ret spec)]
-            ret
+            (parse-spec ret)
             (pred-spec #'any?))
           (invalid {:message (format "invoke %s with %s does not conform" (print-str spec) (print-str invoke-args))}))
         (unknown {:message "no :args spec"})))))
