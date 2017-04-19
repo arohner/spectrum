@@ -332,14 +332,12 @@
                         :else (c/unknown {:message (format "mapcat-fn args unknown: %s" colls)
                                           :form args-spect}))]
       (if (every? (fn [c] (not (empty-seq? c))) colls)
-        (if (and (c/valid? (:args f) invoke-args)
+        (if (and (c/conformy? (c/invoke f invoke-args))
                  (c/conform (c/pred-spec #'seqable?) (:ret f)))
           (assoc spect :ret (c/invoke f invoke-args))
           (do
-            (println "ann mapcat not valid, rejecting" (:args f) invoke-args (:ret f))
-            (assoc spect :ret c/reject)))
+            (assoc spect :ret (c/invalid {:message (format "mapcat %s does not conform with %s" (print-str f) (print-str invoke-args))}))))
         (do
-          (println "ann mapcat empty seq" )
           (assoc spect :ret (c/value [])))))))
 
 ;; [[X->Y] [X] -> [Y]]
