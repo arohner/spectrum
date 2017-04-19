@@ -190,6 +190,7 @@
   (invoke [spec args]
     (invalid {:message "invoke on invalid"})))
 
+(s/fdef first-rest? :args (s/cat :x any?) :ret boolean?)
 (defn first-rest? [x]
   (satisfies? FirstRest x))
 
@@ -847,12 +848,13 @@
 
 (no-dependent-specs Value)
 
+(s/fdef raw-value? :args (s/cat :x any?) :ret boolean?)
 (defn raw-value?
   "A normal clojure value that isn't a spect, and isn't Value"
   [x]
   (not (spect? x)))
 
-(s/fdef valuey? :args (s/cat :x any?) :ret boolean)
+(s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
 (defn valuey? [x]
   (or (value? x) (raw-value? x)))
 
@@ -903,7 +905,7 @@
 
 (s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
 (defn conformy?
-  "True if the conform result returns anything other than ::invalid or reject"
+  "True if the conform result returns anything other than invalid or reject"
   [x]
   ;; {:post [(do (println "conformy?" x "=> " %) true)]}
   (boolean (and x
@@ -1028,7 +1030,7 @@
 (defn fn-spec? [x]
   (instance? FnSpec x))
 
-(s/fdef fn-spec :args (s/cat :args (s/nilable ::spect) :ret (s/nilable ::spect) :fn (s/nilable ::spect)))
+(s/fdef fn-spec :args (s/cat :args (s/nilable ::spect-like) :ret (s/nilable ::spect-like) :fn (s/nilable ::spect-like)))
 (defn fn-spec [args ret fn]
   (map->FnSpec {:args args
                 :ret ret
@@ -2064,6 +2066,7 @@
   (map->MultiSpec {:multimethod method
                    :retag retag}))
 
+(s/fdef multispec? :args (s/cat :x any?) :ret boolean?)
 (defn multispec? [x]
   (instance? MultiSpec x))
 

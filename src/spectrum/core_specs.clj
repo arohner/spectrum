@@ -23,6 +23,7 @@
 
 (s/def ::seq-like (s/nilable (s/or :seq seq? :seqable seqable?)))
 
+(s/fdef clojure.core/associative? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/any? :args (s/cat :x (fn [x] true)) :ret boolean?)
 (s/fdef clojure.core/boolean? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/coll? :args (s/cat :x any?) :ret boolean?)
@@ -61,6 +62,7 @@
 (s/fdef clojure.core/select-keys :args (s/cat :m (s/or :m map? :a associative? :_ nil?) :ks (s/coll-of any?)) :ret map?)
 (s/fdef clojure.core/seq :args (s/cat :coll ::seq-like) :ret (s/nilable seq?))
 (s/fdef clojure.core/seq? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/set? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/seqable? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/str :args (s/* any?) :ret string?)
 (s/fdef clojure.core/string? :args (s/cat :x any?) :ret boolean?)

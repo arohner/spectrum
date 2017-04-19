@@ -431,7 +431,7 @@
         (some variadic? (:ps s)))
     false))
 
-(s/fdef cat-count :args (s/cat :s c/cat-spec?) :ret (s/nilable int?))
+(s/fdef cat-count :args (s/cat :s c/first-rest?) :ret (s/nilable int?))
 (defn cat-count
   "If the spect is a non-variadic cat, the number of args it needs. Returns nil when variadic"
   [s]

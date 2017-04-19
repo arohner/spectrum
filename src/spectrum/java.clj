@@ -20,9 +20,11 @@
 
 (def class->primitive (set/map-invert primitive->class-))
 
+(s/fdef interface? :args (s/cat :x any?) :ret boolean?)
 (defn interface? [x]
   (and (class? x) (.isInterface ^Class x)))
 
+(s/fdef primitive? :args (s/cat :x any?) :ret boolean?)
 (defn primitive? [x]
   (contains? primitive->class- x))
 
@@ -57,6 +59,7 @@
                           (conj (set (ancestors b)) b))
         Object))
 
+(s/fdef reflect-method? :args (s/cat :x any?) :ret boolean?)
 (defn reflect-method? [x]
   (instance? clojure.reflect.Method x))
 
