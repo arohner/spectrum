@@ -160,19 +160,7 @@
 (defn reject? [x]
   (instance? Reject x))
 
-(defrecord Invalid [a-loc form message]
-  Spect
-  (conform* [this x]
-    false)
-  Truthyness
-  (truthyness [this]
-    :ambiguous)
-  WillAccept
-  (will-accept [this]
-    reject)
-  Invoke
-  (invoke [spec args]
-    (invalid {:message "invoke on invalid"})))
+(defrecord Invalid [a-loc form message])
 
 (s/def :invalid/message string?)
 (s/def :invalid/form any?)
@@ -187,6 +175,20 @@
                 a-loc
                 (select-keys *a* [:file :line :column]))]
     (map->Invalid {:form form :a-loc a-loc :message message})))
+
+(extend-type Invalid
+  Spect
+  (conform* [this x]
+    false)
+  Truthyness
+  (truthyness [this]
+    :ambiguous)
+  WillAccept
+  (will-accept [this]
+    reject)
+  Invoke
+  (invoke [spec args]
+    (invalid {:message "invoke on invalid"})))
 
 (defn first-rest? [x]
   (satisfies? FirstRest x))
