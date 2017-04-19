@@ -1725,10 +1725,11 @@
 
 (s/fdef infinite? :args (s/cat :r first-rest?) :ret boolean?)
 (defn infinite?
-  "True if this regex accepts infinite input"
+  "True if this spec accepts infinite input"
   [r]
   (or (regex-seq? r)
       (coll-of? r)
+      (unknown? r)
       (if-let [n (some-> r :ps first)]
         (recur n)
         false)))
@@ -2098,6 +2099,7 @@
            iter 0]
       (if (> iter 100)
         (do (println "infinite re-conform:" spec* data*)
+            (assert false)
             (invalid {:message "infinite"}))
         (let [x (first* data)]
           (if (nil? x)
