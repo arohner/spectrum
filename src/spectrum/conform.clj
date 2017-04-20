@@ -2357,7 +2357,9 @@
 
 (defmethod print-method FnSpec [s ^Writer w]
   (.write w (format "#Fn[%s]" (->> (map #(find s %) [:var :args :ret :fn])
-                                   (map (fn [[k v]]
+                                   (filter (fn [[k v]]
+                                             (identity v)))
+                                   (mapv (fn [[k v]]
                                           (str k " " (print-str v))))))))
 
 (defmethod print-method KeysSpec [spec ^Writer w]
