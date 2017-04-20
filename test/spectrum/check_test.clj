@@ -44,8 +44,12 @@
       (st/check ns))))
 
 (deftest type-of-works
-  (are [form expected] (= (st/type-of form) expected)
-    '3 (c/value 3)))
+  (testing "truthy"
+    (are [form expected] (= (st/type-of form) expected)
+      '3 (c/value 3)))
+  (testing "falsey"
+    (are [form args] (c/invalid? (st/type-of form args))
+      '(inc x) {:x (c/pred-spec #'string?)})))
 
 (deftest check-form-works
   (testing "good"

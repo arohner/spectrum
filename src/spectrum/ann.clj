@@ -297,7 +297,7 @@
       (if (every? (fn [c] (not (empty-seq? c))) colls)
         (if (c/valid? (:args f) invoke-args)
           (assoc spect :ret (c/coll-of (c/invoke f invoke-args)))
-          (assoc spect :ret (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str invoke-args))})))
+          (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str invoke-args))}))
         (assoc spect :ret (c/value []))))))
 
 ;; [[X->Y] [X] -> [Y]]
@@ -336,7 +336,7 @@
                  (c/conform (c/pred-spec #'seqable?) (:ret f)))
           (assoc spect :ret (c/invoke f invoke-args))
           (do
-            (assoc spect :ret (c/invalid {:message (format "mapcat %s does not conform with %s" (print-str f) (print-str invoke-args))}))))
+            (c/invalid {:message (format "mapcat %s does not conform with %s" (print-str f) (print-str invoke-args))})))
         (do
           (assoc spect :ret (c/value [])))))))
 
@@ -367,23 +367,27 @@
                  (assoc spect :ret (c/pred-spec #'seq?))
                  spect))))
 
-(ann #'inc (fn [spect args-spect]
-             (let [arg (c/first* args-spect)]
-               (if (c/valid? (c/pred-spec #'number?) arg)
-                 (let [c (if (and (c/spect? arg) (c/spec->class? arg))
-                           (c/spec->class arg)
-                           (class arg))
-                       ret-class (condp = c
-                                   Long Long
-                                   Double Double
-                                   Integer Long
-                                   Float Double
-                                   BigInt BigInt
-                                   BigInteger BigInteger
-                                   Ratio Ratio
-                                   BigDecimal BigDecimal
-                                   Long)]
-                   (assoc spect :ret (c/class-spec ret-class)))
-                 (assoc spect :ret c/reject)))))
+(defn inc-transformer [spect args-spect]
+  (let [arg (c/first* args-spect)]
+    (println "inc:" arg)
+    (if (c/valid? (c/pred-spec #'number?) arg)
+      (let [c (if (and (c/spect? arg) (c/spec->class? arg))
+                (c/spec->class arg)
+                (class arg))
+            ret-class (condp = c
+                        Long Long
+                        Double Double
+                        Integer Long
+                        Float Double
+                        BigInt BigInt
+                        BigInteger BigInteger
+                        Ratio Ratio
+                        BigDecimal BigDecimal
+                        Long)]
+        (assoc spect :ret (c/class-spec ret-class)))
+      (c/invalid {:message (format "can't inc %s" (print-str arg))}))))
+
+(ann #'inc inc-transformer)
+(ann (spectrum.flow/get-conforming-java-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)])) inc-transformer)
 
 (ann-protocol? #'c/spect? c/Spect)
