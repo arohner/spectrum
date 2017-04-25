@@ -79,10 +79,6 @@
     (are [s] (not (c/any-spec? s))
       (c/pred-spec #'integer?))))
 
-(deftest conform-args-works
-  (are [spec val] (c/conform-args? spec val)
-    (c/pred-spec #'c/spect?) (c/cat- [(c/value true)])))
-
 (deftest conform-works
   (testing "should return val"
     (are [spec val] (= val (c/conform spec val))
@@ -94,6 +90,7 @@
       (c/pred-spec #'integer?) (c/pred-spec #'integer?)
       (c/pred-spec #'integer?) (c/parse-spec (s/and integer? even?))
       (c/pred-spec #'any?) (c/pred-spec #'nil?)
+      (c/pred-spec #'any?) (c/unknown {:message ""})
       (c/parse-spec #'even?) (c/pred-spec #'even?)
       (c/pred-spec #'integer?) (c/parse-spec #'even?)
       (c/pred-spec #'even?) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)])
@@ -111,7 +108,12 @@
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)])
 
       (c/tuple-spec []) (c/value [])
-      (c/tuple-spec []) (c/tuple-spec [])))
+      (c/tuple-spec []) (c/tuple-spec [])
+      (c/not-spec (c/pred-spec #'string?)) (c/pred-spec #'keyword?)
+
+      (c/and-spec [(c/not-spec (c/pred-spec #'string?)) (c/not-spec (c/pred-spec #'keyword?))]) (c/class-spec Long)
+
+      (c/and-spec [(c/class-spec Long) (c/not-spec (c/pred-spec #'keyword?))]) (c/class-spec Long)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform (c/parse-spec spec) val))
@@ -260,7 +262,9 @@
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/value 3)
       (c/tuple-spec []) (c/value 1)
       (c/tuple-spec []) (c/value [1])
-      (c/tuple-spec [(c/pred-spec #'integer?)]) (c/tuple-spec []))))
+      (c/tuple-spec [(c/pred-spec #'integer?)]) (c/tuple-spec [])
+
+      (c/not-spec (c/pred-spec #'string?)) (c/pred-spec #'string?))))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
@@ -277,7 +281,9 @@
   (is (= (c/value true) (c/second* (c/parse-spec (s/cat :x (s/spec (s/* keyword?)) :y true)))))
 
   (is (= (c/value 1) (c/first* (c/value [1 2 3]))))
-  (is (= (c/value [2 3]) (c/rest* (c/value [1 2 3])))))
+  (is (= (c/value [2 3]) (c/rest* (c/value [1 2 3]))))
+
+  (is (= (c/cat- [(c/unknown {:message ""})]) (c/rest* (c/cat- [(c/unknown {:message ""}) (c/unknown {:message ""})])))))
 
 (deftest truthyness
   (are [s expected] (= expected (c/truthyness s))
@@ -444,7 +450,7 @@
 (deftest fnspec
   (testing "truthy"
     (are [spec args] (c/valid? spec args)
-      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil)
+      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)
       (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) nil  nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil)
       (c/fn-spec nil nil nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)))
 

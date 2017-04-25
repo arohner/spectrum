@@ -48,11 +48,21 @@
     (are [cls method args] (c/conformy? (flow/get-conforming-java-method cls method args))
       clojure.lang.Namespace 'find (c/cat- [(c/value 'clojure.core)])
       clojure.lang.Namespace 'find (c/cat- [(c/unknown {:message ""})])
+      clojure.lang.Numbers 'add (c/cat- [(c/unknown {:message ""}) (c/unknown {:message ""})])
       clojure.lang.Var 'hasRoot (c/cat- [])))
   (testing "falsey"
     (are [cls method args] (nil? (flow/get-conforming-java-method cls method args))
       clojure.lang.Namespace 'find (c/cat- [(c/value 3)])
       clojure.lang.Namespace 'bogus (c/cat- [(c/value 'clojure.core)]))))
+
+(deftest conforming-java-method-arity
+  (is (= 2 (-> (flow/get-conforming-java-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
+               :parameter-types
+               (count))))
+
+  (is (= 3 (-> (flow/get-conforming-java-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)]))
+               :parameter-types
+               (count)))))
 
 (deftest java-method-spec
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)) dummy-analysis)
@@ -156,7 +166,7 @@
         binding-name (-> a :bindings first :name)]
     (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]) (-> (flow/find-binding (-> a :body :test) binding-name) ::flow/ret-spec)))
     (is (c/equivalent? (c/pred-spec #'string?) (-> (flow/find-binding (-> a :body :then) binding-name) ::flow/ret-spec)))
-    (is (c/equivalent? (c/pred-spec #'nil?) (-> (flow/find-binding (-> a :body :else) binding-name) ::flow/ret-spec)))
+    (is (c/equivalent? (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'false?)]) (-> (flow/find-binding (-> a :body :else) binding-name) ::flow/ret-spec)))
 
     (= (c/or- [(c/class-spec Integer) (c/value nil)]) (check/type-of '(if (instance? Integer x) x nil) {:x (c/pred-spec #'any?)}))))
 

@@ -66,7 +66,7 @@
       (c/coll-of (c/pred-spec #'keyword?)))))
 
 (deftest map-tests
-  (testing "equals"
+  (testing "successful"
     (are [args expected] (= expected (c/invoke (c/get-var-fn-spec #'map) args))
       (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
       (c/cat- [(c/get-var-fn-spec #'identity) (c/pred-spec #'nil?)]) (c/value [])
@@ -81,27 +81,30 @@
 
 (deftest nil?-works
   (testing "true"
-    (are [args] (= (c/value true) (c/invoke (c/get-var-fn-spec #'nil?) args))
-      (c/cat- [(c/value nil)])))
+    (are [arg] (= (c/value true) (check/type-of '(nil? x) {:x arg}))
+      (c/value nil)))
   (testing "false"
-    (are [args] (= (c/value false) (c/invoke (c/get-var-fn-spec #'nil?) args))
-      (c/cat- [(c/value false)])
-      (c/cat- [(c/value 71)])
-      (c/cat- [(c/coll-of (c/pred-spec #'integer?))])))
+    (are [arg] (= (c/value false) (check/type-of '(nil? x) {:x arg}))
+      (c/value false)
+      (c/value 71)
+      (c/coll-of (c/pred-spec #'integer?))))
   (testing "ambigous"
-    (are [args] (= (c/pred-spec #'boolean?) (c/invoke (c/get-var-fn-spec #'nil?) args))
-      (c/cat- [(c/pred-spec #'boolean?)]))))
+    (are [arg] (= (c/class-spec Boolean) (check/type-of '(nil? x) {:x arg}))
+      (c/pred-spec #'boolean?))))
 
 (deftest inc-works
   (testing "true"
-    (are [args ret] (= ret (c/invoke (c/get-var-fn-spec #'inc) args))
-      (c/cat- [(c/pred-spec #'integer?)]) (c/class-spec Long)
-      (c/cat- [(c/pred-spec #'float?)]) (c/class-spec Double)
-      (c/cat- [(c/value 3)]) (c/class-spec Long)))
-  (testing "falsey"
-    (are [args ret] (c/invalid? (c/invoke (c/get-var-fn-spec #'inc) args))
-      (c/cat- [(c/pred-spec #'string?)])
-      (c/cat- [(c/pred-spec #'nil?)]))))
+    (are [arg ret] (= ret (check/type-of '(inc x) {:x arg}))
+      (c/pred-spec #'integer?) (c/class-spec Long)
+      (c/pred-spec #'float?) (c/class-spec Double)
+      (c/value 3) (c/class-spec Long)))
+
+  ;; TODO technically not illegal because the java method takes Object. Need to override
+  ;; (testing "falsey"
+  ;;   (are [arg ret] (c/invalid? (check/type-of '(inc x) {:x arg}))
+  ;;     (c/pred-spec #'string?)
+  ;;     (c/pred-spec #'nil?)))
+  )
 
 (deftest conform-ann
   ;; conform tests that require ann.clj or core_specs.clj to work
@@ -115,14 +118,18 @@
       (c/coll-of ::ana.jvm/analysis) (c/coll-of ::flow/analysis)
       (c/pred-spec #'c/spect?) (c/value false)
       (c/pred-spec #'seqable?) (c/class-spec clojure.lang.PersistentHashMap)
+      (c/pred-spec #'seqable?) (c/class-spec clojure.lang.Seqable)
       (c/pred-spec #'seqable?) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
 
       (c/or- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/pred-spec #'even?)
-      (c/or- [(c/class-spec Long) (c/class-spec Integer) (c/class-spec Short) (c/class-spec Byte)]) (c/pred-spec #'int?))))
+      (c/or- [(c/class-spec Long) (c/class-spec Integer) (c/class-spec Short) (c/class-spec Byte)]) (c/pred-spec #'int?)
+
+      (c/parse-spec :spectrum.core-specs/seq-like) (c/class-spec clojure.lang.Seqable))))
 
 (deftest invoke-ann
   (are [spec args expected] (= expected (c/invoke spec args))
     (c/pred-spec #'seqable?) (c/cat- [(c/keys-spec {} {} {} {})]) (c/value true)
+    (c/pred-spec #'seqable?) (c/cat- [(c/class-spec clojure.lang.Seqable)]) (c/value true)
     (c/pred-spec #'seq?) (c/cat- [(c/keys-spec {} {} {} {})]) (c/value false)
     (c/pred-spec #'integer?) (c/cat- [(c/pred-spec #'even?)]) (c/value true)
     (c/pred-spec #'integer?) (c/cat- [(c/value 3)]) (c/value true)

@@ -278,17 +278,18 @@
     (c/or-disj s p)
     s))
 
-(defn maybe-disj-truthy
-  "If s is an or-spec remove all unambiguously truthy specs, because this just failed an `if"
-  [s]
-  (if (c/or-spec? s)
-    (c/filter* (fn [p]
-                 (not= :truthy (c/truthyness p))) s)
-    s))
+(defn and-not
+  "Adds (and s (not x)), removing x from an or-pred if present"
+  [s x]
+  (cond
+    (c/value? s) s ;; adding not to a value doesn't make it more specific
+    (c/and-spec? s) (c/and-conj s (c/not-spec x))
+    :else (c/and-spec [(maybe-disj-pred s x) (c/not-spec x)])))
 
 (defn binding-update-if-specs
   "Given a :binding, walk up the tree to find all :if predicate tests it contains, and update the spec"
   [a binding]
+  {:post [(-> % ::ret-spec c/spect?)]}
   (loop [a a
          spec (::ret-spec binding)]
     (assert spec)
@@ -313,20 +314,22 @@
                      (or (-> test :form (= (:form binding)))
                          (-> test :args first :name (= (:name binding)))
                          (-> test :target :name (= (:name binding)))))
-              (let [test-pred (cond
-                                (invoke-predicate? test) (c/pred-spec (-> test :fn :var))
-                                (invoke-nil? test) (c/pred-spec #'nil?))
+              (let [test-pred (condp = test-type
+                                :nil  (c/pred-spec #'nil?)
+                                :pred (c/pred-spec (-> test :fn :var))
+                                :truthy  (c/pred-spec #'identity)
+                                :instance? (c/class-spec (:class test)))
+                    _ (assert test-pred)
                     updated-spec-then (condp = test-type
                                         :pred (c/and-spec [spec test-pred])
-                                        :nil (c/and-spec [spec test-pred])
-                                        :truthy (-> spec (maybe-disj-pred (c/pred-spec #'nil?)) (maybe-disj-pred (c/pred-spec #'false?)))
+                                        :nil (c/value nil)
+                                        :truthy (-> spec (and-not (c/pred-spec #'nil?)) (and-not (c/pred-spec #'false?)))
                                         :instance? (c/and-spec [spec (c/class-spec (:class test))]))
-                    updated-spec-else (condp = test-type
-                                        :pred (maybe-disj-pred spec test-pred)
-                                        :nil (maybe-disj-pred spec test-pred)
-                                        :truthy (maybe-disj-truthy spec)
-                                        :instance? spec ;; todo not class-spec
-                                        )]
+                    updated-spec-else  (condp = test-type
+                                        :pred (and-not spec test-pred)
+                                        :nil (and-not spec test-pred)
+                                        :truthy (c/or- [(c/value nil) (c/value false)])
+                                        :instance? (and-not spec test-pred))]
                 (cond
                   (= this-expr :then) (recur parent updated-spec-then)
                   (= this-expr :else) (recur parent updated-spec-else)
@@ -504,12 +507,18 @@
       (assoc a ::ret-spec (c/pred-spec #'boolean?)))))
 
 (s/fdef incompatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
-(defn incompatible-java-method?
+(defn compatible-java-method-relaxed?
   "True if it is not legal to call. Returns truthy for unknown args"
   [arg-spec method-types]
-  (not (every? (fn [[s a]]
-                 (or (c/unknown? a)
-                     (c/valid? s a))) (map vector (mapv java-type->spec method-types) (mapv c/parse-spec (-> arg-spec :ps))))))
+  (loop [arg-spec arg-spec
+         method-spec (c/cat- (mapv java-type->spec method-types))]
+    (let [m (c/first* method-spec)
+          a (c/first* arg-spec)]
+      (if (and (nil? a) (nil? m))
+        true
+        (if (and m a (or (c/valid? m a) (c/unknown? a)))
+          (recur (c/rest* arg-spec) (c/rest* method-spec))
+          false)))))
 
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?
@@ -560,8 +569,8 @@
   [cls method arg-spec]
   (let [ms (get-java-method cls method)]
     (some->> (get-java-method cls method)
-             (remove (fn [m]
-                       (incompatible-java-method? arg-spec (:parameter-types m))))
+             (filter (fn [m]
+                       (compatible-java-method-relaxed? arg-spec (:parameter-types m))))
              (most-specific))))
 
 (s/fdef get-method! :args (s/cat :cls class? :method symbol? :spec ::c/spect) :ret j/reflect-method?)
@@ -609,7 +618,6 @@
 (defn flow-java-call
   "Handles both :static-call and :instance-call"
   [a]
-  {:post [(do (when-not (::ret-spec %) (println "flow-java-call:" (:form a) "=>" %)) true) (c/spect? (::ret-spec %))]}
   (let [{:keys [class method instance]} a
         a (flow-walk a)
         a (maybe-flow-multi-method a)
@@ -620,8 +628,13 @@
                (c/maybe-transform-method meth spec (analysis-args->spec (:args a)))
                spec)]
     (if (c/fn-spec? spec)
-      (assoc a ::ret-spec (or (:ret spec) (c/unknown {:message (format "no :ret spec for %s" spec)}))
-             ::args-spec (:args spec))
+      (if (c/every-known? args-spec)
+        (if (c/valid-invoke? spec args-spec)
+          (assoc a ::ret-spec (or (:ret spec) (c/unknown {:message (format "no :ret spec for %s" spec)}))
+                 ::args-spec (:args spec))
+          (assoc a ::ret-spec (c/invalid {:form (:form a)
+                                          :message (format "Can't invoke %s with %s" (print-str spec) (print-str args-spec))})))
+        (assoc a ::ret-spec (c/unknown {:form (:form a) :message (format "invoke %s with unknown args %s" (print-str spec) (print-str args-spec))})))
       (do
         (assert (c/invalid? spec))
         (assoc a ::ret-spec spec)))))
@@ -959,7 +972,7 @@
   "v must already be analyzed"
   [v args]
   (if-let [s (c/get-var-fn-spec v)]
-    (if (c/conform-var-args? v args)
+    (if (c/valid-invoke? s args)
       (if-let [a (data/get-var-analysis v)]
         (let [a (-> a :init :expr)]
           (if-let [method (get-fn-method-invoke a args)]

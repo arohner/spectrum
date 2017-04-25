@@ -15,11 +15,11 @@
 
 (defn array? [x] (.isArray ^Class (class x)))
 
-(s/fdef reduce? :args (s/cat :x any?) :ret boolean?)
-(defn reduce? [x]
+(s/fdef coll-reduce? :args (s/cat :x any?) :ret boolean?)
+(defn coll-reduce? [x]
   (satisfies? clojure.core.protocols/CollReduce x))
 
-(ann/ann #'reduce? (ann/protocol-transformer clojure.core.protocols/CollReduce))
+(ann/ann #'coll-reduce? (ann/protocol-transformer clojure.core.protocols/CollReduce))
 
 (s/def ::seq-like (s/nilable (s/or :seq seq? :seqable seqable?)))
 
@@ -37,6 +37,7 @@
 (s/fdef clojure.core/false? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/first :args (s/cat :coll ::seq-like) :ret any?)
 (s/fdef clojure.core/filter :args (s/cat :f any? :coll (s/? ::seq-like)) :ret (s/or :seq seq? :xf fn?))
+(s/fdef clojure.core/float? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/format :args (s/cat :fmt string? :args (s/* any?)) :ret string?)
 (s/fdef clojure.core/fn? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/identity :args (s/cat :x any?) :ret any?)
@@ -44,7 +45,7 @@
 (s/fdef clojure.core/inc :args (s/cat :x number?) :ret number?)
 (s/fdef clojure.core/in-ns :args (s/cat :ns symbol?) :ret namespace?)
 (s/fdef clojure.core/instance? :args (s/cat :c class? :x any?) :ret boolean?)
-(s/fdef clojure.core/into :args (s/cat :to (s/nilable coll?) :xform (s/? fn?) :from reduce?) :ret coll?)
+(s/fdef clojure.core/into :args (s/cat :to (s/nilable coll?) :xform (s/? fn?) :from ::seq-like) :ret coll?)
 (s/fdef clojure.core/int? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/integer? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/keyword? :args (s/cat :x any?) :ret boolean?)

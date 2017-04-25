@@ -234,7 +234,7 @@
        (let [coll (c/first* args-spect)
              key (c/second* args-spect)
              ret (cond
-                   (and (c/keys-spec? coll) (c/value? key)) (or (c/keys-get coll (:v key)) (c/pred-spec #'any?))
+                   (and (c/valid? (c/keys-spec {} {} {} {}) coll) (c/value? key)) (or (-> coll (c/conform-destructure (c/keys-spec {} {} {} {})) (c/keys-get (:v key))) (c/pred-spec #'any?))
                    :else (:ret spect))]
          (assoc spect :ret ret))))
 
@@ -282,22 +282,24 @@
 
 (ann #'filter ann-filter)
 
+(defn map-coll-arity
+  "Given the seq of collections passed to map, return the arity that will be passed to f"
+  [colls]
+  (->> colls
+       (c/every-distinct)
+       (mapv (fn [c]
+               (c/or- (c/every-distinct c))))
+       (c/cat- )))
+
 (s/fdef map-fn :args (s/cat :s c/invoke? :args ::c/spect) :ret c/fn-spec?)
 (defn map-fn [spect args-spect]
   (let [f (c/first* args-spect)
-        colls (c/rest* args-spect)
-        _ (assert (c/cat-spec? colls))
-        colls (:ps colls)]
-    (let [invoke-args (cond
-                        (every? c/first-rest? colls) (c/cat- (map c/first* colls))
-                        (every? c/value? colls) (let [colls (map :v colls)]
-                                                            (when (seq colls)
-                                                              (c/cat- (map (fn [p] (c/value (first (:v p)))) colls))))
-                        :else (c/unknown {:form args-spect}))]
-      (if (every? (fn [c] (not (empty-seq? c))) colls)
+        colls (c/rest* args-spect)]
+    (let [invoke-args (map-coll-arity colls)]
+      (if (every? (fn [c] (not (empty-seq? c))) (c/every-distinct colls))
         (if (c/valid? (:args f) invoke-args)
           (assoc spect :ret (c/coll-of (c/invoke f invoke-args)))
-          (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str invoke-args))}))
+          (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str colls))}))
         (assoc spect :ret (c/value []))))))
 
 ;; [[X->Y] [X] -> [Y]]
@@ -368,24 +370,21 @@
                  spect))))
 
 (defn inc-transformer [spect args-spect]
-  (let [arg (c/first* args-spect)]
-    (println "inc:" arg)
-    (if (c/valid? (c/pred-spec #'number?) arg)
-      (let [c (if (and (c/spect? arg) (c/spec->class? arg))
-                (c/spec->class arg)
-                (class arg))
-            ret-class (condp = c
-                        Long Long
-                        Double Double
-                        Integer Long
-                        Float Double
-                        BigInt BigInt
-                        BigInteger BigInteger
-                        Ratio Ratio
-                        BigDecimal BigDecimal
-                        Long)]
-        (assoc spect :ret (c/class-spec ret-class)))
-      (c/invalid {:message (format "can't inc %s" (print-str arg))}))))
+  (let [arg (c/first* args-spect)
+        c (if (and (c/spect? arg) (c/spec->class? arg))
+              (c/spec->class arg)
+              (class arg))
+          ret-class (condp = c
+                      Long Long
+                      Double Double
+                      Integer Long
+                      Float Double
+                      BigInt BigInt
+                      BigInteger BigInteger
+                      Ratio Ratio
+                      BigDecimal BigDecimal
+                      Long)]
+    (assoc spect :ret (c/class-spec ret-class))))
 
 (ann #'inc inc-transformer)
 (ann (spectrum.flow/get-conforming-java-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)])) inc-transformer)

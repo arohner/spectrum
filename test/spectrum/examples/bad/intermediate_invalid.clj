@@ -3,5 +3,5 @@
 
 (s/fdef foo :args (s/cat :x string?) :ret string?)
 (defn foo [x]
-  (inc x)
+  (even? x)
   x)
