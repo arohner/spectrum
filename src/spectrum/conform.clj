@@ -621,25 +621,27 @@
             p1)
           ret)))))
 
-(defrecord RegexAlt [ps ks forms ret]
+(defrecord RegexAlt [ps ks forms ret])
+
+(extend-type RegexAlt
   Spect
   (conform* [spec data]
     (re-conform spec data))
   (explain* [spec path via in x]
     (re-explain spec path via in x))
   Regex
-  (derivative [this x]
+  (derivative [{:keys [ps ks forms] :as this} x]
     (let [ps (map parse-spec ps)]
       (new-regex-alt (mapv #(derivative % x) ps) ks forms)))
 
-  (empty-regex [this]
+  (empty-regex [{:keys [ps ks forms] :as this}]
     (map->RegexAlt {:ps (map empty-regex ps)
                     :ks ks
                     :forms forms}))
-  (accept-nil? [this]
+  (accept-nil? [{:keys [ps ks forms] :as this}]
     (let [ps (map parse-spec ps)]
       (some accept-nil? ps)))
-  (return [this]
+  (return [{:keys [ps ks forms] :as this}]
     (let [ps (map parse-spec ps)
           [[p0] [k0]] (filter-alt ps ks forms accept-nil?)
           r (if (nil? p0)
@@ -653,7 +655,7 @@
       (if (= ret ::s/nil)
         r
         (conj r (if {k ret} ret)))))
-  (re-explain* [spec path via in x]
+  (re-explain* [{:keys [ps ks forms] :as spec} path via in x]
     (if (empty? x)
       [{:path path
         :reason "Insufficient input"
@@ -672,18 +674,17 @@
                   ps))))
   (regex? [this]
     true)
-
   FirstRest
   (first* [this]
-    (some-> ps first parse-spec))
+    (some-> this :ps first parse-spec))
   (rest* [this]
     (derivative this (will-accept this)))
   WillAccept
   (will-accept [this]
-    (some-> ps first parse-spec will-accept))
+    (some-> this :ps first parse-spec will-accept))
   Truthyness
   (truthyness [this]
-    (let [b (distinct (map truthyness ps))]
+    (let [b (distinct (map truthyness (:ps this)))]
       (if (= 1 (count b))
         (first b)
         :ambiguous))))
