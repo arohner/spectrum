@@ -337,7 +337,7 @@
   (accept-nil? [this]
     false)
   (return [this]
-    ::s/nil)
+    (value nil))
   (add-return [this r k]
     r)
   (regex? [this]
@@ -360,7 +360,7 @@
   (accept-nil? [this]
     false)
   (return [this]
-    ::s/nil)
+    (value nil))
   (add-return [this r k]
     r)
   (regex? [this]
@@ -652,9 +652,9 @@
         r)))
   (add-return [this r k]
     (let [ret (return this)]
-      (if (= ret ::s/nil)
+      (if (= ret (value nil))
         r
-        (conj r (if {k ret} ret)))))
+        (conj r (if k {k ret} ret)))))
   (re-explain* [{:keys [ps ks forms] :as spec} path via in x]
     (if (empty? x)
       [{:path path
@@ -1124,7 +1124,9 @@
                   :ret (:ret x)}))
 
 (defmethod parse-spec* :clojure.spec/accept [x]
-  (accept (:ret x)))
+  (accept (if (= (:ret x) ::s/nil)
+            (value nil)
+            (:ret x))))
 
 (defmethod parse-spec* 'clojure.spec/cat [x]
   (let [pairs (->> x rest (partition 2))
@@ -1187,7 +1189,7 @@
   (parse-literal-alt x))
 
 (defmethod parse-spec* 'clojure.spec/? [x]
-  (map->RegexAlt {:ps [(second x) (accept ::s/nil)]}))
+  (map->RegexAlt {:ps [(second x) (accept (value nil))]}))
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
@@ -2347,8 +2349,8 @@
            q (queue)
            seen #{}]
       (let [val (conform-compound spec args)]
-        (if (= ::s/nil val)
-          (value nil)
+        (if (= val (value nil))
+          val
           (if (and val (not (reject? val)))
             val
             (let [ds (if args
