@@ -10,6 +10,8 @@
                         'float Float
                         'int Integer
                         'long Long
+                        'short Short
+                        'void Void
                         Boolean/TYPE Boolean
                         Byte/TYPE Byte
                         Character/TYPE Character
@@ -28,17 +30,12 @@
 (defn primitive? [x]
   (contains? primitive->class- x))
 
+(s/fdef primitive->pred :args (s/cat :p primitive?) :ret class?)
+(defn primitive->class [p]
+  (get primitive->class- p))
+
 (s/def ::java-type (s/or :p primitive? :c class?))
-
 (s/def ::java-args (s/coll-of ::java-type))
-
-(s/fdef resolve-class :args (s/cat :str symbol?) :ret class?)
-(defn resolve-class
-  [sym]
-  (try
-    (clojure.lang.RT/classForName (str sym))
-    (catch ClassNotFoundException e
-      nil)))
 
 (s/def ::predicate (s/fspec :args (s/cat :x any?) :ret boolean?))
 
@@ -46,10 +43,6 @@
 (defn pred->class [pred]
   {:post [(do (when-not % (println "pred->class not found:" pred (class pred))) true)]}
   (get @data/pred->class pred))
-
-(s/fdef primitive->pred :args (s/cat :p primitive?) :ret class?)
-(defn primitive->class [p]
-  (get primitive->class- p))
 
 (s/fdef shared-ancestors :args (s/cat :a class? :b class?) :ret (s/coll-of class? :into #{}))
 (defn shared-ancestors

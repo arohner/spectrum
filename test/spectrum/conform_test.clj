@@ -278,8 +278,6 @@
   (is (nil? (c/rest* (c/parse-spec (s/cat :x int?)))))
   (is (= (c/value false) (c/second* (c/cat- [(c/pred-spec #'false?) (c/value false)]))))
 
-  (is (= (c/value true) (c/second* (c/parse-spec (s/cat :x (s/spec (s/* keyword?)) :y true)))))
-
   (is (= (c/value 1) (c/first* (c/value [1 2 3]))))
   (is (= (c/value [2 3]) (c/rest* (c/value [1 2 3]))))
 
@@ -458,3 +456,8 @@
     (are [spec args] (not (c/valid? spec args))
       (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/cat- [(c/pred-spec #'integer?)]) nil)
       (c/fn-spec nil (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) nil nil))))
+(deftest resolve-java-type->spec-works
+  (are [x result] (= result (c/resolve-java-type x))
+    'long (c/class-spec Long)
+    'java.lang.Object<> (c/array-of (c/class-spec Object))
+    String (c/class-spec String)))

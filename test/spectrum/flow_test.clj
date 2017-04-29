@@ -10,7 +10,7 @@
 (check/maybe-load-clojure-builtins)
 (check/ensure-analysis 'spectrum.flow)
 
-(spec-test/instrument)
+;; (spec-test/instrument)
 
 (def dummy-env {:file "spectrum.flow-test.clj"
                 :line 15
@@ -90,11 +90,6 @@
   (is (-> (flow/get-java-method-spec clojure.lang.Indexed 'nth (c/cat- [(c/value 0)]) dummy-analysis)
           :ret
           c/known?)))
-
-(deftest java-type->spec-works
-  (are [x result] (= result (flow/java-type->spec x))
-       'long (c/class-spec Long)
-       String (c/class-spec String)))
 
 (deftest expression-return-specs
   (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))

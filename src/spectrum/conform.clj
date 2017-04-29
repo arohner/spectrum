@@ -1100,7 +1100,9 @@
 (extend-regex ClassSpec)
 (first-rest-singular ClassSpec)
 
+(s/fdef class-spec :args (s/cat :c class?) :ret spect?)
 (defn class-spec [c]
+  (assert (class? c))
   (map->ClassSpec {:cls c}))
 
 (s/fdef class-spec :args (s/cat :x any?) :ret boolean?)
@@ -1770,6 +1772,50 @@
 
 (defmethod parse-spec* 'clojure.spec/coll-of [x]
   (parse-coll-of x))
+
+
+(defrecord ArrayOf [p]
+  Spect
+  (conform* [this x]
+    (when (and (instance? ArrayOf x) (valid? (parse-spec p) (parse-spec (:p x))))
+      x))
+  Truthyness
+  (truthyness [this]
+    :truthy))
+
+(s/fdef array-of :args (s/cat :x class-spec?) :ret spect?)
+(defn array-of [p]
+  (map->ArrayOf {:p p}))
+
+(defn resolve-java-type-dispatch [x]
+  (cond
+    (j/primitive? x) :primitive
+    (class? x) :class
+    (and (symbol? x) (re-find #"<>$" (name x))) :array
+    (symbol? x) :symbol
+
+    (string? x) (resolve-java-type-dispatch (symbol x))
+    :else (do (println "resolve-java-type no entry for" x (class x)) (assert false))))
+
+(s/fdef resolve-java-type :args (s/cat :str symbol?) :ret spect?)
+(defmulti resolve-java-type #'resolve-java-type-dispatch)
+
+(defmethod resolve-java-type :symbol [x]
+  (let [c (clojure.lang.RT/classForName (str x))]
+    (assert (class? c))
+    (class-spec c)))
+
+(defmethod resolve-java-type :primitive [x]
+  (let [c (j/primitive->class x)]
+    (assert (class? c))
+    (class-spec c)))
+
+(defmethod resolve-java-type :array [x]
+  (let [[_ cls] (re-find #"([^<>]+)<>$" (name x))]
+    (array-of (resolve-java-type cls))))
+
+(defmethod resolve-java-type :class [x]
+  (class-spec x))
 
 (defmethod parse-spec* 'clojure.spec/nilable [x]
   (let [s (second x)]

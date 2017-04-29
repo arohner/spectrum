@@ -110,14 +110,6 @@
   [as]
   (mapv flow as))
 
-(defn java-type->spec [t]
-  (c/class-spec
-   (cond
-     (j/primitive? t) (j/primitive->class t)
-     (symbol? t) (j/resolve-class t)
-     (class? t) t
-     :else (assert "unknown type:" t))))
-
 (s/fdef maybe-assoc-var-name :args (s/cat :a ::analysis) :ret ::analysis)
 (defn maybe-assoc-var-name
   "Given a def analysis, if the def stores a fn, update the :fn analysis to contain the varname, for future analysis"
@@ -517,7 +509,7 @@
   "True if it is not legal to call. Returns truthy for unknown args"
   [arg-spec method-types]
   (loop [arg-spec arg-spec
-         method-spec (c/cat- (mapv java-type->spec method-types))]
+         method-spec (c/cat- (mapv c/resolve-java-type method-types))]
     (let [m (c/first* method-spec)
           a (c/first* arg-spec)]
       (if (and (nil? a) (nil? m))
@@ -530,7 +522,7 @@
 (defn compatible-java-method?
   "True if args conforming to spec arg-spec can be passed to a method that takes method-types. Returns falsey for unknown args"
   [arg-spec method-types]
-  (let [spec (c/cat- (mapv java-type->spec method-types))
+  (let [spec (c/cat- (mapv c/resolve-java-type method-types))
         argv (c/cat- (mapv c/parse-spec (-> arg-spec :ps)))]
     (assert argv)
     (c/valid? spec argv)))
@@ -593,8 +585,8 @@
   "Return a fake spec for a java interop call"
   [cls method arg-spec a]
   (if-let [m (get-conforming-java-method cls method arg-spec)]
-    (let [java-args (->> (mapv java-type->spec (:parameter-types m)))
-          ret (c/parse-spec (java-type->spec (:return-type m)))]
+    (let [java-args (->> (mapv c/resolve-java-type (:parameter-types m)))
+          ret (c/resolve-java-type (:return-type m))]
       (c/fn-spec (c/map->RegexCat {:ps (mapv c/parse-spec java-args)
                                    :forms java-args
                                    :ret []})
@@ -935,7 +927,8 @@
            (filterv (fn [m]
                       (and (instance? clojure.reflect.Field m)
                            (if static?
-                             (contains? (:flags m) :static))
+                             (contains? (:flags m) :static)
+                             true)
                            (= field (:name m)))))
            first))
 
@@ -943,13 +936,15 @@
   {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
         {:keys [field class]} a]
-    (assoc a ::ret-spec (c/class-spec (:type (get-java-field class field {:static? true}))))))
+    (let [f (get-java-field class field {:static? true})]
+      (assoc a ::ret-spec (c/resolve-java-type (:type f))))))
 
 (defmethod flow :instance-field [a]
   {:post [(c/spect? (::ret-spec %))]}
   (let [a (flow-walk a)
-        {:keys [field class]} a]
-    (assoc a ::ret-spec (c/class-spec (:type (get-java-field class field))))))
+        {:keys [field class]} a
+        f (get-java-field class field)]
+    (assoc a ::ret-spec (c/resolve-java-type (:type f)))))
 
 (defmethod flow :reify [a]
   {:post [(c/spect? (::ret-spec %))]}
