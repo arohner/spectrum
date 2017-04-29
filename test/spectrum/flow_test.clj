@@ -188,6 +188,20 @@
 (deftest basic-maps
   (is (= [] (check/check-form '(def empty-fn-spec {:args nil, :ret nil, :fn nil})))))
 
-(deftest compatible-java-method
-  (testing "truthy"
-    ))
+
+
+(deftest all-possible-values
+  (is (= [{:x (c/pred-spec #'integer?)}] (flow/all-possible-values (c/parse-spec (s/cat :x integer?)))))
+  (is (= [{:x (c/pred-spec #'integer?) :y (c/pred-spec #'integer?)}] (flow/all-possible-values (c/parse-spec (s/cat :x integer? :y integer?)))))
+  (is (= 2 (count (flow/all-possible-values (c/parse-spec (s/cat :x (s/? integer?) :y integer?))))))
+
+  (let [vs (set (take 5 (flow/all-possible-values (c/parse-spec (s/cat :a (s/* keyword?) :b (s/* string?) :c integer?)))))]
+    (are [v] (contains? vs v)
+      {:c (c/pred-spec #'integer?)}
+      {:a [(c/pred-spec #'keyword?)]
+       :c (c/pred-spec #'integer?)}
+      {:b [(c/pred-spec #'string?)]
+       :c (c/pred-spec #'integer?)}
+      {:a [(c/pred-spec #'keyword?)]
+       :b [(c/pred-spec #'string?)]
+       :c (c/pred-spec #'integer?)})))

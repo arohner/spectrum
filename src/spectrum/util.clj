@@ -53,9 +53,15 @@
        (class? (:on-interface x))
        (map? (:method-map x))))
 
- (defn queue
+(s/fdef queue? :args (s/cat :x any?) :ret boolean?)
+(defn queue? [x]
+  (instance? x clojure.lang.PersistentQueue))
+
+(s/fdef queue :args (s/cat :coll (s/? coll?)) :ret queue?)
+(defn queue
    ([] clojure.lang.PersistentQueue/EMPTY)
    ([coll] (reduce conj clojure.lang.PersistentQueue/EMPTY coll)))
+
 
 (defmethod print-method clojure.lang.PersistentQueue
   [q ^java.io.Writer w]

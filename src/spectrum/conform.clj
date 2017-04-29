@@ -502,10 +502,23 @@
   (regex? [this]
     true)
   WillAccept
-  (will-accept [this]
-    (if-let [p (some-> this :ps first parse-spec)]
-      (will-accept p)
-      nil))
+  (will-accept [{:keys [ps ks forms ret] :as this}]
+    (if (seq ps)
+      (let [ps (map parse-spec ps)
+            p (first ps)
+            wa (if (accept? p)
+                 #{p}
+                 (will-accept p))
+            [p0 & pr] ps
+            [k0 & kr] ks
+            [f0 & fr] forms]
+        (if (and (contains? wa (accept (value nil))) pr)
+          (->
+           wa
+           (set/union (will-accept (new-regex-cat pr kr fr (add-return p0 ret k0))))
+           (disj (accept (value nil))))
+          wa))
+      #{}))
   FirstRest
   (first* [this]
     (let [p (some-> this :ps first parse-spec)]
@@ -695,7 +708,10 @@
     (some->> this
              :ps
              (map parse-spec)
-             (map will-accept)
+             (map (fn [s]
+                    (if (accept? s)
+                      #{s}
+                      (will-accept s))))
              (apply set/union)))
   Truthyness
   (truthyness [this]

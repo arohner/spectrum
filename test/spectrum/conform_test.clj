@@ -392,6 +392,13 @@
   (is (c/equivalent? (c/parse-spec (s/nilable (s/spec ::ana.jvm/analysis))) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
   (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second))))
 
+(deftest will-accept-works
+  (are [s expected] (= expected (c/will-accept s))
+    (c/cat- [(c/pred-spec #'integer?)]) #{(c/pred-spec #'integer?)}
+    (c/parse-spec (s/cat :x (s/? keyword?) :y integer?)) #{(c/pred-spec #'keyword?) (c/pred-spec #'integer?)}
+    (c/parse-spec (s/? keyword?)) #{(c/pred-spec #'keyword?) (c/accept (c/value nil))}
+    (c/derivative (c/parse-spec (s/+ keyword?)) (c/pred-spec #'keyword?)) #{(c/pred-spec #'keyword?) (c/accept (c/value nil))}))
+
 (deftest infinite-works
   (are [in expected] (= expected (c/infinite? (c/parse-spec in)))
     (s/* integer?) true
@@ -459,5 +466,5 @@
 (deftest resolve-java-type->spec-works
   (are [x result] (= result (c/resolve-java-type x))
     'long (c/class-spec Long)
-    'java.lang.Object<> (c/array-of (c/class-spec Object))
+    'java.lang.Object<> (c/array-of (class-spec Object))
     String (c/class-spec String)))

@@ -9,7 +9,7 @@
             [spectrum.conform :as c]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j]
-            [spectrum.util :as util :refer (zip with-a unwrap-a print-once)])
+            [spectrum.util :as util :refer (zip with-a unwrap-a print-once queue queue?)])
   (:import clojure.lang.Var))
 
 (declare recur?)
@@ -414,6 +414,25 @@
           (assoc a ::ret-spec (c/invoke fn-spec args-spec)))
         (assoc a ::ret-spec (c/unknown {:message (format "no spec for %s" (:var (:fn a)))})))
       (assoc a ::ret-spec (c/invalid {:message (format "wrong number of args %s" (:form a))})))))
+
+(s/fdef all-possible-values* :args (s/cat :q queue?) :ret coll?)
+(defn all-possible-values* [[s & sr]]
+  (if s
+    (let [new-specs (->> s
+                         (c/will-accept)
+                         (map (fn [x] (c/derivative s x)))
+                         (remove c/reject?))
+          ret (filter (fn [s]
+                        (or (c/accept? s)
+                            (c/accept-nil? s))) new-specs)
+          new-q (remove c/accept? new-specs)]
+      (lazy-cat (map c/return ret) (all-possible-values* (concat sr new-q))))
+    []))
+
+(defn all-possible-values
+  "Given a spec, return all possible specs that will make it conform. Potentially infinite"
+  ([spec]
+   (all-possible-values* (queue [spec]))))
 
 (defmethod flow :protocol-invoke [a]
   {:post [(c/spect? (::ret-spec %))]}
