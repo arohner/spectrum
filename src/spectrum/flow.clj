@@ -27,7 +27,10 @@
     false)
   c/Truthyness
   (truthyness [this]
-    :ambiguous))
+    :ambiguous)
+  c/WillAccept
+  (will-accept [this]
+    #{}))
 
 (defrecord ThrowForm [exception-class]
   c/Spect
@@ -35,7 +38,10 @@
     false)
   c/Truthyness
   (truthyness [this]
-    :ambiguous))
+    :ambiguous)
+  c/WillAccept
+  (will-accept [this]
+    #{}))
 
 (s/fdef recur? :args (s/cat :x any?) :ret boolean?)
 (defn recur? [x]

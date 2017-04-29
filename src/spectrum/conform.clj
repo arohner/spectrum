@@ -71,7 +71,7 @@
 
 (defprotocol WillAccept
   (will-accept [spec]
-    "Return a spect that will make (derivative spec x) return accept, or nil"))
+    "Return the set of all spects that will make (derivative spec x) return accept"))
 
 (s/fdef spec->class :args (s/cat :s ::spect) :ret (s/nilable ::j/java-type))
 (defprotocol SpecToClass
@@ -183,7 +183,7 @@
     :ambiguous)
   WillAccept
   (will-accept [this]
-    reject)
+    #{reject})
   Invoke
   (invoke [spec args]
     (invalid {:message "invoke on invalid"})))
@@ -243,7 +243,7 @@
     ret)
   WillAccept
   (will-accept [this]
-    reject))
+    #{reject}))
 
 (first-rest-singular Accept)
 
@@ -264,7 +264,7 @@
     nil)
   WillAccept
   (will-accept [this]
-    reject)
+    #{reject})
   Truthyness
   (truthyness [this]
     :falsey)
@@ -313,7 +313,7 @@
     Object)
   WillAccept
   (will-accept [this]
-    this)
+    #{this})
   Invoke
   (invoke [spec args]
     (unknown-invoke spec args))
@@ -403,7 +403,7 @@
 (defn will-accept-this
   "extend the spec to WillAccept itself"
   [s]
-  (extend s WillAccept {:will-accept (fn [this] this)}))
+  (extend s WillAccept {:will-accept (fn [this] #{this})}))
 
 (extend-regex Unknown)
 
@@ -513,13 +513,17 @@
         (first* p)
         p)))
   (rest* [this]
-    (if-let [dx (derivative this (will-accept this))]
-      (let [_ (assert (spect? dx))
-            dx (assoc dx :ret [])]
-        (if (not (accept? dx))
-          dx
-          nil))
-      nil))
+    (let [xs (will-accept this)]
+      (if (seq xs)
+        (let [dx (derivative this (first xs))]
+          (assert (or (spect? dx) (nil? dx)))
+          (if dx
+            (let [dx (assoc dx :ret [])]
+              (if (not (accept? dx))
+                dx
+                nil))
+            nil))
+        nil)))
   Truthyness
   (truthyness [this]
     :truthy))
@@ -580,12 +584,15 @@
   (first* [this]
     (some-> this :ps first parse-spec))
   (rest* [this]
-    (let [ret (derivative this (will-accept this))]
-      (assert (or (spect? ret) (nil? ret)))
-      ret))
+    (let [xs (will-accept this)]
+      (if (seq xs)
+        (let [ret (derivative this (first xs))]
+          (assert (or (spect? ret) (nil? ret)))
+          ret)
+        nil)))
   WillAccept
   (will-accept [this]
-    (some-> this :ps first parse-spec will-accept))
+    (set/union (some-> this :ps first parse-spec will-accept) #{(accept (value nil))}))
   Truthyness
   (truthyness [this]
     :truthy)
@@ -678,10 +685,18 @@
   (first* [this]
     (some-> this :ps first parse-spec))
   (rest* [this]
-    (derivative this (will-accept this)))
+    (let [xs (will-accept this)
+          x (first xs)]
+      (if (seq xs)
+        (derivative this x)
+        nil)))
   WillAccept
   (will-accept [this]
-    (some-> this :ps first parse-spec will-accept))
+    (some->> this
+             :ps
+             (map parse-spec)
+             (map will-accept)
+             (apply set/union)))
   Truthyness
   (truthyness [this]
     (let [b (distinct (map truthyness (:ps this)))]
@@ -830,7 +845,7 @@
       (invalid {:message (format "value %s does not support rest" v) :form `(rest ~v)})))
   WillAccept
   (will-accept [this]
-    this))
+    #{this}))
 
 (extend-regex Value)
 (no-dependent-specs Value)
@@ -865,7 +880,20 @@
     (conform* (parse-spec s) x))
   WillAccept
   (will-accept [this]
-    (parse-spec s))
+    (will-accept (parse-spec s)))
+  Regex
+  (derivative [this x]
+    (derivative (parse-spec s) x))
+  (empty-regex [this]
+    (empty-regex (parse-spec s)))
+  (accept-nil? [this]
+    (accept-nil? (parse-spec s)))
+  (return [this]
+    this)
+  (add-return [this ret k]
+    (add-return s ret k))
+  (regex? [this]
+    false)
   FirstRest
   (first* [this]
     (-> s parse-spec first*))
@@ -880,8 +908,6 @@
   DependentSpecs
   (dependent-specs [this]
     (-> s parse-spec dependent-specs)))
-
-(extend-regex SpecSpec)
 
 (defn spec-spec? [x]
   (instance? SpecSpec x))
@@ -971,7 +997,7 @@
       [{:path path :pred (:form spec) :val x :via via :in in}]))
   WillAccept
   (will-accept [this]
-    this)
+    #{this})
   Truthyness
   (truthyness [this]
     (condp = (:pred this)
@@ -1042,7 +1068,7 @@
         :else nil)))
   WillAccept
   (will-accept [this]
-    this)
+    #{this})
   Truthyness
   (truthyness [this]
     (condp = (:cls this)
@@ -1242,7 +1268,7 @@
          (apply set/union)))
   WillAccept
   (will-accept [this]
-    this)
+    #{this})
   Truthyness
   (truthyness [this]
     (let [b (distinct (->> this :ps (map parse-spec) (map truthyness)))]
@@ -1333,7 +1359,7 @@
     nil)
   WillAccept
   (will-accept [this]
-    (-> this :ps first parse-spec))
+    (->> this :ps (map parse-spec) (map will-accept) (apply set/union)))
   Truthyness
   (truthyness [this]
     (let [b (->> this :ps (map parse-spec) (map truthyness) distinct)]
@@ -1435,7 +1461,7 @@
     #{})
   WillAccept
   (will-accept [this]
-    reject)
+    #{reject})
   Truthyness
   (truthyness [this]
     (let [t (truthyness (:s this))]
@@ -1504,7 +1530,7 @@
 (defrecord KeysSpec [req req-un opt opt-un]
   WillAccept
   (will-accept [this]
-    this)
+    #{this})
   SpecToClass
   (spec->class [this]
     clojure.lang.PersistentHashMap)
