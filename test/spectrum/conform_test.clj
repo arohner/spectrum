@@ -470,5 +470,5 @@
 (deftest resolve-java-type->spec-works
   (are [x result] (= result (c/resolve-java-type x))
     'long (c/class-spec Long)
-    'java.lang.Object<> (c/array-of (class-spec Object))
+    'java.lang.Object<> (c/array-of (c/class-spec Object))
     String (c/class-spec String)))
