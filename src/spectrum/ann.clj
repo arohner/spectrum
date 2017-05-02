@@ -263,10 +263,10 @@
 (defn filter-fn [spect args-spect]
   (let [f (c/first* args-spect)
         coll (c/second* args-spect)]
-    (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/every-distinct coll)))
+    (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/all-possible-values coll)))
       (assoc spect :ret (c/coll-of (c/and-spec [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
       (c/invalid {:message (format "filter f does not conform: %s w/ %s" (print-str f) (print-str (first (filter (fn [arg]
-                                                                                                                   (c/invalid? (c/invoke f (c/cat- [arg])))) (c/every-distinct coll)))))
+                                                                                                                   (c/invalid? (c/invoke f (c/cat- [arg])))) (c/all-possible-values coll)))))
                   :form `(filter ~f ~coll)}))))
 
 (defn ann-filter [spect args-spect]
@@ -283,20 +283,23 @@
 (ann #'filter ann-filter)
 
 (defn map-coll-arity
-  "Given the seq of collections passed to map, return the arity that will be passed to f"
+  "Given the seq of collections passed to map, return the spec that will be passed to f"
   [colls]
   (->> colls
-       (c/every-distinct)
-       (mapv (fn [c]
-               (c/or- (c/every-distinct c))))
-       (c/cat- )))
+       (c/all-possible-values)
+       (mapv (fn [colls*]
+               (->> colls*
+                    (mapv (fn [c]
+                            (c/or- (c/coll-items c))))
+                    (c/cat- ))))
+       (c/or- )))
 
 (s/fdef map-fn :args (s/cat :s c/invoke? :args ::c/spect) :ret c/fn-spec?)
 (defn map-fn [spect args-spect]
   (let [f (c/first* args-spect)
         colls (c/rest* args-spect)]
     (let [invoke-args (map-coll-arity colls)]
-      (if (every? (fn [c] (not (empty-seq? c))) (c/every-distinct colls))
+      (if (every? (fn [colls*] (every? (fn [c] (not (empty-seq? c))) colls*)) (c/all-possible-values colls))
         (if (c/valid? (:args f) invoke-args)
           (assoc spect :ret (c/coll-of (c/invoke f invoke-args)))
           (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str colls))}))

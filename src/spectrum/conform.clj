@@ -5,7 +5,7 @@
             [clojure.spec.gen :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.util :refer (fn-literal? print-once strip-namespace var-name queue)]
+            [spectrum.util :refer (fn-literal? print-once strip-namespace var-name queue queue?)]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)
@@ -1693,9 +1693,9 @@
         (recur n)
         false)))
 
-(s/fdef every-distinct :args (s/cat :r first-rest?) :ret set?)
-(defn every-distinct [s]
-  "Every distinct value this spect can accept"
+(defn coll-items
+  "The set of all items in a regex/coll spec"
+  [s]
   (loop [ret #{}
          s s]
     (let [v (first* s)]
@@ -1703,8 +1703,28 @@
         (let [ret (conj ret v)]
           (if (and (not (infinite? s)) (rest* s))
             (recur ret (rest* s))
-            ret))
-        ret))))
+            ret))))))
+
+(s/fdef all-possible-values* :args (s/cat :q (s/and queue? (s/coll-of spect?))) :ret (s/coll-of spect?))
+(defn all-possible-values* [[s & sr]]
+  (if s
+    (let [new-specs (->> s
+                         (will-accept)
+                         (map (fn [x] (derivative s x)))
+                         (remove reject?))
+          ret (filter (fn [s]
+                        (or (accept? s)
+                            (accept-nil? s))) new-specs)
+          new-q (remove accept? new-specs)]
+      (lazy-cat (map return ret) (all-possible-values* (concat sr new-q))))
+    []))
+
+(s/fdef all-possible-values :args (s/cat :s spect?) :ret (s/coll-of spect?))
+(defn all-possible-values
+  "Given a spec, return a sample of the possible specs that will make it conform."
+  [spec]
+  {:pre [(do (when-not (spect? spec) (println "all-possible:" spec)) true) (spect? spec)]}
+  (take 30 (all-possible-values* (queue [spec]))))
 
 (s/fdef conform-collof-value :args (s/cat :collof ::spect :x (s/nilable value?)))
 (defn conform-collof-value [collof x]
@@ -1712,8 +1732,13 @@
     (when (and (or (nil? (:kind collof))
                    (= (empty (:kind collof))
                       (empty x)))
-               (every? (fn [v]
-                         (valid? s v)) (every-distinct x)))
+
+               (or (and (value? x)
+                        (let [v (get-value x)]
+                          (and (sequential? v)
+                               (not (seq v)))))
+                   (every? (fn [v]
+                          (valid? s v)) (all-possible-values x))))
       x)))
 
 (s/fdef coll-of-key :args (s/cat :s spect?) :ret #{:map :set :vector :unknown})
@@ -2021,10 +2046,10 @@
     spec))
 
 (defn every-valid? [s]
-  (every? #(conformy? %) (every-distinct s)))
+  (every? #(conformy? %) (coll-items s)))
 
 (defn every-known? [s]
-  (every? #(known? %) (every-distinct s)))
+  (every? #(known? %) (coll-items s)))
 
 (s/fdef invoke-fn-spec :args (s/cat :s fn-spec? :args spect?) :ret spect?)
 (defn invoke-fn-spec [spec invoke-args]

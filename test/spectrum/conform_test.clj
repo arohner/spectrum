@@ -410,17 +410,21 @@
     (c/rest* (c/parse-spec (s/cat :x integer? :y (s/* string?)))) true
     (c/rest* (c/rest* (c/parse-spec (s/cat :x integer? :y (s/+ string?))))) true))
 
-(deftest every-distinct-works
-  (are [in out] (= out (c/every-distinct (c/parse-spec in)))
-    (c/value []) #{}
-    (s/* integer?) #{(c/pred-spec #'integer?)}
-    (s/+ integer?) #{(c/pred-spec #'integer?)}
-    (s/cat :i integer? :s string?) #{(c/pred-spec #'integer?) (c/pred-spec #'string?)}
+(deftest all-possible-values
+  (is (= [{:x (c/pred-spec #'integer?)}] (c/all-possible-values (c/parse-spec (s/cat :x integer?)))))
+  (is (= [{:x (c/pred-spec #'integer?) :y (c/pred-spec #'integer?)}] (c/all-possible-values (c/parse-spec (s/cat :x integer? :y integer?)))))
+  (is (= 2 (count (c/all-possible-values (c/parse-spec (s/cat :x (s/? integer?) :y integer?))))))
 
-    (s/coll-of integer?) #{(c/pred-spec #'integer?)}
-    ;; this can't work yet, due to spec bug not evaluating `s/every` form properly
-    ;; (s/coll-of (s/or :i integer? :s string?)) #{(c/pred-spec #'integer?) (c/pred-spec #'string?)}
-    ))
+  (let [vs (set (take 5 (c/all-possible-values (c/parse-spec (s/cat :a (s/* keyword?) :b (s/* string?) :c integer?)))))]
+    (are [v] (contains? vs v)
+      {:c (c/pred-spec #'integer?)}
+      {:a [(c/pred-spec #'keyword?)]
+       :c (c/pred-spec #'integer?)}
+      {:b [(c/pred-spec #'string?)]
+       :c (c/pred-spec #'integer?)}
+      {:a [(c/pred-spec #'keyword?)]
+       :b [(c/pred-spec #'string?)]
+       :c (c/pred-spec #'integer?)})))
 
 (deftest invoke
   (testing "truthy"
