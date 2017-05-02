@@ -16,11 +16,9 @@
 (declare parse-spec)
 (declare value)
 
-(declare and-spec?)
 (declare class-spec?)
 (declare pred-spec?)
 
-(declare or-spec)
 (declare class-spec)
 (declare pred-spec)
 (declare spect-generator)
@@ -1351,6 +1349,25 @@
 
 (defrecord OrSpec [ps ks])
 
+(s/fdef or-spec? :args (s/cat :x any?) :ret boolean?)
+(defn or-spec? [x]
+  (instance? OrSpec x))
+
+(s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret or-spec?)
+(defn or- [ps]
+  (cond
+    (>= (count ps) 2) (map->OrSpec {:ps ps
+                                    :ks (take (count ps) (repeat nil))})
+    (= 1 (count ps)) (first ps)
+    :else (invalid {:message "or spect requires at least one arg"})))
+
+(defn or-spec [ks ps]
+  (cond
+    (>= (count ps) 2) (map->OrSpec {:ks ks
+                                    :ps ps})
+    (= 1 (count ps)) (first ps)
+    :else (invalid {:message "or spect requires at least one arg"})))
+
 (extend-type OrSpec
   Spect
   (conform* [this x]
@@ -1414,29 +1431,11 @@
 
 (extend-regex OrSpec)
 
-(s/fdef or-spec? :args (s/cat :x any?) :ret boolean?)
-(defn or-spec? [x]
-  (instance? OrSpec x))
-
 (defn or-some
   "clojure.core/some, called on each pred in the orspec"
   [f or-spec]
   (some f (->> or-spec :ps (map parse-spec))))
 
-(s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret or-spec?)
-(defn or- [ps]
-  (cond
-    (>= (count ps) 2) (map->OrSpec {:ps ps
-                                    :ks (take (count ps) (repeat nil))})
-    (= 1 (count ps)) (first ps)
-    :else (invalid {:message "or spect requires at least one arg"})))
-
-(defn or-spec [ks ps]
-  (cond
-    (>= (count ps) 2) (map->OrSpec {:ks ks
-                                    :ps ps})
-    (= 1 (count ps)) (first ps)
-    :else (invalid {:message "or spect requires at least one arg"})))
 
 (defn equivalent? [s1 s2]
   (and (valid? s1 s2)
