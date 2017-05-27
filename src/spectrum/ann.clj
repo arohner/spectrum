@@ -253,6 +253,9 @@
 (ann #'identity (fn [spect args-spect]
                   (assoc spect :ret (c/first* args-spect))))
 
+(ann #'with-meta (fn [spect args-spect]
+                   (assoc spect :ret (c/first* args-spect))))
+
 (defn empty-seq?
   "True if this spect represents the empty seq, or a value that (seq x) would return nil on"
   [s]
