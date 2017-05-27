@@ -718,9 +718,10 @@
   "Return a fake spec for a java interop call. Args should *not* include 'this"
   [cls method arg-spec]
   (if-let [m (get-conforming-java-method cls method arg-spec)]
-    (let [java-args (->> (mapv c/resolve-java-type (:parameter-types m)))
-          ret (c/resolve-java-type (:return-type m))]
-      (c/fn-spec (c/map->RegexCat {:ps (mapv c/parse-spec java-args)
+    (let [java-args (->> (mapv c/resolve-java-type (:parameter-types m))
+                         (mapv (fn [s] (c/or- [s (c/value nil)]))))
+          ret (c/or- [(c/resolve-java-type (:return-type m)) (c/value nil)])]
+      (c/fn-spec (c/map->RegexCat {:ps java-args
                                    :forms java-args
                                    :ret []})
                  (c/parse-spec ret)
