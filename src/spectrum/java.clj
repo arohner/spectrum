@@ -1,6 +1,7 @@
 (ns spectrum.java
   (:require [clojure.spec :as s]
             [clojure.set :as set]
+            [clojure.string :as str]
             [spectrum.data :as data]))
 
 (def primitive->class- {'boolean Boolean
@@ -30,8 +31,9 @@
 (defn primitive? [x]
   (contains? primitive->class- x))
 
-(s/fdef primitive->pred :args (s/cat :p primitive?) :ret class?)
+(s/fdef primitive->class :args (s/cat :p primitive?) :ret class?)
 (defn primitive->class [p]
+  {:post [%]}
   (get primitive->class- p))
 
 (s/def ::java-type (s/or :p primitive? :c class?))

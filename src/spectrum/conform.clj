@@ -449,6 +449,12 @@
 (defn cat- [ps]
   (new-regex-cat ps nil nil []))
 
+(s/fdef cat-sequential :args (s/cat :c cat-spec?) :ret (s/cat :c cat-spec?))
+(defn cat-sequential
+  "Given a cat, return a new cat that will return a vector rather than map when conformed"
+  [c]
+  (new-regex-cat (:ps c) nil nil []))
+
 (extend-type RegexCat
   Spect
   (conform* [spec data]
@@ -1821,7 +1827,13 @@
       x))
   Truthyness
   (truthyness [this]
-    :truthy))
+    :truthy)
+  WillAccept
+  (will-accept [this]
+    this))
+
+(first-rest-singular ArrayOf)
+(extend-regex ArrayOf)
 
 (s/fdef array-of :args (s/cat :x class-spec?) :ret spect?)
 (defn array-of [p]
@@ -1834,10 +1846,10 @@
     (and (symbol? x) (re-find #"<>$" (name x))) :array
     (symbol? x) :symbol
 
-    (string? x) (resolve-java-type-dispatch (symbol x))
+    (string? x) :string
     :else (do (println "resolve-java-type no entry for" x (class x)) (assert false))))
 
-(s/fdef resolve-java-type :args (s/cat :str symbol?) :ret spect?)
+(s/fdef resolve-java-type :args (s/cat :x (s/or :sym symbol? :cls class? :str string?)) :ret spect?)
 (defmulti resolve-java-type #'resolve-java-type-dispatch)
 
 (defmethod resolve-java-type :symbol [x]
@@ -1845,8 +1857,13 @@
     (assert (class? c))
     (class-spec c)))
 
+(defmethod resolve-java-type :string [x]
+  (resolve-java-type (symbol x)))
+
 (defmethod resolve-java-type :primitive [x]
   (let [c (j/primitive->class x)]
+    (when-not (class? c)
+      (println "resolve-java-type:" x (class x) (j/primitive->class x)))
     (assert (class? c))
     (class-spec c)))
 

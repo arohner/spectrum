@@ -65,31 +65,38 @@
                (count)))))
 
 (deftest java-method-spec
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)) dummy-analysis)
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)))
           :ret
           (= (c/class-spec Long))))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)) dummy-analysis)
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)))
           :ret
           (= (c/class-spec Double))))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)) dummy-analysis)
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)))
           :ret))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]) dummy-analysis)
+  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]))
           :ret
           c/known?))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]) dummy-analysis)
-          :ret
-          c/known?))
-  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []) dummy-analysis)
+  (is (-> (flow/get-java-method-spec java.util.Map 'entrySet (c/cat- []))
           :ret
           c/known?))
 
-  (is (-> (flow/get-java-method-spec clojure.lang.Indexed 'nth (c/cat- [(c/value 0)]) dummy-analysis)
+  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]))
           :ret
-          c/known?)))
+          c/known?))
+  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []))
+          :ret
+          c/known?))
+
+  (is (-> (flow/get-java-method-spec clojure.lang.Indexed 'nth (c/cat- [(c/value 0)]))
+          :ret
+          c/known?))
+
+  (is (-> (flow/get-java-method-spec java.util.Map 'entrySet (c/cat- [(c/unknown {})]))
+          c/conformy?)))
 
 (deftest expression-return-specs
   (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))
@@ -152,16 +159,15 @@
   (is (not (flow/invoke-nil? (ana.jvm/analyze '(= nil 3))))))
 
 (deftest binding-update
-  (is (= [] (check/check-form '(some-> x (format)) {:x (c/parse-spec (s/nilable string?))})))
+  (is (= [] (check/check-form '(some-> x (format x)) {:x (c/parse-spec (s/nilable string?))})))
 
-  (is (= [] (check/check-form '(if x
-                                 (format x)) {:x (c/parse-spec (s/nilable string?))})))
+  (is (= [] (check/check-form '(when x (format x)) {:x (c/parse-spec (s/nilable string?))})))
 
   (let [a (check/analyze-form '(if-let [x foo] x) {:foo (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)])})
         binding-name (-> a :bindings first :name)]
-    (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]) (-> (flow/find-binding (-> a :body :test) binding-name) ::flow/ret-spec)))
-    (is (c/equivalent? (c/pred-spec #'string?) (-> (flow/find-binding (-> a :body :then) binding-name) ::flow/ret-spec)))
-    (is (c/equivalent? (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'false?)]) (-> (flow/find-binding (-> a :body :else) binding-name) ::flow/ret-spec)))
+    (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]) (-> (flow/find-binding a [:body :test]  binding-name) ::flow/ret-spec)))
+    (is (c/equivalent? (c/pred-spec #'string?) (-> (flow/find-binding a [:body :then] binding-name) ::flow/ret-spec)))
+    (is (c/equivalent? (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'false?)]) (-> (flow/find-binding a [:body :else]  binding-name) ::flow/ret-spec)))
 
     (= (c/or- [(c/class-spec Integer) (c/value nil)]) (check/type-of '(if (instance? Integer x) x nil) {:x (c/pred-spec #'any?)}))))
 
@@ -176,7 +182,7 @@
          ([x] (inc x))
          ([x y] (+ x y))) (s/cat :x int? :y int?))
 
-  (testing "falsey"
+    (testing "falsey"
     (are [f spec] (nil? (flow/get-fn-method-invoke (ana.jvm/analyze f) (c/parse-spec spec)))
       '(fn [x] (min x)) (s/cat)
       '(fn [x] (inc x)) (s/cat)
@@ -187,3 +193,13 @@
 
 (deftest basic-maps
   (is (= [] (check/check-form '(def empty-fn-spec {:args nil, :ret nil, :fn nil})))))
+
+(deftest class-is-protocol
+  (are [cls expected] (= expected (flow/class-is-protocol? cls))
+    Integer false
+    spectrum.conform.Spect true))
+
+(deftest method-is-protocol-fn?
+  (are [cls method expected] (= expected (flow/class-is-protocol? cls))
+    Integer '.intValue false
+    spectrum.conform.Spect 'conform* true))

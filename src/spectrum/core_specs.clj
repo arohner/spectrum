@@ -49,6 +49,8 @@
 (s/fdef clojure.core/int? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/integer? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/keyword? :args (s/cat :x any?) :ret boolean?)
+;; TODO keyword needs case. returns nil only when passed something other than string symbol keyword
+(s/fdef clojure.core/keyword :args (s/or :qualified (s/cat :ns (s/nilable string?) :name string?) :unqualified (s/cat :name any?)) :ret (s/or :k keyword? :n nil?))
 (s/fdef clojure.core/map :args (s/cat :x any? :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/mapv :args (s/cat :x any? :coll (s/* ::seq-like)) :ret vector?)
 (s/fdef clojure.core/map? :args (s/cat :x any?) :ret boolean?)

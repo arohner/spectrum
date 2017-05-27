@@ -53,6 +53,10 @@
        (class? (:on-interface x))
        (map? (:method-map x))))
 
+(s/fdef namespace? :args (s/cat :x any?) :ret boolean?)
+(defn namespace? [x]
+  (instance? clojure.lang.Namespace x))
+
 (s/fdef queue? :args (s/cat :x any?) :ret boolean?)
 (defn queue? [x]
   (instance? x clojure.lang.PersistentQueue))

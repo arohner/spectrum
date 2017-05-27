@@ -31,9 +31,10 @@
     (c/class-spec String) (c/pred-spec #'integer?) (c/value false)
     (c/class-spec String) (c/unknown {:message ""}) (c/pred-spec #'boolean?)))
 
+
 (defn transform-identical [args]
   (c/maybe-transform-method (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
-                            (flow/get-java-method-spec clojure.lang.Util 'identical args flow-test/dummy-analysis)
+                            (flow/get-java-method-spec clojure.lang.Util 'identical args)
                             args))
 
 (deftest identical
