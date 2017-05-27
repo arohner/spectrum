@@ -21,6 +21,12 @@
 
 (ann/ann #'coll-reduce? (ann/protocol-transformer clojure.core.protocols/CollReduce))
 
+(s/fdef imeta? :args (s/cat :x any?) :ret boolean?)
+(defn imeta? [x]
+  (instance? clojure.lang.IMeta x))
+
+(ann/ann-instance? #'imeta? clojure.lang.IMeta)
+
 (s/def ::seq-like (s/nilable (s/or :seq seq? :seqable seqable?)))
 
 (s/fdef clojure.core/associative? :args (s/cat :x any?) :ret boolean?)
@@ -30,6 +36,7 @@
 (s/fdef clojure.core/concat :args (s/* ::seq-like) :ret seq?)
 (s/fdef clojure.core/chunked-seq? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/class? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/dissoc :args (s/cat :x map? :ks (s/* any?)) :ret map?)
 (s/fdef clojure.core/dorun :args (s/cat :x ::seq-like) :ret nil?)
 (s/fdef clojure.core/doall :args (s/cat :x ::seq-like) :ret seq)
 (s/fdef clojure.core/double? :args (s/cat :x any?) :ret boolean?)
@@ -73,3 +80,4 @@
 (s/fdef clojure.core/var? :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/vector :args (s/* any?) :ret vector?)
 (s/fdef clojure.core/vector? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/with-meta :args (s/cat :x imeta? :m map?) :ret imeta?)

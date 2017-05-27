@@ -290,7 +290,9 @@
        (mapv (fn [colls*]
                (->> colls*
                     (mapv (fn [c]
-                            (c/or- (c/coll-items c))))
+                            (if-let [items (seq (c/coll-items c))]
+                              (c/or- items)
+                              (c/value nil))))
                     (c/cat- ))))
        (c/or- )))
 

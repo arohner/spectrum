@@ -1721,7 +1721,7 @@
                         (or (accept? s)
                             (accept-nil? s))) new-specs)
           new-q (remove accept? new-specs)]
-      (lazy-cat (map return ret) (all-possible-values* (concat sr new-q))))
+      (lazy-cat (map return ret) (all-possible-values* (queue (concat sr new-q)))))
     []))
 
 (s/fdef all-possible-values :args (s/cat :s spect?) :ret (s/coll-of spect?))

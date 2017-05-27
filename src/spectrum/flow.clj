@@ -798,18 +798,19 @@
   (if (= :deftype (:op (get-in a path)))
     true
     (if (seq path)
-      (recur (get-in a path) (pop path))
+      (recur a (pop path))
       false)))
 
 (defmethod flow* :binding [a path]
   (let [a (flow-walk a path)
         a* (get-in a path)
         ret-spec (cond
-                   (:init a*) (-> a* :init ::ret-spec)
+                   (::ret-spec a*) (::ret-spec a*)
+                   (-> a* :init ::ret-spec) (-> a* :init ::ret-spec)
                    (-> a* :local (= :this)) (c/class-spec (:tag a*))
                    (and (= '__extmap (:name a*)) (deftype? a path)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
                    (and (= '__meta (:name a*)) (deftype? a path)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
-                   :else (c/unknown {:message "unknown binding" :form (:form a*) :a-loc (a-loc a*) :path path}))]
+                   :else (c/unknown {:message (format "flow :binding: unknown binding %s %s" (:name a*) path) :form (:form a*) :a-loc (a-loc a*) :path path}))]
     (assert ret-spec)
     (assert (c/spect? ret-spec))
     (swap! (:atom a*) assoc ::ret-spec ret-spec)

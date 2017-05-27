@@ -59,7 +59,7 @@
 
 (s/fdef queue? :args (s/cat :x any?) :ret boolean?)
 (defn queue? [x]
-  (instance? x clojure.lang.PersistentQueue))
+  (instance? clojure.lang.PersistentQueue x))
 
 (s/fdef queue :args (s/cat :coll (s/? coll?)) :ret queue?)
 (defn queue
