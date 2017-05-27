@@ -127,6 +127,15 @@
               [(new-error {:message (format "%s return value does not conform. Expected %s, Got %s" (or v "fn") (print-str ret-spec) (print-str expr-spec))} method-a)])
             [(new-error {:message (format "check-fn-method-return no ret-spec for expression:" (:form last-expr))} last-expr)]))))))
 
+(defn check-deftype-method-return [a]
+  (let [deftype (unwrap-a a)
+        cls (:class-name deftype)
+        method-spec (flow/defmethod-get-spec cls (:interface a) (:name a) (rest (:params a)))
+        method-ret (:ret method-spec)]
+    (when (and method-ret (c/known? (::flow/ret-spec a)) (not (c/valid? method-ret (::flow/ret-spec a))))
+      [(new-error {:message (format "deftype %s implementation of %s/%s return value does not conform. Expected %s, Got %s" cls (:interface a) (:name a) (print-str method-ret) (print-str (::flow/ret-spec a)))}
+                  a)])))
+
 (defn params-str [a]
   (->> a :params (mapv :form)))
 
@@ -134,6 +143,11 @@
   (concat
    (check-walk a)
    (check-fn-method-return a)))
+
+(defmethod check* :method [a]
+  (concat
+   (check-walk a)
+   (check-deftype-method-return a)))
 
 (defn a->java-static-method-name [a]
   (str (:class a) "/" (:method a)))
