@@ -35,7 +35,7 @@
       (s/and #(> % 10))))
 
   (testing "nil"
-    (= ::s/nil (c/parse-spec ::s/nil)))
+    (is (= (c/value nil) (c/parse-spec ::s/nil))))
 
   (testing "returns Regex"
     (are [spec] (c/regex? (c/parse-spec spec))
