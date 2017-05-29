@@ -72,7 +72,9 @@
   x)
 
 (defmethod resolve-java-class :array [x]
-  (assert false (format "unhandled: %s" x)))
+  (let [[_ cls] (re-find #"([^<>]+)<>$" (name x))
+        cls (resolve-java-class cls)]
+    (class (into-array cls []))))
 
 (defmethod resolve-java-class :class [x]
   x)
