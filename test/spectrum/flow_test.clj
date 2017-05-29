@@ -96,7 +96,11 @@
           c/known?))
 
   (is (-> (flow/get-java-method-spec java.util.Map 'entrySet (c/cat- [(c/unknown {})]))
-          c/conformy?)))
+          c/conformy?))
+
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long) (c/class-spec Long)]))
+          :ret
+          (= (c/class-spec Long)))))
 
 (deftest expression-return-specs
   (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))

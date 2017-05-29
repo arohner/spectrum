@@ -631,12 +631,15 @@
                    (c/pred-spec #'boolean?))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
+(defn resolve-java-class-spec [x]
+  (c/class-spec (j/resolve-java-class x)))
+
 (s/fdef incompatible-java-method-relaxed? :args (s/cat :arg-spec ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method-relaxed?
   "True if it is not legal to call. Returns truthy for unknown args"
   [arg-spec method-types]
   (loop [arg-spec arg-spec
-         method-spec (c/cat- (mapv c/resolve-java-type method-types))]
+         method-spec (c/cat- (mapv resolve-java-class-spec method-types))]
     (if (and (c/first* arg-spec)
              (c/first* method-spec))
       (let [m (c/first* method-spec)
@@ -655,7 +658,7 @@
 (defn compatible-java-method?
   "True if args conforming to spec arg-spec can be passed to a method that takes method-types. Returns falsey for unknown args"
   [arg-spec method-types]
-  (let [spec (c/cat- (mapv c/resolve-java-type method-types))
+  (let [spec (c/cat- (mapv resolve-java-class-spec method-types))
         argv (c/cat- (mapv c/parse-spec (-> arg-spec :ps)))]
     (assert argv)
     (c/valid? spec argv)))
@@ -668,16 +671,22 @@
 
 (s/fdef more-specific? :args (s/cat :v ::reflect-method :m ::reflect-method) :ret integer?)
 (defn more-specific-compare
-  "sort comparator for two vectors of java args"
+  "sort comparator for two vectors of java args. more specific is positive. Returns positive when b is more specific than a"
   [a b]
   (loop [[a & as] (:parameter-types a)
          [b & bs] (:parameter-types b)]
     (if (and a b)
-      (cond
-        (or (j/primitive? a) (contains? (parents a) (class b))) 1
-        (or (j/primitive? b) (contains? (parents b) (class a))) -1
-        :else (recur as bs))
-      0)))
+      (let [a (j/resolve-java-class a)
+            b (j/resolve-java-class b)]
+        (do
+          (cond
+            (or (and (j/primitive? a) (j/primitive? b)) (= a b)) (recur as bs)
+            (or (and (j/primitive? b)) (contains? (ancestors b) (class a))) -1
+            (or (j/primitive? a) (contains? (ancestors b) (class a))) 1
+            :else (assert false))))
+      (do
+        (assert (and (not a) (not b)))
+        0))))
 
 (s/fdef most-specific :args (s/cat :vecs (s/coll-of j/reflect-method?)) :ret ::j/java-args)
 (defn most-specific
@@ -718,9 +727,9 @@
   "Return a fake spec for a java interop call. Args should *not* include 'this"
   [cls method arg-spec]
   (if-let [m (get-conforming-java-method cls method arg-spec)]
-    (let [java-args (->> (mapv c/resolve-java-type (:parameter-types m))
+    (let [java-args (->> (mapv resolve-java-class-spec (:parameter-types m))
                          (mapv (fn [s] (c/or- [s (c/value nil)]))))
-          ret (c/or- [(c/resolve-java-type (:return-type m)) (c/value nil)])]
+          ret (c/or- [(resolve-java-class-spec (:return-type m)) (c/value nil)])]
       (c/fn-spec (c/map->RegexCat {:ps java-args
                                    :forms java-args
                                    :ret []})
@@ -1174,14 +1183,14 @@
         a* (get-in a path)
         {:keys [field class]} a*]
     (let [f (get-java-field class field {:static? true})]
-      (assoc-in a (conj path ::ret-spec) (c/resolve-java-type (:type f))))))
+      (assoc-in a (conj path ::ret-spec) (resolve-java-class-spec (:type f))))))
 
 (defmethod flow* :instance-field [a path]
   (let [a (flow-walk a path)
         a* (get-in a path)
         {:keys [field class]} a*
         f (get-java-field class field)]
-    (assoc-in a (conj path ::ret-spec) (c/resolve-java-type (:type f)))))
+    (assoc-in a (conj path ::ret-spec) (resolve-java-class-spec (:type f)))))
 
 (defmethod flow* :reify [a path]
   (let [a (flow-walk a path)

@@ -1080,7 +1080,9 @@
   (conform* [this v]
     (let [{:keys [cls]} this]
       (cond
-        (and (spect? v) (isa? (or (when (spec->class? v) (spec->class v)) Object) (:cls this))) v
+        (and (spect? v) (isa? (or (when (spec->class? v) (spec->class v)) Object) cls)) v
+        (and (class-spec? v) (j/primitive? (:cls v)) (isa? (-> v :cls j/primitive->class) cls)) v
+        (and (class-spec? v) (j/primitive? cls) (isa? (-> v :cls)  (j/primitive->class cls))) v
         (and (isa? cls Number)
              (value? v)
              (contains? #{Long Integer Short Byte} (class (maybe-strip-value v)))
@@ -1839,40 +1841,7 @@
 (defn array-of [p]
   (map->ArrayOf {:p p}))
 
-(defn resolve-java-type-dispatch [x]
-  (cond
-    (j/primitive? x) :primitive
-    (class? x) :class
-    (and (symbol? x) (re-find #"<>$" (name x))) :array
-    (symbol? x) :symbol
 
-    (string? x) :string
-    :else (do (println "resolve-java-type no entry for" x (class x)) (assert false))))
-
-(s/fdef resolve-java-type :args (s/cat :x (s/or :sym symbol? :cls class? :str string?)) :ret spect?)
-(defmulti resolve-java-type #'resolve-java-type-dispatch)
-
-(defmethod resolve-java-type :symbol [x]
-  (let [c (clojure.lang.RT/classForName (str x))]
-    (assert (class? c))
-    (class-spec c)))
-
-(defmethod resolve-java-type :string [x]
-  (resolve-java-type (symbol x)))
-
-(defmethod resolve-java-type :primitive [x]
-  (let [c (j/primitive->class x)]
-    (when-not (class? c)
-      (println "resolve-java-type:" x (class x) (j/primitive->class x)))
-    (assert (class? c))
-    (class-spec c)))
-
-(defmethod resolve-java-type :array [x]
-  (let [[_ cls] (re-find #"([^<>]+)<>$" (name x))]
-    (array-of (resolve-java-type cls))))
-
-(defmethod resolve-java-type :class [x]
-  (class-spec x))
 
 (defmethod parse-spec* 'clojure.spec/nilable [x]
   (let [s (second x)]

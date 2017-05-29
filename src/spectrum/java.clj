@@ -4,22 +4,27 @@
             [clojure.string :as str]
             [spectrum.data :as data]))
 
-(def primitive->class- {'boolean Boolean
-                        'byte Byte
-                        'char Character
-                        'double Double
-                        'float Float
-                        'int Integer
-                        'long Long
-                        'short Short
-                        'void Void
-                        Boolean/TYPE Boolean
+(def symbol->primitive- {'boolean Boolean/TYPE
+                         'byte Byte/TYPE
+                         'char Character/TYPE
+                         'double Double/TYPE
+                         'float Float/TYPE
+                         'int Integer/TYPE
+                         'long Long/TYPE
+                         'short Short/TYPE
+                         'void Void/TYPE})
+
+(def primitives (set (vals symbol->primitive-)))
+
+(def primitive->class- {Boolean/TYPE Boolean
                         Byte/TYPE Byte
                         Character/TYPE Character
                         Double/TYPE Double
                         Float/TYPE Float
                         Integer/TYPE Integer
-                        Long/TYPE Long})
+                        Long/TYPE Long
+                        Short/TYPE Short
+                        Void/TYPE Void})
 
 (def class->primitive (set/map-invert primitive->class-))
 
@@ -27,17 +32,50 @@
 (defn interface? [x]
   (and (class? x) (.isInterface ^Class x)))
 
-(s/fdef primitive? :args (s/cat :x any?) :ret boolean?)
+(s/fdef primitive? :args (s/cat :x class?) :ret boolean?)
 (defn primitive? [x]
-  (contains? primitive->class- x))
+  (contains? primitives x))
 
 (s/fdef primitive->class :args (s/cat :p primitive?) :ret class?)
 (defn primitive->class [p]
   {:post [%]}
   (get primitive->class- p))
 
-(s/def ::java-type (s/or :p primitive? :c class?))
-(s/def ::java-args (s/coll-of ::java-type))
+(s/def ::java-args (s/coll-of class?))
+
+(s/fdef resolve-primitive :args (s/cat :x symbol?) :ret (s/nilable class?))
+(defn resolve-primitive [x]
+  (get symbol->primitive- x))
+
+(defn resolve-java-class-dispatch [x]
+  (cond
+    (class? x) :class
+    (and (symbol? x) (re-find #"<>$" (name x))) :array
+    (symbol? x) :symbol
+
+    (string? x) :string
+    :else (do (println "resolve-java-class no entry for" x (class x)) (assert false))))
+
+(s/fdef resolve-java-class :args (s/cat :x (s/or :sym symbol? :cls class? :str string?)) :ret class?)
+(defmulti resolve-java-class #'resolve-java-class-dispatch)
+
+(defmethod resolve-java-class :symbol [x]
+  (let [c (or (resolve-primitive x)
+              (clojure.lang.RT/classForName (str x)))]
+    (assert (class? c))
+    c))
+
+(defmethod resolve-java-class :string [x]
+  (resolve-java-class (symbol x)))
+
+(defmethod resolve-java-class :primitive [x]
+  x)
+
+(defmethod resolve-java-class :array [x]
+  (assert false (format "unhandled: %s" x)))
+
+(defmethod resolve-java-class :class [x]
+  x)
 
 (s/def ::predicate (s/fspec :args (s/cat :x any?) :ret boolean?))
 
