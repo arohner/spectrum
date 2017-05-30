@@ -67,11 +67,11 @@
 (deftest java-method-spec
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)))
           :ret
-          (= (c/class-spec Long))))
+          (= (c/class-spec Long/TYPE))))
 
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)))
           :ret
-          (= (c/class-spec Double))))
+          (= (c/class-spec Double/TYPE))))
 
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)))
           :ret))
@@ -95,12 +95,12 @@
           :ret
           c/known?))
 
-  (is (-> (flow/get-java-method-spec java.util.Map 'entrySet (c/cat- [(c/unknown {})]))
-          c/conformy?))
-
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long) (c/class-spec Long)]))
           :ret
-          (= (c/class-spec Long)))))
+          (= (c/class-spec Long/TYPE))))
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long/TYPE) (c/class-spec Long/TYPE)]))
+          :ret
+          (= (c/class-spec Long/TYPE)))))
 
 (deftest expression-return-specs
   (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))

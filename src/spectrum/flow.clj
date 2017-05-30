@@ -722,14 +722,21 @@
       m
       (throw (Exception. (format "Couldn't find method: %s %s %s" cls method spec))))))
 
+(defn java-spec-with-nil
+  "Java functions are all implicitly (or nil), unless primitive."
+  [s]
+  (if (-> s :cls j/primitive?)
+    s
+    (c/or- [s (c/value nil)])))
+
 (s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret c/spect?)
 (defn get-java-method-spec
   "Return a fake spec for a java interop call. Args should *not* include 'this"
   [cls method arg-spec]
   (if-let [m (get-conforming-java-method cls method arg-spec)]
     (let [java-args (->> (mapv resolve-java-class-spec (:parameter-types m))
-                         (mapv (fn [s] (c/or- [s (c/value nil)]))))
-          ret (c/or- [(resolve-java-class-spec (:return-type m)) (c/value nil)])]
+                         (mapv java-spec-with-nil))
+          ret (-> m :return-type resolve-java-class-spec java-spec-with-nil)]
       (c/fn-spec (c/map->RegexCat {:ps java-args
                                    :forms java-args
                                    :ret []})
