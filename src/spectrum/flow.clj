@@ -827,6 +827,8 @@
                    (-> a* :local (= :this)) (c/class-spec (:tag a*))
                    (and (= '__extmap (:name a*)) (deftype? a path)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
                    (and (= '__meta (:name a*)) (deftype? a path)) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
+                   (and (= '__hash (:name a*)) (deftype? a path)) (c/class-spec Integer/TYPE)
+                   (and (= '__hasheq (:name a*)) (deftype? a path)) (c/class-spec Integer/TYPE)
                    :else (c/unknown {:message (format "flow :binding: unknown binding %s %s" (:name a*) path) :form (:form a*) :a-loc (a-loc a*) :path path}))]
     (assert ret-spec)
     (assert (c/spect? ret-spec))
