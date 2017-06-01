@@ -204,19 +204,14 @@
                              (assoc spect :ret ret)))
                          spect))))
 
-(ann (flow/get-method! clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
-     (fn [spect args-spect]
-       (let [x (-> args-spect c/first* maybe-convert-value)
-             y (-> args-spect c/second* maybe-convert-value)
-             ret (cond
-                   (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
-                                                     (c/value true)
-                                                     (c/value false))
-                   (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
-                        (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
-         (if ret
-           (assoc spect :ret ret)
-           spect))))
+(s/fdef ann-method :args (s/cat :cls class? :method symbol? :args c/spect? :xfer fn?) :ret any?)
+
+(defn ann-method
+  "Ann a java method"
+  [cls method-name args transformer]
+  (let [method (flow/get-conforming-java-method cls method-name args)]
+    (assert method (format "couldn't find method: %s %s %s" cls method-name (print-str args)))
+    (ann method transformer)))
 
 (s/fdef merge-keys :args (s/cat :m1 c/keys-spec? :m2 c/keys-spec?) :ret c/keys-spec?)
 (defn merge-keys [m1 m2]
@@ -229,24 +224,34 @@
                  (assoc spect :ret (reduce merge-keys (:ps args-spect)))
                  spect)))
 
-(ann (flow/get-method! clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object)]))
-     (fn [spect args-spect]
-       (let [coll (c/first* args-spect)
-             key (c/second* args-spect)
-             ret (cond
-                   (and (c/valid? (c/keys-spec {} {} {} {}) coll) (c/value? key)) (or (-> coll (c/conform-destructure (c/keys-spec {} {} {} {})) (c/keys-get (:v key))) (c/pred-spec #'any?))
-                   :else (:ret spect))]
-         (assoc spect :ret ret))))
 
-(ann (flow/get-method! clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)]))
-     (fn [spect args-spect]
-       (let [coll (c/first* args-spect)
-             key (c/second* args-spect)
-             not-found (c/nth* args-spect 2)
-             ret (cond
-                   (and (c/keys-spec? coll) (c/value? key) (keyword? (:v key))) (or (c/keys-get coll (:v key)) not-found)
-                   :else (:ret spect))]
-         (assoc spect :ret ret))))
+(ann-method
+ clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)])
+ (fn [spect args-spect]
+   (let [x (-> args-spect c/first* maybe-convert-value)
+         y (-> args-spect c/second* maybe-convert-value)
+         ret (cond
+               (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
+                                                 (c/value true)
+                                                 (c/value false))
+               (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
+                    (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
+     (if ret
+       (assoc spect :ret ret)
+       spect))))
+
+
+(defn ann-get [spect args-spect]
+  (let [coll (c/first* args-spect)
+        key (c/second* args-spect)
+        not-found (c/nth* args-spect 2)
+        ret (cond
+              (and (c/keys-spec? coll) (c/value? key) (keyword? (:v key))) (or (c/keys-get coll (:v key)) not-found)
+              :else (:ret spect))]
+    (assoc spect :ret ret)))
+
+(ann-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)]) ann-get)
+(ann-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object)]) ann-get)
 
 (def transducer-fn-spec (c/fn-spec nil nil nil))
 
