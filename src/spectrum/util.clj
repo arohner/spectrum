@@ -71,3 +71,15 @@
   [q ^java.io.Writer w]
   (.write w "#queue ")
   (print-method (sequence q) w))
+
+(defn var-sym [v]
+  (symbol (str (.name (.-ns v))) (str (.-sym v))))
+
+(defmacro predicate-spec
+  "fdef name any? -> boolean?"
+  [x]
+  (let [sym (cond
+              (var? x) (var-sym x)
+              (symbol? x) x
+              :else (assert false)) ]
+    `(s/fdef ~sym :args (s/cat :x any?) :ret boolean?)))

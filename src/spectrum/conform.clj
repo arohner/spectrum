@@ -5,7 +5,7 @@
             [clojure.spec.gen :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.util :refer (fn-literal? print-once strip-namespace var-name queue queue?)]
+            [spectrum.util :refer (fn-literal? print-once strip-namespace var-name queue queue? predicate-spec)]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)
@@ -38,7 +38,7 @@
   (map- [spec f])
   (filter- [spec f]))
 
-(s/fdef compound-spec? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec compound-spec?)
 (defn compound-spec? [x]
   (satisfies? Compound x))
 
@@ -63,7 +63,7 @@
 (defn remove* [f spec]
   (filter- spec (complement f)))
 
-(s/fdef spect? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec spect?)
 (defn spect? [x]
   (and (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
 
@@ -76,7 +76,7 @@
   (spec->class [s]
     "If this spec checks for an instance of a class, return it, else nil"))
 
-(s/fdef spec->class? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec spec->class?)
 (defn spec->class? [x]
   (satisfies? SpecToClass x))
 
@@ -114,7 +114,7 @@
   (invoke [s args]
     "if code calls (s args), return the expected return type"))
 
-(s/fdef invoke? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec invoke?)
 (defn invoke? [x]
   (satisfies? Invoke x))
 
@@ -184,7 +184,10 @@
     #{reject})
   Invoke
   (invoke [spec args]
-    (invalid {:message "invoke on invalid"})))
+    (invalid {:message "invoke on invalid"}))
+  SpecToClass
+  (spec->class [_]
+    nil))
 
 (s/fdef first-rest? :args (s/cat :x any?) :ret boolean?)
 (defn first-rest? [x]
@@ -272,7 +275,7 @@
 
 (first-rest-singular Reject)
 
-(s/fdef invalid? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec invalid?)
 (defn invalid? [x]
   (or (instance? Invalid x)
       (= ::invalid x)
@@ -419,7 +422,7 @@
 
 (defrecord RegexCat [ps ks forms ret])
 
-(s/fdef cat-spec? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec cat-spec?)
 (defn cat-spec? [x]
   (instance? RegexCat x))
 
@@ -798,7 +801,7 @@
 
 (defrecord Value [v])
 
-(s/fdef value? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec value?)
 (defn value? [s]
   (instance? Value s))
 
@@ -870,7 +873,7 @@
 (extend-regex Value)
 (no-dependent-specs Value)
 
-(s/fdef raw-value? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec raw-value?)
 (defn raw-value?
   "A normal clojure value that isn't a spect, and isn't Value"
   [x]
@@ -887,7 +890,7 @@
     (:v x)
     x))
 
-(s/fdef truthy-value? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec truthy-value?)
 (defn truthy-value? [s]
   "true if s is a value with a truthy value"
   (and (value? s) (boolean (:v s))))
@@ -959,7 +962,7 @@
                   :form (when (var? p)
                           (var-name p))}))
 
-(s/fdef pred-spec? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec pred-spec?)
 (defn pred-spec? [x]
   (instance? PredSpec x))
 
@@ -1127,7 +1130,7 @@
   (assert (class? c))
   (map->ClassSpec {:cls c}))
 
-(s/fdef class-spec :args (s/cat :x any?) :ret boolean?)
+(predicate-spec class-spec)
 (defn class-spec? [x]
   (instance? ClassSpec x))
 
@@ -1265,6 +1268,7 @@
 
 (defrecord AndSpec [ps])
 
+(predicate-spec and-spec?)
 (defn and-spec? [x]
   (instance? AndSpec x))
 
@@ -1357,7 +1361,7 @@
 
 (defrecord OrSpec [ps ks])
 
-(s/fdef or-spec? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec or-spec?)
 (defn or-spec? [x]
   (instance? OrSpec x))
 
@@ -1579,7 +1583,7 @@
   (dependent-specs [this]
     #{(pred-spec #'map?) (pred-spec #'coll?)}))
 
-(s/fdef keys-spec? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec keys-spec?)
 (defn keys-spec? [x]
   (instance? KeysSpec x))
 
@@ -1685,7 +1689,7 @@
    (map->CollOfSpec {:s s
                      :kind kind})))
 
-(s/fdef coll-of? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec coll-of?)
 (defn coll-of? [x]
   (instance? CollOfSpec x))
 
@@ -1974,7 +1978,7 @@
 (extend-regex FnSpec)
 (will-accept-this FnSpec)
 
-(s/fdef fn-spec? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec fn-spec?)
 (defn fn-spec? [x]
   (instance? FnSpec x))
 
@@ -2140,7 +2144,7 @@
   (map->MultiSpec {:multimethod method
                    :retag retag}))
 
-(s/fdef multispec? :args (s/cat :x any?) :ret boolean?)
+(predicate-spec multispec?)
 (defn multispec? [x]
   (instance? MultiSpec x))
 
