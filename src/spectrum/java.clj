@@ -41,6 +41,12 @@
   {:post [%]}
   (get primitive->class- p))
 
+(s/fdef primitive->class :args (s/cat :p class?) :ret class?)
+(defn maybe-primitive->class [p]
+  (if (primitive? p)
+    (primitive->class p)
+    p))
+
 (s/def ::java-args (s/coll-of class?))
 
 (s/fdef resolve-primitive :args (s/cat :x symbol?) :ret (s/nilable class?))
@@ -98,9 +104,115 @@
 (defn reflect-method? [x]
   (instance? clojure.reflect.Method x))
 
-(defn more-specific?
+;;; java overloaded method resolution. You should read the spec first. TL;DR, java uses several rules to determine which arity method gets picked, in order
+;;; 1. identity
+;;; 2. widening primitive conversion
+;;; 3. widening reference (isa?) conversion
+;;; 4. boxing + widening
+;;;; 5. unboxing + widening
+
+
+(def widening-primitives
+  {Byte/TYPE #{Short/TYPE Integer/TYPE Long/TYPE Float/TYPE Double/TYPE}
+   Short/TYPE #{Integer/TYPE Long/TYPE Float/TYPE Double/TYPE}
+   Character/TYPE #{Integer/TYPE Long/TYPE Float/TYPE Double/TYPE}
+   Integer/TYPE #{Long/TYPE Float/TYPE Double/TYPE}
+   Long/TYPE #{Float/TYPE Double/TYPE}
+   Float/TYPE #{Double/TYPE}})
+
+(def narrowing-primitives
+  {Short/TYPE #{Byte/TYPE Character/TYPE}
+   Character/TYPE #{Byte/TYPE Short/TYPE}
+   Integer/TYPE #{Byte/TYPE Short/TYPE Character/TYPE}
+   Long/TYPE #{Byte/TYPE Short/TYPE Character/TYPE Integer/TYPE}
+   Float/TYPE #{Byte/TYPE Short/TYPE Character/TYPE Integer/TYPE Long/TYPE}
+   Double/TYPE #{Byte/TYPE Short/TYPE Character/TYPE Integer/TYPE Long/TYPE Float/TYPE}})
+
+(def boxing-conversions
+  {Boolean/TYPE Boolean
+   Byte/TYPE Byte
+   Short/TYPE Short
+   Character/TYPE Character
+   Integer/TYPE Integer
+   Long/TYPE Long
+   Float/TYPE Float
+   Double/TYPE Double})
+
+(def unboxing-conversions (set/map-invert boxing-conversions))
+
+(s/fdef widening-primitive-conversion? :args (s/cat :a class? :b class?) :ret boolean?)
+(defn widening-primitive-conversion?
+  "True if casting a -> b is a widening primitive conversion"
+  [a b]
+  (contains? (get widening-primitives a) b))
+
+(defn widening-reference-conversion?
+  "True if casting a -> b is a widening reference conversion"
   [a b]
   (and (isa? a b) (not= a b)))
+
+(def boxed-primitives (set (vals boxing-conversions)))
+
+(s/fdef boxed? :args (s/cat :x class?) :ret boolean?)
+(defn boxed?
+  "True if x is a boxed primitive"
+  [x]
+  (boolean (get boxed-primitives x)))
+
+(s/fdef box :args (s/cat :x primitive?) :ret class?)
+(defn box [x]
+  (get boxing-conversions x))
+
+(s/fdef box :args (s/cat :x class?) :ret primitive?)
+(defn unbox [x]
+  (or (get unboxing-conversions x)
+      (assert false (format "can't unbox %s, not a primitive" x))))
+
+(defn maybe-unbox [x]
+  (if (boxed? x)
+    (unbox x)
+    x))
+
+(defn box-and-widen? [a b]
+  (when (primitive? a)
+    (let [a* (box a)]
+      (or (widening-reference-conversion? a* b)
+          (= a* b)))))
+
+(defn unbox-and-widen? [a b]
+  (widening-primitive-conversion? (maybe-unbox a) (maybe-unbox b)))
+
+(s/fdef more-specific? :args (s/cat :a class? :b class?) :ret boolean?)
+(defn more-specific?
+  [a b]
+  (or (when (= a b)
+        false)
+      (widening-primitive-conversion? a b)
+      (widening-reference-conversion? a b)
+      (box-and-widen? a b)
+      (unbox-and-widen?  a b)
+      false))
+
+(s/fdef primitive-or-boxed? :args (s/cat :x class?) :ret boolean?)
+(defn primitive-or-boxed?
+  "True if class x is a primitive, or the boxed version of a primitive, i.e. long or Long"
+  [x]
+  (or (get primitive->class- x)
+      (get class->primitive x)))
+
+(s/fdef castable? :args (s/cat :a class? :b class?) :ret boolean?)
+(defn castable?
+  "True if class a can be implicitly cast to class b"
+  [a b]
+  (boolean (and (primitive-or-boxed? a) (primitive-or-boxed? b))))
+
+(defn narrowing?
+  "True if a can be cast to b, with potential loss of precision"
+  [a b]
+  (and (not= a b)
+       (not= (maybe-unbox a) (maybe-unbox b))
+       (castable? a b)
+       (not (more-specific? a b))))
 
 (defn most-specific-class
   "Given a seq of classes that share an inheritance, return the most specific"

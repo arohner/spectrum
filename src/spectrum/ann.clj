@@ -3,6 +3,7 @@
             [spectrum.conform :as c]
             [spectrum.data :as data]
             [spectrum.flow :as flow]
+            [spectrum.java :as j]
             [spectrum.util :refer (print-once)])
   (:import (clojure.lang BigInt
                          Ratio)))
@@ -85,8 +86,8 @@
 
 (def pred->class
   {#'associative? clojure.lang.Associative
-   #'bigdec java.math.BigDecimal
    #'boolean? Boolean
+   #'bigdec? BigDecimal
    #'char? Character
    #'chunked-seq? clojure.lang.IChunkedSeq
    #'class? Class
@@ -95,7 +96,6 @@
    #'decimal? BigDecimal
    #'delay? clojure.lang.Delay
    #'double? Double
-   #'float? Float
    #'fn? clojure.lang.Fn
    #'future? java.util.concurrent.Future
    #'ifn? clojure.lang.IFn
@@ -152,6 +152,7 @@
   (ann v (instance-or classes))
   (ann-type v (c/or- (mapv c/class-spec classes))))
 
+(ann-instance-or #'float? [Float Double])
 (ann-instance-or #'int? [Long Integer Short Byte])
 (ann-instance-or #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
@@ -385,21 +386,92 @@
 (defn inc-transformer [spect args-spect]
   (let [arg (c/first* args-spect)
         c (if (and (c/spect? arg) (c/spec->class? arg))
-              (c/spec->class arg)
-              (class arg))
-          ret-class (condp = c
-                      Long Long
-                      Double Double
-                      Integer Long
-                      Float Double
-                      BigInt BigInt
-                      BigInteger BigInteger
-                      Ratio Ratio
-                      BigDecimal BigDecimal
-                      Long)]
+            (c/spec->class arg)
+            (class arg))
+        ret-class (condp = c
+                    Long Long
+                    Double Double
+                    Integer Long
+                    Float Double
+                    BigInt BigInt
+                    BigInteger BigInteger
+                    Ratio Ratio
+                    BigDecimal BigDecimal
+                    Long)]
     (assoc spect :ret (c/class-spec ret-class))))
 
 (ann #'inc inc-transformer)
-(ann (spectrum.flow/get-conforming-java-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)])) inc-transformer)
+(ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-transformer)
 
 (ann-protocol? #'c/spect? c/Spect)
+
+(defn with-not-nil-ret
+  "Given the spec for a java method, remove the (or nil) from the ret"
+  [s args]
+  (if (:ret s)
+    (assoc-in s [:ret] (c/maybe-or-disj (:ret s) (c/value nil)))
+    s))
+
+(defn type-case
+  "`case for conforming spects. Takes a seq with an even number of values. left hand side values must be spects. Finds the first left hand side value that x conforms to, returns the right-hand side. Throws on no match.
+
+(type-case x
+ (c/class-spec Long) :long
+ (c/class-spec Double) :double)
+
+"
+  [x & ps]
+  (assert (even? (count ps)))
+  (let [ps (partition 2 ps)]
+    (loop [[p & pr] ps]
+      (if p
+        (let [[spec val] p]
+          (if (c/valid? spec x)
+            val
+            (recur pr)))
+        (throw (ex-info "No matching clause" {:x x}))))))
+
+(defn maybe-value->class [x]
+  (if (c/value? x)
+    (c/spec->class x)
+    x))
+
+(defn big-int? [x]
+  (or (instance? clojure.lang.BigInt x)
+      (instance? BigInteger x)))
+
+(defn add-transformer [spect args]
+  (let [a (c/first* args)
+        b (c/second* args)
+        a (some-> a c/spec->class j/maybe-primitive->class c/class-spec)
+        b (some-> b c/spec->class j/maybe-primitive->class c/class-spec)
+        pred-count (fn [s args]
+                     (->> (map (fn [a] (c/valid? s a)) args)
+                          (filter identity)
+                          count))
+
+        specs [(c/pred-spec #'int?)
+               (c/pred-spec #'float?)
+               (c/and-spec [(c/pred-spec #'integer?) (c/not-spec (c/pred-spec #'int?))])
+               (c/pred-spec #'bigdec?)
+               (c/pred-spec #'ratio?)]
+
+        int-count (pred-count (c/pred-spec #'int?) [a b])
+        float-count (pred-count (c/pred-spec #'float?) [a b])
+        big-int-count (pred-count (c/and-spec [(c/pred-spec #'integer?) (c/not-spec (c/pred-spec #'int?))]) [a b])
+        big-dec-count (pred-count (c/pred-spec #'bigdec?) [a b])
+        ratio-count (pred-count (c/pred-spec #'ratio?) [a b])
+        ret (cond
+              (pos? float-count)  (c/class-spec Double/TYPE)
+              (pos? big-dec-count) (c/class-spec BigDecimal)
+              (pos? ratio-count) (c/class-spec Ratio)
+              (pos? big-int-count) (c/class-spec BigInt)
+              (= 2 int-count) (c/class-spec Long/TYPE)
+              :else (c/class-spec Number))]
+    (assoc spect :ret ret)))
+
+(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long) (c/class-spec Object)]) add-transformer)
+(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Long)]) add-transformer)
+(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Double/TYPE) (c/class-spec Object)]) add-transformer)
+(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Double/TYPE)]) add-transformer)
+(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Object)]) add-transformer)

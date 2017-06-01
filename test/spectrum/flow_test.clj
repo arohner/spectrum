@@ -73,6 +73,18 @@
           :ret
           (= (c/class-spec Double/TYPE))))
 
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Byte/TYPE)]))
+          :ret
+          (= (c/class-spec Long/TYPE))))
+
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Float/TYPE)]))
+          :ret
+          (= (c/class-spec Double/TYPE))))
+
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/class-spec clojure.lang.BigInt)]))
+          :ret
+          (= (c/or- [(c/class-spec Number) (c/value nil)]))))
+
   (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)))
           :ret))
 

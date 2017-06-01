@@ -799,7 +799,7 @@
       #'zero? (value 0)
       nil)))
 
-(defrecord Value [v])
+(defrecord Value [v type])
 
 (predicate-spec value?)
 (defn value? [s]
@@ -809,7 +809,13 @@
 (defn value
   "spec representing a single value"
   [v]
-  (map->Value {:v v}))
+  (map->Value {:v v
+               ;; numbers of different type share same hash, store
+               ;; type so the values hash differently, because c/conform
+               ;; is cached
+               :type (when (number? v)
+                       (class v))
+               }))
 
 (defn maybe-strip-value [s]
   (if (value? s)
@@ -1006,7 +1012,8 @@
         (and (= #'class? pred) (class-spec? x)) x
 
         (class-spec? x) (when-let [pred-class (spec->class spec)]
-                          (when (isa? (:cls x) pred-class)
+                          (when (or (isa? (:cls x) pred-class)
+                                    (j/castable? (:cls x) pred-class))
                               x))
         (data/pred->protocol? pred) (let [proto (data/pred->protocol pred)]
                                       (when (satisfies? proto x)
@@ -1059,38 +1066,30 @@
                      (spec->class c))) (dependent-specs this)))))
 
 
-(defn integer-range [^Class cls]
-  (assert cls)
-  [(.get ^java.lang.reflect.Field (.getDeclaredField cls "MIN_VALUE") nil)
-   (.get ^java.lang.reflect.Field (.getDeclaredField ^Class cls "MAX_VALUE") nil)])
-
-(defn integer-castable?
-  "True if integer value n can be cast to class c without overflow"
-  [n class]
-  (let [[min max] (integer-range class)]
-    (and (integer? n)
-         (>= n min)
-         (<= n max))))
-
 ;; Spec representing a java class. Probably won't need to use this
 ;; directly. Used in java interop, and other places where we don't
 ;; have 'real' specs
 
 (defrecord ClassSpec [cls])
 
+(defn maybe-map-equivalence-hack [c]
+ ;;; hack for the godawful clojure.lang.MapEquivalence
+;;; hack. deftype checks for MapEquivalence, an interface that is
+;;; only implemented by APersistentMap, even though the defrecord
+;;; constructor takes IPersistentMap.
+  (if (= clojure.lang.MapEquivalence c)
+    clojure.lang.APersistentMap
+    c))
+
 (extend-type ClassSpec
   Spect
   (conform* [this v]
-    (let [{:keys [cls]} this]
-      (cond
-        (and (spect? v) (isa? (or (when (spec->class? v) (spec->class v)) Object) cls)) v
-        (and (class-spec? v) (j/primitive? (:cls v)) (isa? (-> v :cls j/primitive->class) cls)) v
-        (and (class-spec? v) (j/primitive? cls) (isa? (-> v :cls)  (j/primitive->class cls))) v
-        (and (isa? cls Number)
-             (value? v)
-             (contains? #{Long Integer Short Byte} (class (maybe-strip-value v)))
-             (integer-castable? (maybe-strip-value v) cls)) v
-        :else nil)))
+    (let [{:keys [cls]} this
+          v-class (when (spect? v)
+                    (or (spec->class v) Object))]
+      (when (or (isa? v-class cls)
+                (isa? (j/maybe-unbox v-class) (j/maybe-unbox cls)))
+        v)))
   WillAccept
   (will-accept [this]
     #{this})
@@ -1102,13 +1101,10 @@
       :truthy))
   SpecToClass
   (spec->class [s]
-;;; hack for the godawful clojure.lang.MapEquivalence
-;;; hack. deftype checks for MapEquivalence, an interface that is
-;;; only implemented by APersistentMap, even though the defrecord
-;;; constructor takes IPersistentMap.
-    (if (= clojure.lang.MapEquivalence (:cls s))
-      clojure.lang.APersistentMap
-      (:cls s)))
+    (-> s
+        :cls
+        (j/maybe-primitive->class)
+        (maybe-map-equivalence-hack)))
   Invoke
   (invoke [this args]
     (unknown-invoke this args))
@@ -1453,6 +1449,8 @@
   (and (valid? s1 s2)
        (valid? s2 s1)))
 
+(declare maybe-or-disj)
+
 (s/fdef or-disj :args (s/cat :s or-spec? :p spect?) :ret spect?)
 (defn or-disj
   "Remove pred from the set of preds"
@@ -1460,11 +1458,15 @@
   (->> s
        (map* parse-spec)
        (map* (fn [p]
-               (if (compound-spec? p)
-                 (or-disj p pred)
-                 p)))
+               (maybe-or-disj p pred)))
        (filter* (fn [p]
                   (not (equivalent? p pred))))))
+
+(defn maybe-or-disj
+  [s pred]
+  (if (or-spec? s)
+    (or-disj s pred)
+    s))
 
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (map vec (partition 2 (rest x)))
@@ -1497,7 +1499,10 @@
       (condp = t
         :ambiguous :ambiguous
         :truthy :falsey
-        :falsey :truthy))))
+        :falsey :truthy)))
+  SpecToClass
+  (spec->class [this]
+    nil))
 
 (extend-regex NotSpec)
 
@@ -1722,7 +1727,8 @@
     (let [new-specs (->> s
                          (will-accept)
                          (map (fn [x] (derivative s x)))
-                         (remove reject?))
+                         (remove reject?)
+                         (remove nil?))
           ret (filter (fn [s]
                         (or (accept? s)
                             (accept-nil? s))) new-specs)
@@ -2467,7 +2473,7 @@
                   q (concat q ds)]
               (if (seq q)
                 (recur (first q) (rest q) (set/union seen ds))
-                (invalid {:message (format "%s does not conform to %s" (print-str args) (print-str spec))})))))))))
+                (invalid {:message (format "%s does not conform to %s" (print-str args-orig) (print-str spec))})))))))))
 
 (s/fdef conform- :args (s/cat :s ::spect :args (s/nilable (s/and spect? map?))) :ret ::spect)
 (defn conform-

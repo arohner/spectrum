@@ -18,7 +18,8 @@
                              PredSpec
                              ClassSpec
                              AndSpec
-                             OrSpec)))
+                             OrSpec)
+           [clojure.lang BigInt PersistentHashMap Ratio Seqable]))
 
 (clojure.spec.test/instrument)
 
@@ -50,7 +51,7 @@
       (c/cat- [(c/pred-spec #'nil?) (c/value 3)])
       (c/cat- [(c/pred-spec #'integer?) (c/value nil)])))
   (testing "unknown"
-    (are [args] (= (c/class-spec Boolean) (:ret (transform-identical args)))
+    (are [args] (= (c/class-spec Boolean/TYPE) (:ret (transform-identical args)))
       (c/cat- [(c/pred-spec #'nil?) (c/or- [(c/pred-spec #'nil?) (c/unknown {:message ""})])])
       (c/cat- [(c/pred-spec #'false?) (c/class-spec Boolean)])
       (c/cat- [(c/pred-spec #'boolean?) (c/pred-spec #'boolean?)])
@@ -90,15 +91,15 @@
       (c/value 71)
       (c/coll-of (c/pred-spec #'integer?))))
   (testing "ambigous"
-    (are [arg] (= (c/class-spec Boolean) (check/type-of '(nil? x) {:x arg}))
+    (are [arg] (= (c/class-spec Boolean/TYPE) (check/type-of '(nil? x) {:x arg}))
       (c/pred-spec #'boolean?))))
 
 (deftest inc-works
   (testing "true"
     (are [arg ret] (= ret (check/type-of '(inc x) {:x arg}))
       (c/pred-spec #'integer?) (c/class-spec Long)
-      (c/pred-spec #'float?) (c/class-spec Double)
-      (c/value 3) (c/class-spec Long)))
+      (c/pred-spec #'float?) (c/class-spec Double/TYPE)
+      (c/value 3) (c/class-spec Long/TYPE)))
 
   ;; TODO technically not illegal because the java method takes Object. Need to override
   ;; (testing "falsey"
@@ -119,22 +120,42 @@
       (c/coll-of ::ana.jvm/analysis) (c/coll-of ::flow/analysis)
       (c/pred-spec #'c/spect?) (c/value false)
       (c/pred-spec #'seqable?) (c/class-spec clojure.lang.PersistentHashMap)
-      (c/pred-spec #'seqable?) (c/class-spec clojure.lang.Seqable)
+      (c/pred-spec #'seqable?) (c/class-spec Seqable)
       (c/pred-spec #'seqable?) (c/map-of (c/pred-spec #'any?) (c/pred-spec #'any?))
 
       (c/or- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/pred-spec #'even?)
       (c/or- [(c/class-spec Long) (c/class-spec Integer) (c/class-spec Short) (c/class-spec Byte)]) (c/pred-spec #'int?)
 
-      (c/parse-spec :spectrum.core-specs/seq-like) (c/class-spec clojure.lang.Seqable))))
+      (c/parse-spec :spectrum.core-specs/seq-like) (c/class-spec Seqable))))
 
 (deftest invoke-ann
   (are [spec args expected] (= expected (c/invoke spec args))
     (c/pred-spec #'seqable?) (c/cat- [(c/keys-spec {} {} {} {})]) (c/value true)
-    (c/pred-spec #'seqable?) (c/cat- [(c/class-spec clojure.lang.Seqable)]) (c/value true)
+    (c/pred-spec #'seqable?) (c/cat- [(c/class-spec Seqable)]) (c/value true)
     (c/pred-spec #'seq?) (c/cat- [(c/keys-spec {} {} {} {})]) (c/value false)
     (c/pred-spec #'integer?) (c/cat- [(c/pred-spec #'even?)]) (c/value true)
     (c/pred-spec #'integer?) (c/cat- [(c/value 3)]) (c/value true)
     (c/pred-spec #'integer?) (c/cat- [(c/class-spec Long)]) (c/value true)))
+
+(deftest add
+  (are [form args expected] (= expected (check/type-of form args))
+    '(+ 1 1) {} (c/class-spec Long/TYPE)
+    '(+ 1 x) {:x (c/pred-spec #'int?)} (c/class-spec Long/TYPE)
+
+    ;; TODO: this should probably return (or [long? bigint?]) rather than Number, because the result certainly won't be a float, but spec->class currently returns nil on #'integer?
+    '(+ 1 x) {:x (c/pred-spec #'integer?)} (c/class-spec Number)
+
+    '(+ 1.0 x) {:x (c/pred-spec #'int?)} (c/class-spec Double/TYPE)
+    '(+ 1.0 x) {:x (c/class-spec BigInt)} (c/class-spec Double/TYPE)
+    '(+ 1 2.0) {} (c/class-spec Double/TYPE)
+    '(+ 22/7 1) {} (c/class-spec Ratio)
+    '(+ 22/7 1.0) {} (c/class-spec Double/TYPE)
+    '(+ 22/7 x) {:x (c/class-spec BigInt)} (c/class-spec Ratio)
+    '(+ 1 x) {:x (c/class-spec BigDecimal)} (c/class-spec BigDecimal)
+    '(+ 1.0 x) {:x (c/class-spec BigDecimal)} (c/class-spec Double/TYPE)
+    '(+ 1/2 (bigdec 1)) {} (c/class-spec BigDecimal)
+    '(+ x y) {:x (c/class-spec BigDecimal)
+              :y (c/class-spec BigInt)} (c/class-spec BigDecimal)))
 
 ;; TODO
 

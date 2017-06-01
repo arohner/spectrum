@@ -643,10 +643,13 @@
     (if (and (c/first* arg-spec)
              (c/first* method-spec))
       (let [m (c/first* method-spec)
-            a (c/first* arg-spec)]
+            m-c (some-> m c/spec->class)
+            a (c/first* arg-spec)
+            a-c (some-> a c/spec->class)]
         (if (and (nil? a) (nil? m))
           true
-          (if (and m a (or (c/valid? m a) (c/unknown? a)))
+          (if (and m a (or (c/valid? m a) (when (and a-c m-c)
+                                            (j/castable? m-c a-c)) (c/unknown? a)))
             (recur (c/rest* arg-spec) (c/rest* method-spec))
             false)))
       (if (and (nil? (c/first* arg-spec))
@@ -664,7 +667,7 @@
     (c/valid? spec argv)))
 
 (s/def ::reflect-name symbol?)
-(s/def ::reflect-return-type ::j/java-type)
+(s/def ::reflect-return-type class?)
 (s/def ::reflect-parameter-types ::j/java-args)
 
 (s/def ::reflect-method (s/keys :req-un [::reflect-name ::reflect-return-type ::reflect-parameter-types]))
@@ -680,19 +683,38 @@
             b (j/resolve-java-class b)]
         (do
           (cond
-            (or (and (j/primitive? a) (j/primitive? b)) (= a b)) (recur as bs)
-            (or (and (j/primitive? b)) (contains? (ancestors b) (class a))) -1
-            (or (j/primitive? a) (contains? (ancestors b) (class a))) 1
-            :else (assert false))))
+            (j/more-specific? a b) -1
+            (j/more-specific? b a) 1
+            :else (recur as bs))))
       (do
         (assert (and (not a) (not b)))
         0))))
 
-(s/fdef most-specific :args (s/cat :vecs (s/coll-of j/reflect-method?)) :ret ::j/java-args)
+(defn requires-narrowing?
+  "Given an arg spec and java method args, return true if any argument requires narrowing"
+  [spec arg-vec]
+  (let [s (c/first* spec)
+        arg (first arg-vec)]
+    (if (and s arg)
+      (if (c/known? s)
+        (let [c (c/spec->class s)
+              arg (j/resolve-java-class arg)]
+          (if (and c arg (j/narrowing? c arg))
+            true
+            (recur (c/rest* spec) (rest arg-vec))))
+        false)
+      false)))
+
+(s/fdef most-specific :args (s/cat :spec c/spect? :vecs (s/coll-of j/reflect-method?)) :ret ::j/java-args)
 (defn most-specific
-  "Given a seq of vectors of java args, return the most specific method"
-  [arg-vecs]
-  (-> (sort more-specific-compare arg-vecs) last))
+  "Given a spec and a seq of vectors of java args, return the most specific method"
+  [spec methods]
+  (let [{wider false
+         narrower true} (group-by (fn [method]
+                                    (requires-narrowing? spec (:parameter-types method))) methods)]
+    (->> (concat (sort more-specific-compare wider)
+                 (sort more-specific-compare narrower))
+         first)))
 
 (s/fdef get-java-method :args (s/cat :cls class? :method symbol?) :ret (s/coll-of j/reflect-method?))
 (defn get-java-method
@@ -711,7 +733,7 @@
     (some->> (get-java-method cls method)
              (filter (fn [m]
                        (compatible-java-method-relaxed? arg-spec (:parameter-types m))))
-             (most-specific))))
+             (most-specific arg-spec))))
 
 (s/fdef get-method! :args (s/cat :cls class? :method symbol? :spec ::c/spect) :ret j/reflect-method?)
 (defn get-method!

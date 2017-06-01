@@ -98,11 +98,12 @@
       (c/pred-spec #'any?) (c/pred-spec #'integer?)
       (c/pred-spec #'int?) (c/pred-spec #'int?)
       (c/pred-spec #'number?) (c/class-spec Long)
+      (c/pred-spec #'number?) (c/class-spec Long/TYPE)
+
       (c/class-spec Long) (c/value 3)
       (c/class-spec Long) (c/class-spec Long/TYPE)
       (c/class-spec Long/TYPE) (c/class-spec Long)
       (c/class-spec Long/TYPE) (c/class-spec Long/TYPE)
-      (c/class-spec Integer) (c/value 0)
       (c/class-spec String) (c/class-spec String)
       (c/pred-spec #'class?) (c/class-spec String)
       (c/class-spec Object) (c/value nil)
@@ -224,6 +225,7 @@
   (testing "should fail"
     (are [spec val] (c/invalid? (c/conform (c/parse-spec spec) val))
       (c/pred-spec #'integer?) (c/value "foo")
+      (c/pred-spec #'float?) (c/value 3)
       ;;(s/spec #(< % 10)) 12
       (c/pred-spec #'integer?) (c/parse-spec #'keyword?)
       (c/pred-spec #'integer?) (c/parse-spec (s/or :int integer? :str string?))
@@ -267,7 +269,11 @@
       (c/tuple-spec []) (c/value [1])
       (c/tuple-spec [(c/pred-spec #'integer?)]) (c/tuple-spec [])
 
-      (c/not-spec (c/pred-spec #'string?)) (c/pred-spec #'string?))))
+      (c/not-spec (c/pred-spec #'string?)) (c/pred-spec #'string?)
+
+      (c/class-spec Long) (c/class-spec Short)
+      (c/class-spec Short) (c/class-spec Long)
+      (c/class-spec Long) (c/class-spec Double))))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
@@ -444,6 +450,7 @@
       (s/map-of integer? string?) (c/cat- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
 
       (c/value #'string?) (c/cat- [(c/value "foo")]) (c/value true)
+      (c/pred-spec #'float?) (c/cat- [(c/value 3)]) (c/value false)
 
       (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)))
 
