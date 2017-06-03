@@ -643,13 +643,16 @@
     (if (and (c/first* arg-spec)
              (c/first* method-spec))
       (let [m (c/first* method-spec)
-            m-c (some-> m c/spec->class)
+            m-c (c/spec->classes m)
+            _ (assert (= 1 (count m-c)))
+            m-c (first m-c)
             a (c/first* arg-spec)
-            a-c (some-> a c/spec->class)]
+            a-c (c/spec->classes a)]
         (if (and (nil? a) (nil? m))
           true
-          (if (and m a (or (c/valid? m a) (when (and a-c m-c)
-                                            (j/castable? m-c a-c)) (c/unknown? a)))
+          (if (and m a (or (c/valid? m a) (when (and m-c (seq a-c))
+                                            (every? (fn [a-c*]
+                                                      (j/castable? m-c a-c*)) a-c)) (c/unknown? a)))
             (recur (c/rest* arg-spec) (c/rest* method-spec))
             false)))
       (if (and (nil? (c/first* arg-spec))
@@ -697,9 +700,10 @@
         arg (first arg-vec)]
     (if (and s arg)
       (if (c/known? s)
-        (let [c (c/spec->class s)
+        (let [cs (c/spec->classes s)
               arg (j/resolve-java-class arg)]
-          (if (and c arg (j/narrowing? c arg))
+          (if (and cs arg (some (fn [c*]
+                                 (j/narrowing? c* arg)) cs))
             true
             (recur (c/rest* spec) (rest arg-vec))))
         false)
@@ -797,14 +801,13 @@
         spec (if (and meth spec (c/known? (:args spec)))
                (c/maybe-transform-method meth spec (analysis-args->spec (:args a)))
                spec)]
+
     (if (c/fn-spec? spec)
-      (if (c/every-known? args-spec)
-        (if (c/valid-invoke? spec args-spec)
-          (assoc a ::ret-spec (or (:ret spec) (c/unknown {:message (format "no :ret spec for %s" spec)}))
-                 ::args-spec (:args spec))
-          (assoc a ::ret-spec (c/invalid {:form (:form a)
-                                          :message (format "Can't invoke %s with %s" (print-str spec) (print-str args-spec))})))
-        (assoc a ::ret-spec (c/unknown {:form (:form a) :message (format "invoke %s with unknown args %s" (print-str spec) (print-str args-spec))})))
+      (do
+        (assert (:ret spec))
+        (if (c/every-known? args-spec)
+          (assoc a ::ret-spec (:ret spec) ::args-spec (:args spec))
+          (assoc a ::ret-spec (c/unknown {:form (:form a) :message (format "invoke %s with unknown args %s" (print-str spec) (print-str args-spec))}))))
       (do
         (assert (c/invalid? spec))
         (assoc a ::ret-spec spec)))))

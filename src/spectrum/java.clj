@@ -2,7 +2,8 @@
   (:require [clojure.spec :as s]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.data :as data]))
+            [spectrum.data :as data]
+            [spectrum.util :refer (predicate-spec)]))
 
 (def symbol->primitive- {'boolean Boolean/TYPE
                          'byte Byte/TYPE
@@ -87,11 +88,6 @@
 
 (s/def ::predicate (s/fspec :args (s/cat :x any?) :ret boolean?))
 
-(s/fdef pred->class :args (s/cat :pred ::predicate) :ret (s/nilable Class))
-(defn pred->class [pred]
-  {:post [(do (when-not % (println "pred->class not found:" pred (class pred))) true)]}
-  (get @data/pred->class pred))
-
 (s/fdef shared-ancestors :args (s/cat :a class? :b class?) :ret (s/coll-of class? :into #{}))
 (defn shared-ancestors
   "common ancestor other than Object"
@@ -153,7 +149,7 @@
 
 (def boxed-primitives (set (vals boxing-conversions)))
 
-(s/fdef boxed? :args (s/cat :x class?) :ret boolean?)
+(predicate-spec boxed?)
 (defn boxed?
   "True if x is a boxed primitive"
   [x]
@@ -162,6 +158,12 @@
 (s/fdef box :args (s/cat :x primitive?) :ret class?)
 (defn box [x]
   (get boxing-conversions x))
+
+(s/fdef maybe-box :args (s/cat :x class?) :ret class?)
+(defn maybe-box [x]
+  (if (primitive? x)
+    (box x)
+    x))
 
 (s/fdef box :args (s/cat :x class?) :ret primitive?)
 (defn unbox [x]
@@ -187,7 +189,8 @@
   [a b]
   (or (when (= a b)
         false)
-      (widening-primitive-conversion? a b)
+      (when (and (primitive? a) (primitive? b))
+        (widening-primitive-conversion? a b))
       (widening-reference-conversion? a b)
       (box-and-widen? a b)
       (unbox-and-widen?  a b)
@@ -206,6 +209,7 @@
   [a b]
   (boolean (and (primitive-or-boxed? a) (primitive-or-boxed? b))))
 
+(s/fdef narrowing? :args (s/cat :a class? :b class?) :ret boolean?)
 (defn narrowing?
   "True if a can be cast to b, with potential loss of precision"
   [a b]

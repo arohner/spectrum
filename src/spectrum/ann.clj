@@ -28,18 +28,22 @@
 (ann #'instance? (fn [spect args-spect]
                    (let [c (c/first* args-spect)
                          x (c/second* args-spect)]
-                     (if (c/known? x)
-                       (if-let [c-spec (and c (c/spec->class? c) (c/spec->class c) (c/class-spec (c/spec->class c)))]
-                         (let [ret (c/conform c x)]
-                           (if (c/conformy? ret)
-                             (let [truth (c/truthyness ret)
-                                   ret (condp = truth
-                                         :truthy (c/value true)
-                                         :falsey (c/value false)
-                                         (c/pred-spec #'boolean?))]
-                               (assoc spect :ret ret))
-                             (assoc spect :ret (c/value false))))
-                         spect)
+                     (if (and (c/known? c) (c/known? x))
+                       (let [cs (c/spec->classes c)
+                             xs (c/spec->classes x)
+                             rets (for [c cs
+                                        x xs]
+                                    (c/conform (c/class-spec c) (c/class-spec x)))]
+                         (if (every? c/conformy? rets)
+                           (let [truth (set (map c/truthyness rets))
+                                 ret (cond
+                                       (contains? truth :ambiguous) (c/pred-spec #'boolean?)
+                                       (> (count truth) 1) (c/pred-spec #'boolean?)
+                                       (and (= 1 (count truth)) (= :truthy (first truth))) (c/value true)
+                                       (and (= 1 (count truth)) (= :falsey (first truth))) (c/value false)
+                                       :else (assert false "unreachable"))]
+                             (assoc spect :ret ret))
+                           (assoc spect :ret (c/value false))))
                        spect))))
 
 (ann #'into (fn [spect args-spect]
@@ -123,17 +127,17 @@
    #'volatile? clojure.lang.Volatile
    })
 
-(doseq [[v cls] pred->class]
-  (data/register-pred->class v cls)
-  (ann v (instance-or [cls])))
-
 (defn ann-instance?
   "Annotates var-predicate p as just a simple instanceof? check
 
    (ann-instance #'string? java.lang.String)
  "
   [v cls]
-  (ann v (instance-or [cls])))
+  (ann v (instance-or [cls]))
+  (data/add-type-transformer v (c/class-spec cls)))
+
+(doseq [[v cls] pred->class]
+  (ann-instance? v cls))
 
 (defn ann-protocol?
   "Annotates var-predicate p as just a simple satisfies? check
@@ -143,14 +147,10 @@
   [v proto]
   (ann v (protocol-transformer proto)))
 
-(s/fdef ann-type :args (s/cat :v var? :t ::spect))
-(defn ann-type [v t]
-  (swap! data/type-transformers assoc v t)
-  nil)
 
 (defn ann-instance-or [v classes]
   (ann v (instance-or classes))
-  (ann-type v (c/or- (mapv c/class-spec classes))))
+  (data/add-type-transformer v (c/or- (mapv c/class-spec classes))))
 
 (ann-instance-or #'float? [Float Double])
 (ann-instance-or #'int? [Long Integer Short Byte])
@@ -240,7 +240,6 @@
      (if ret
        (assoc spect :ret ret)
        spect))))
-
 
 (defn ann-get [spect args-spect]
   (let [coll (c/first* args-spect)
@@ -383,22 +382,21 @@
                  (assoc spect :ret (c/pred-spec #'seq?))
                  spect))))
 
-(defn inc-transformer [spect args-spect]
-  (let [arg (c/first* args-spect)
-        c (if (and (c/spect? arg) (c/spec->class? arg))
-            (c/spec->class arg)
-            (class arg))
-        ret-class (condp = c
-                    Long Long
+(def inc-ret-class {Long Long
                     Double Double
-                    Integer Long
                     Float Double
                     BigInt BigInt
-                    BigInteger BigInteger
+                    BigInteger BigInt
                     Ratio Ratio
-                    BigDecimal BigDecimal
-                    Long)]
-    (assoc spect :ret (c/class-spec ret-class))))
+                    BigDecimal BigDecimal})
+
+(defn inc-transformer [spect args-spect]
+  (let [arg (c/first* args-spect)]
+    (if (c/valid? (c/class-spec Number) arg)
+      (let [cs (c/spec->classes arg)
+            ret (->> cs (map (fn [p] (get inc-ret-class p Long))) (distinct) (map c/class-spec) (c/or-))]
+        (assoc spect :ret ret))
+      (c/invalid {:message (format "inc: %s does not conform to Number" (print-str arg))}))))
 
 (ann #'inc inc-transformer)
 (ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-transformer)
@@ -431,43 +429,43 @@
             (recur pr)))
         (throw (ex-info "No matching clause" {:x x}))))))
 
-(defn maybe-value->class [x]
-  (if (c/value? x)
-    (c/spec->class x)
-    x))
-
 (defn big-int? [x]
   (or (instance? clojure.lang.BigInt x)
       (instance? BigInteger x)))
 
+
+
+(defn pred-count
+  "Return the number of items in coll that conform to s"
+  [s coll]
+  (->> (map (fn [a] (c/valid? s a)) coll)
+       (filter identity)
+       count))
+
+(s/fdef add-transform-concrete :args (s/cat :a class? :b class?) :ret class?)
+(defn add-transform-singular [a b]
+  (let [args [(c/class-spec a) (c/class-spec b)]
+        int-count (pred-count (c/pred-spec #'int?) args)
+        float-count (pred-count (c/pred-spec #'float?) args)
+        big-int-count (pred-count (c/and-spec [(c/pred-spec #'integer?) (c/not-spec (c/pred-spec #'int?))]) args)
+        big-dec-count (pred-count (c/pred-spec #'bigdec?) args)
+        ratio-count (pred-count (c/pred-spec #'ratio?) args)]
+    (cond
+      (pos? float-count)  (c/class-spec Double/TYPE)
+      (pos? big-dec-count) (c/class-spec BigDecimal)
+      (pos? ratio-count) (c/class-spec Ratio)
+      (pos? big-int-count) (c/class-spec BigInt)
+      (= 2 int-count) (c/class-spec Long/TYPE)
+      :else (c/class-spec Number))))
+
 (defn add-transformer [spect args]
   (let [a (c/first* args)
         b (c/second* args)
-        a (some-> a c/spec->class j/maybe-primitive->class c/class-spec)
-        b (some-> b c/spec->class j/maybe-primitive->class c/class-spec)
-        pred-count (fn [s args]
-                     (->> (map (fn [a] (c/valid? s a)) args)
-                          (filter identity)
-                          count))
-
-        specs [(c/pred-spec #'int?)
-               (c/pred-spec #'float?)
-               (c/and-spec [(c/pred-spec #'integer?) (c/not-spec (c/pred-spec #'int?))])
-               (c/pred-spec #'bigdec?)
-               (c/pred-spec #'ratio?)]
-
-        int-count (pred-count (c/pred-spec #'int?) [a b])
-        float-count (pred-count (c/pred-spec #'float?) [a b])
-        big-int-count (pred-count (c/and-spec [(c/pred-spec #'integer?) (c/not-spec (c/pred-spec #'int?))]) [a b])
-        big-dec-count (pred-count (c/pred-spec #'bigdec?) [a b])
-        ratio-count (pred-count (c/pred-spec #'ratio?) [a b])
-        ret (cond
-              (pos? float-count)  (c/class-spec Double/TYPE)
-              (pos? big-dec-count) (c/class-spec BigDecimal)
-              (pos? ratio-count) (c/class-spec Ratio)
-              (pos? big-int-count) (c/class-spec BigInt)
-              (= 2 int-count) (c/class-spec Long/TYPE)
-              :else (c/class-spec Number))]
+        as (c/spec->classes a)
+        bs (c/spec->classes b)
+        ret (c/or- (set (for [a as
+                              b bs]
+                          (add-transform-singular a b))))]
     (assoc spect :ret ret)))
 
 (ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long) (c/class-spec Object)]) add-transformer)

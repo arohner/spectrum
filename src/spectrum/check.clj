@@ -132,7 +132,7 @@
         cls (:class-name deftype)
         method-spec (flow/defmethod-get-spec cls (:interface a) (:name a) (rest (:params a)))
         method-ret (:ret method-spec)]
-    (when (and method-ret (c/known? (::flow/ret-spec a)) (not (c/valid? method-ret (::flow/ret-spec a))))
+    (when (and method-ret (c/known? (::flow/ret-spec a)) (not (c/valid-return-java? method-ret (::flow/ret-spec a))))
       [(new-error {:message (format "deftype %s implementation of %s/%s return value does not conform. Expected %s, Got %s" cls (:interface a) (:name a) (print-str method-ret) (print-str (::flow/ret-spec a)))}
                   a)])))
 

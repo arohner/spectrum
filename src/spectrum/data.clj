@@ -24,6 +24,10 @@
   type-transformers
   (atom {}))
 
+(s/fdef add-type-transformer :args (s/cat :v var? :s :spectrum.conform/spect))
+(defn add-type-transformer [v s]
+  (swap! type-transformers assoc v s))
+
 ;; current ana.jvm/analysis, if any
 (def ^:dynamic *a* nil)
 
@@ -34,21 +38,9 @@
   (get @type-transformers v))
 
 (defonce
-  ^{:doc "map of predicates to java classes."}
-  pred->class-
-  (atom {}))
-
-(defonce
   ^{:doc "map of preds to protocols"}
   pred->protocol-
   (atom {}))
-
-(s/fdef register-pred->class :args (s/cat :p var? :cls class?))
-(defn register-pred->class
-  "Register pred as checking for instances of class c. Use this for predicaess that are exactly (instance? c x)"
-  [pred cls]
-  (swap! pred->class- assoc pred cls)
-  nil)
 
 (s/fdef register-protocol->pred :args (s/cat :p var? :protocol protocol?))
 (defn register-pred->protocol
@@ -56,10 +48,6 @@
   [pred protocol]
   (swap! pred->protocol- assoc pred protocol)
   nil)
-
-(s/fdef pred->class :args (s/cat :p var?) :ret (s/nilable class?))
-(defn pred->class [v]
-  (get @pred->class- v))
 
 (s/fdef pred->protocol :args (s/cat :p any?) :ret (s/nilable protocol?))
 (defn pred->protocol [v]

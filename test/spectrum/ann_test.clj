@@ -96,17 +96,17 @@
 
 (deftest inc-works
   (testing "true"
-    (are [arg ret] (= ret (check/type-of '(inc x) {:x arg}))
-      (c/pred-spec #'integer?) (c/class-spec Long)
+    (are [arg ret] (c/equivalent? ret (check/type-of '(inc x) {:x arg}))
+      (c/pred-spec #'int?) (c/class-spec Long)
+      (c/pred-spec #'integer?) (c/or- [(c/class-spec Long) (c/class-spec BigInt)])
       (c/pred-spec #'float?) (c/class-spec Double/TYPE)
       (c/value 3) (c/class-spec Long/TYPE)))
 
   ;; TODO technically not illegal because the java method takes Object. Need to override
-  ;; (testing "falsey"
-  ;;   (are [arg ret] (c/invalid? (check/type-of '(inc x) {:x arg}))
-  ;;     (c/pred-spec #'string?)
-  ;;     (c/pred-spec #'nil?)))
-  )
+  (testing "falsey"
+    (are [arg ret] (c/invalid? (check/type-of '(inc x) {:x arg}))
+      (c/pred-spec #'string?)
+      (c/pred-spec #'nil?))))
 
 (deftest conform-ann
   ;; conform tests that require ann.clj or core_specs.clj to work
@@ -126,7 +126,10 @@
       (c/or- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/pred-spec #'even?)
       (c/or- [(c/class-spec Long) (c/class-spec Integer) (c/class-spec Short) (c/class-spec Byte)]) (c/pred-spec #'int?)
 
-      (c/parse-spec :spectrum.core-specs/seq-like) (c/class-spec Seqable))))
+      (c/parse-spec :spectrum.core-specs/seq-like) (c/class-spec Seqable)))
+  (testing "falsey"
+    (are [spec val] (c/invalid? (c/conform spec val))
+      (c/pred-spec #'float?) (c/value 3))))
 
 (deftest invoke-ann
   (are [spec args expected] (= expected (c/invoke spec args))
@@ -137,13 +140,21 @@
     (c/pred-spec #'integer?) (c/cat- [(c/value 3)]) (c/value true)
     (c/pred-spec #'integer?) (c/cat- [(c/class-spec Long)]) (c/value true)))
 
+(deftest spec-class-ann
+  (are [spec expected] (= expected (c/spec->classes spec))
+    (c/class-spec Double/TYPE) #{Double/TYPE}
+    (c/class-spec Long) #{Long}
+    (c/pred-spec #'string?) #{String}
+    (c/class-spec String) #{String}
+    (c/pred-spec #'float?) #{Float Double}
+    (c/pred-spec #'int?) #{Byte Short Integer Long}))
+
 (deftest add
-  (are [form args expected] (= expected (check/type-of form args))
+  (are [form args expected] (c/equivalent? expected (check/type-of form args))
     '(+ 1 1) {} (c/class-spec Long/TYPE)
     '(+ 1 x) {:x (c/pred-spec #'int?)} (c/class-spec Long/TYPE)
 
-    ;; TODO: this should probably return (or [long? bigint?]) rather than Number, because the result certainly won't be a float, but spec->class currently returns nil on #'integer?
-    '(+ 1 x) {:x (c/pred-spec #'integer?)} (c/class-spec Number)
+    '(+ 1 x) {:x (c/pred-spec #'integer?)} (c/or- [(c/class-spec Long) (c/class-spec BigInt)])
 
     '(+ 1.0 x) {:x (c/pred-spec #'int?)} (c/class-spec Double/TYPE)
     '(+ 1.0 x) {:x (c/class-spec BigInt)} (c/class-spec Double/TYPE)

@@ -225,12 +225,11 @@
   (testing "should fail"
     (are [spec val] (c/invalid? (c/conform (c/parse-spec spec) val))
       (c/pred-spec #'integer?) (c/value "foo")
-      (c/pred-spec #'float?) (c/value 3)
-      ;;(s/spec #(< % 10)) 12
       (c/pred-spec #'integer?) (c/parse-spec #'keyword?)
       (c/pred-spec #'integer?) (c/parse-spec (s/or :int integer? :str string?))
       (c/pred-spec #'even?) (c/unknown {:message ""})
       (c/parse-spec (s/and integer? even?)) (c/value 13)
+      (c/parse-spec even?) (c/pred-spec #'integer?)
       (c/parse-spec (s/and integer? even?)) (c/pred-spec #'integer?)
       (s/* integer?) (c/value ["foo"])
       (s/+ integer?) (c/value [])
@@ -460,12 +459,6 @@
       ;; (c/pred-spec #'int?) (c/cat- [(c/cat- [(c/value 3)])])
       )))
 
-(deftest spec->class
-  (are [spec expected] (= expected (c/spec->class spec))
-    (c/pred-spec #'string?) String
-    (c/class-spec String) String
-    (c/and-spec [(c/pred-spec #'string?) (c/class-spec String)]) String))
-
 (deftest fnspec
   (testing "truthy"
     (are [spec args] (c/valid? spec args)
@@ -477,3 +470,8 @@
     (are [spec args] (not (c/valid? spec args))
       (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/cat- [(c/pred-spec #'integer?)]) nil)
       (c/fn-spec nil (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) nil nil))))
+
+(deftest more-specific-spec
+  (are [a b] (= true (c/more-specific-spec? a b))
+    (c/class-spec Long) (c/class-spec Number)
+    (c/or- [(c/class-spec Long) (c/class-spec Integer)]) (c/class-spec Number)))

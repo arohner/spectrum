@@ -66,6 +66,9 @@
    ([] clojure.lang.PersistentQueue/EMPTY)
    ([coll] (reduce conj clojure.lang.PersistentQueue/EMPTY coll)))
 
+(defn conj-seq [x coll]
+  (reduce (fn [x a]
+            (conj x a)) x coll))
 
 (defmethod print-method clojure.lang.PersistentQueue
   [q ^java.io.Writer w]
@@ -83,3 +86,9 @@
               (symbol? x) x
               :else (assert false)) ]
     `(s/fdef ~sym :args (s/cat :x any?) :ret boolean?)))
+
+(defn validate! [s args]
+  (if-not (s/valid? s args)
+    (throw (ex-info "spec does not conform" {:spec s
+                                             :args args
+                                             :data (s/explain-data s args)}))))
