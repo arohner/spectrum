@@ -42,7 +42,7 @@
   {:post [%]}
   (get primitive->class- p))
 
-(s/fdef primitive->class :args (s/cat :p class?) :ret class?)
+(s/fdef maybe-primitive->class :args (s/cat :p class?) :ret class?)
 (defn maybe-primitive->class [p]
   (if (primitive? p)
     (primitive->class p)
