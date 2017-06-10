@@ -615,9 +615,17 @@
                                          (c/value nil)))))
 (defmethod flow* :try [a path]
   (let [a (flow-walk a path)
-        a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (c/or- (map (fn [e]
-                                                     (::ret-spec e)) (concat (:body a*) (:catches a*)))))))
+        a* (get-in a path)
+        body (:body a*)
+        _ (assert (or (map? body) (vector? body)))
+        body (if (map? body)
+               [body]
+               body)
+        catches (:catches a*)]
+    (assert (sequential? body))
+    (assert (sequential? catches))
+    (assert (every? ::ret-spec (concat body catches)))
+    (assoc-in a (conj path ::ret-spec) (c/or- (map ::ret-spec (concat body catches))))))
 
 (defmethod flow* :instance? [a path]
   (let [a (flow-walk a path)
