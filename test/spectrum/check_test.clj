@@ -32,7 +32,8 @@
       (is (seq (st/check ns))))))
 
 ;; can't check anything with defprotocol/defrecord yet, requires pods.
-(def self-checking-nses ['spectrum.conform
+(def self-checking-nses ['spectrum.java
+                         'spectrum.conform
                          'spectrum.flow
                          'spectrum.ann
                          'spectrum.check])
