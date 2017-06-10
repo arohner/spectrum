@@ -1876,11 +1876,9 @@
 (defn array-of [p]
   (map->ArrayOf {:p p}))
 
-
-
 (defmethod parse-spec* 'clojure.spec/nilable [x]
   (let [s (second x)]
-    (or- [s (parse-spec #'nil?)])))
+    (or- [(parse-spec s) (parse-spec #'nil?)])))
 
 (defmethod parse-spec* 'clojure.spec/or [x]
   (let [pairs (partition 2 (rest x))
