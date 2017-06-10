@@ -158,7 +158,8 @@
     (c/or- [(c/pred-spec #'int?) (flow/recur-form 'x)]) (c/or- [(c/pred-spec #'int?)])
 
     (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)])
-    (c/or- []) (c/or- [])))
+    (c/or- []) (c/or- [])
+    (c/or- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (flow/recur-form (c/cat- [(c/pred-spec #'int?)]) )]) (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])))
 
 (deftest maybe-disj-works
   (are [spec pred expected] (= expected (flow/maybe-disj-pred spec pred))

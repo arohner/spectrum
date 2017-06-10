@@ -183,7 +183,7 @@
          (c/keys-spec {::integer (c/value 3)} {} {} {}) (c/value {::integer 3}) (c/value {::integer 3})
          (s/keys :req [::integer]) (c/keys-spec {::integer (c/value 3)} {} {} {}) (c/keys-spec {::integer (c/value 3)} {} {} {})
 
-         (s/keys :req [::integer] :opt-un [::string]) (c/keys-spec {::integer 3 ::string "foo"} {} {} {}) (c/keys-spec {::integer 3 ::string "foo"} {} {} {})
+         (s/keys :req [::integer] :opt-un [::string]) (c/keys-spec {::integer (c/value 3) ::string (c/value "foo")} {} {} {}) (c/keys-spec {::integer (c/value 3) ::string (c/value "foo")} {} {} {})
 
          (s/keys :req [::integer] :opt-un [::string]) (c/parse-spec (s/keys :req [::integer ::string])) (c/parse-spec (s/keys :req [::integer ::string]))
 

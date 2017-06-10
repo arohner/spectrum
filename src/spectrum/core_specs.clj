@@ -98,5 +98,6 @@
 
 (s/fdef clojure.core/with-meta :args (s/cat :x imeta? :m (s/nilable map?)) :ret imeta?)
 
+(predicate-spec clojure.spec/spec?)
 
 ;;; core annotations

@@ -37,7 +37,8 @@
 
 (defprotocol Compound
   (map- [spec f])
-  (filter- [spec f]))
+  (filter- [spec f])
+  (new- [spec ps]))
 
 (predicate-spec compound-spec?)
 (defn compound-spec? [x]
@@ -1388,7 +1389,9 @@
     (->> spec
          :ps
          (map parse-spec)
-         (filter f))))
+         (filter f)))
+  (new- [this ps]
+    (and-spec (map parse-spec ps))))
 
 (extend-regex AndSpec)
 
@@ -1454,12 +1457,14 @@
     (let [kps (->> (mapv vector (or (:ks this) (repeat nil)) (:ps this))
                    (map (fn [[k p]]
                           [k (f (parse-spec p))])))]
-      (or-spec (map first kps) (map second kps))))
+      (map second kps)))
   (filter- [this f]
     (let [kps (->> (mapv vector (or (:ks this) (repeat nil)) (:ps this))
                    (filter (fn [[k p]]
                              (f (parse-spec p)))))]
-      (or-spec (map first kps) (map second kps))))
+      (map second kps)))
+  (new- [this ps]
+    (or- ps))
   KeywordInvoke
   (keyword-invoke [this args]
     (->> (:ps this)
@@ -1472,7 +1477,6 @@
   Invoke
   (invoke [this args]
     (unknown-invoke this args)))
-
 
 (extend-regex OrSpec)
 
@@ -1494,10 +1498,11 @@
   [s pred]
   (->> s
        (map* parse-spec)
-       (map* (fn [p]
+       (map (fn [p]
                (maybe-or-disj p pred)))
-       (filter* (fn [p]
-                  (not (equivalent? p pred))))))
+       (filter (fn [p]
+                 (not (equivalent? p pred))))
+       (or-)))
 
 (defn maybe-or-disj
   [s pred]
@@ -1916,10 +1921,10 @@
 (defn parse-spec-map [x]
   (let [state (reduce (fn [state [k v]]
                         (cond
-                          (qualified-keyword? k) (assoc-in state [:req k] v)
-                          (simple-keyword? k) (assoc-in state [:req-un k] v))) {:req {}
-                                                                                :req-un {}} x)]
-    (apply keys-spec [(:req state) (:req-un state) {} {}])))
+                          (qualified-keyword? k) (assoc-in state [:req k] (parse-spec v))
+                          (simple-keyword? k) (assoc-in state [:req-un k] (parse-spec v)))) {:req {}
+                                                                                             :req-un {}} x)]
+    (keys-spec (:req state) (:req-un state) {} {})))
 
 (defmethod parse-spec* :coll [x]
   (cond

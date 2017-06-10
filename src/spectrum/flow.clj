@@ -9,7 +9,7 @@
             [spectrum.conform :as c]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j]
-            [spectrum.util :as util :refer (print-once protocol? namespace?)])
+            [spectrum.util :as util :refer (print-once protocol? namespace? validate!)])
   (:import clojure.lang.Var))
 
 (declare recur?)
@@ -179,9 +179,7 @@
               _ (assert a*)
               a (flow* a path)
               a* (get-in a path)]
-          (when-not (::ret-spec a*)
-            (println "flow-walk: no ret spec" path (:op a*) (:form a*)))
-          (assert (::ret-spec a*))
+          (validate! ::c/spect-like (::ret-spec a*))
           a)))
     (catch Throwable t
       (println "flow-walk exception while walking:" (a-loc-str a) (:form a))
@@ -610,6 +608,7 @@
 (defmethod flow* :catch [a path]
   (let [a (flow-walk a path)
         a* (get-in a path)]
+    (assert (or (map? (:body a*)) (nil? (:body a*))))
     (assoc-in a (conj path ::ret-spec) (if (:body a*)
                                          (-> a* :body ::ret-spec)
                                          (c/value nil)))))
@@ -954,13 +953,10 @@
 (defn strip-control-flow
   "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
   [s]
-  {:post [(s/nilable (c/spect? %))]}
-  (let [s (if (satisfies? c/Compound s)
-            (c/remove* (fn [p] (control-flow? p)) s)
-            s)
-        s (if (satisfies? c/Compound s)
-            (c/map* strip-control-flow s)
-            s)]
+  (if (satisfies? c/Compound s)
+    (let [ps (c/filter* (fn [p] (not (control-flow? p))) s)
+          ps (map strip-control-flow ps)]
+      (c/new- s ps))
     s))
 
 (s/fdef flow-method* :args (s/cat :a ::analysis :path vector? :args (s/nilable c/spect?)))
@@ -974,6 +970,7 @@
         a (flow* a (conj path :body))
         body (get-in a (conj (conj path :body)))
         body-ret-spec (strip-control-flow (::ret-spec body))]
+    (validate! ::c/spect-like body-ret-spec)
     (assoc-in a (conj path ::ret-spec) body-ret-spec)))
 
 (defn flow-method [a path]
