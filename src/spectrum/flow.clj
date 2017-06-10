@@ -986,14 +986,18 @@
   ;; fn arity
   (flow-method a path))
 
+(defn munged-namespaces []
+  (into {} (map (fn [ns]
+                  [(munge ns) ns]) (all-ns))))
+
 (s/fdef protocol-ns :args (s/cat :protocol-class class?) :ret (s/nilable namespace?))
 (defn protocol-ns
   "Return the ns where a protocol is defined"
   [^Class protocol-class]
   (let [segments (re-seq #"[^\.]+" (.getName protocol-class))
-        ns-name (->> segments butlast (str/join ".") symbol)]
-    (when-let [ns (find-ns ns-name)]
-      ns-name)))
+        ns-name (->> segments butlast (str/join "."))]
+    (when-let [ns (get (munged-namespaces) ns-name)]
+      (.name ns))))
 
 (s/fdef protocol-name :args (s/cat :class class?) :ret string?)
 (defn protocol-name

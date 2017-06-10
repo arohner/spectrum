@@ -211,10 +211,14 @@
 (deftest basic-maps
   (is (= [] (check/check-form '(def empty-fn-spec {:args nil, :ret nil, :fn nil})))))
 
+(defprotocol DummyProtocol
+  (foo [this]))
+
 (deftest class-is-protocol
   (are [cls expected] (= expected (flow/class-is-protocol? cls))
     Integer false
-    spectrum.conform.Spect true))
+    spectrum.conform.Spect true
+    spectrum.flow_test.DummyProtocol true))
 
 (deftest method-is-protocol-fn?
   (are [cls method expected] (= expected (flow/class-is-protocol? cls))
