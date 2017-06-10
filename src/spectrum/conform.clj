@@ -1208,13 +1208,10 @@
     (unknown-invoke this args))
   DependentSpecs
   (dependent-specs- [this]
-    (or (some->> this
-                 :cls
-                 ancestors
-                 seq
-                 (mapv class-spec)
-                 (into #{}))
-        #{})))
+    (let [{:keys [cls]} this]
+      (if (= clojure.lang.MapEquivalence cls)
+        #{(class-spec clojure.lang.APersistentMap)}
+        #{}))))
 
 (extend-regex ClassSpec)
 (first-rest-singular ClassSpec)
