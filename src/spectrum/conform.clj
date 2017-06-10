@@ -151,8 +151,14 @@
 ;; parsed into a value (any?)'. That's pretty wide, so this is just
 ;; any?. There may be a narrower type, but I'm not sure what it is.
 
+(predicate-spec form?)
+(defn form? [x]
+  (and (sequential? x)
+       (seq? x)
+       (symbol? (first x))))
+
 ;; a thing that parse-spec will return a valid ::spect on
-(s/def ::spect-like (s/or :spec s/spec? :spect ::spect :key keyword? :sym symbol? :var var?))
+(s/def ::spect-like (s/or :spec s/spec? :spect ::spect :key keyword? :sym symbol? :var var? :form form?))
 
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
 
