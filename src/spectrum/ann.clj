@@ -4,7 +4,7 @@
             [spectrum.data :as data]
             [spectrum.flow :as flow]
             [spectrum.java :as j]
-            [spectrum.util :refer (print-once)])
+            [spectrum.util :refer (print-once validate!)])
   (:import (clojure.lang BigInt
                          Ratio)))
 
@@ -244,10 +244,11 @@
 (defn ann-get [spect args-spect]
   (let [coll (c/first* args-spect)
         key (c/second* args-spect)
-        not-found (c/nth* args-spect 2)
+        not-found (or (c/nth* args-spect 2) (c/value nil))
         ret (cond
-              (and (c/keys-spec? coll) (c/value? key) (keyword? (:v key))) (or (c/keys-get coll (:v key)) not-found)
+              (and (c/value? key) (keyword? (:v key))) (or (c/keys-get coll (c/get-value key)) not-found)
               :else (:ret spect))]
+    (validate! ::c/spect-like ret)
     (assoc spect :ret ret)))
 
 (ann-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)]) ann-get)

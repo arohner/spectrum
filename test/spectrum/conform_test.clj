@@ -475,3 +475,9 @@
   (are [a b] (= true (c/more-specific-spec? a b))
     (c/class-spec Long) (c/class-spec Number)
     (c/or- [(c/class-spec Long) (c/class-spec Integer)]) (c/class-spec Number)))
+
+(deftest keys-get
+  (are [spec key expected] (= expected (c/keys-get spec key))
+    (c/keys-spec {} {:integer (c/value 1)} {} {}) :integer (c/value 1)
+    (c/and-spec [(c/keys-spec {} {:integer (c/value 1)} {} {}) (c/not-spec (c/pred-spec #'seq?))]) :integer (c/value 1)
+    (c/keys-spec {} {:integer (c/value 1)} {} {}) :bogus nil))

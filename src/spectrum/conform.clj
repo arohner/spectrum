@@ -48,6 +48,9 @@
   (dependent-specs- [spec]
     "Extra specs that are true of this spec"))
 
+(defprotocol KeysGet
+  (keys-get [this key]))
+
 (defn dependent-specs? [s]
   (satisfies? DependentSpecs s))
 
@@ -335,6 +338,9 @@
   (first* [this]
     nil)
   (rest* [this]
+    nil)
+  KeysGet
+  (keys-get [this k]
     nil))
 
 (defn known? [x]
@@ -391,7 +397,9 @@
   (return [this]
     this)
   (regex? [this]
-    false))
+    false)
+  (keys-get [this k]
+    nil))
 
 (def spect-regex-impl
   {:derivative spec-dx
@@ -928,7 +936,12 @@
       #{(class-spec (class (:v this)))}))
   WillAccept
   (will-accept [this]
-    #{this}))
+    #{this})
+  KeysGet
+  (keys-get [this k]
+    (if (coll? (:v this))
+      (get (:v this) k)
+      nil)))
 
 (extend-regex Value)
 
@@ -1391,7 +1404,16 @@
          (map parse-spec)
          (filter f)))
   (new- [this ps]
-    (and-spec (map parse-spec ps))))
+    (and-spec (map parse-spec ps)))
+  KeysGet
+  (keys-get [this k]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map (fn [p]
+                (keys-get p k)))
+         (filter identity)
+         (first))))
 
 (extend-regex AndSpec)
 
@@ -1476,7 +1498,15 @@
          (or-)))
   Invoke
   (invoke [this args]
-    (unknown-invoke this args)))
+    (unknown-invoke this args))
+  KeysGet
+  (keys-get [this k]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map keys-get)
+         (distinct)
+         (or-))))
 
 (extend-regex OrSpec)
 
@@ -1544,7 +1574,10 @@
       (condp = t
         :ambiguous :ambiguous
         :truthy :falsey
-        :falsey :truthy))))
+        :falsey :truthy)))
+  KeysGet
+  (keys-get [this k]
+    nil))
 
 (extend-regex NotSpec)
 
@@ -1603,29 +1636,9 @@
          val)
        else))))
 
-(defrecord KeysSpec [req req-un opt opt-un]
-  WillAccept
-  (will-accept [this]
-    #{this})
-  DependentSpecs
-  (dependent-specs- [this]
-    #{(class-spec clojure.lang.PersistentHashMap) (pred-spec #'map?) (pred-spec #'coll?)})
-  Truthyness
-  (truthyness [this]
-    :truthy)
-  KeywordInvoke
-  (keyword-invoke [this args]
-    (let [k (first* args)
-          else (second* args)
-          rest (rest* (rest* args))]
-      (cond
-        rest (invalid {:message (format "keysspec keywordw invoke: too many args:" (print-str this) (print-str args))})
-        else (keyspec-get-key this k else)
-        k (keyspec-get-key this k)
-        :else (invalid {:message "not enough args"}))))
-  Invoke
-  (invoke [this args]
-    (unknown-invoke this args)))
+(defrecord KeysSpec [req req-un opt opt-un])
+
+
 
 (predicate-spec keys-spec?)
 (defn keys-spec? [x]
@@ -1695,6 +1708,36 @@
                                           [(strip-namespace k) s]) opt-un))}))
 
 (extend-type KeysSpec
+  WillAccept
+  (will-accept [this]
+    #{this})
+  DependentSpecs
+  (dependent-specs- [this]
+    #{(class-spec clojure.lang.PersistentHashMap) (pred-spec #'map?) (pred-spec #'coll?)})
+  Truthyness
+  (truthyness [this]
+    :truthy)
+  KeywordInvoke
+  (keyword-invoke [this args]
+    (let [k (first* args)
+          else (second* args)
+          rest (rest* (rest* args))]
+      (cond
+        rest (invalid {:message (format "keysspec keywordw invoke: too many args:" (print-str this) (print-str args))})
+        else (keyspec-get-key this k else)
+        k (keyspec-get-key this k)
+        :else (invalid {:message "not enough args"}))))
+  Invoke
+  (invoke [this args]
+    (unknown-invoke this args))
+  KeysGet
+  (keys-get [this k]
+    (assert (keyword? k))
+    (println "keysspec keys-get" this k)
+    (some->> [:req :req-un :opt :opt-un]
+             (some (fn [key-type]
+                     (get-in this [key-type k])))
+             (parse-spec)))
   Spect
   (conform* [this x]
     (cond
@@ -1710,15 +1753,6 @@
   [ks key]
   (some (fn [key-type]
           (contains? (get ks key-type) key)) [:req :req-un :opt :opt-un]))
-
-(s/fdef keys-get :args (s/cat :ks keys-spec? :key keyword?) :ret (s/nilable any?))
-(defn keys-get
-  "clojure.core/get, for key-spec"
-  [ks key]
-  (some->> [:req :req-un :opt :opt-un]
-           (some (fn [key-type]
-                   (get-in ks [key-type key])))
-           (parse-spec)))
 
 (defrecord CollOfSpec [s kind])
 
