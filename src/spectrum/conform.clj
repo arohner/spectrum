@@ -1085,7 +1085,6 @@
         ;; calling the pred should always be last resort
         ;; TODO remove this, or restrict to only using w/ pure functions. Not technically 'static' analysis.
         (and (conform-pred-args? spec (cat- [x])) (valuey? x)) (do
-                                                                 (println "warning: calling" pred x)
                                                                  (when (pred (get-value x))
                                                                    x)))))
   (explain* [spec path via in x]
@@ -1188,7 +1187,6 @@
   (conform* [this v]
     (let [{:keys [cls]} this
           v-classes (spec->classes v)]
-
       (or
        (when (= Object cls)
          v)
@@ -1420,8 +1418,6 @@
 
 (defmethod parse-spec* 'clojure.spec/and [x]
   (and-spec (rest x)))
-
-(declare or-)
 
 (defrecord OrSpec [ps ks])
 
@@ -1730,7 +1726,6 @@
   KeysGet
   (keys-get [this k]
     (assert (keyword? k))
-    (println "keysspec keys-get" this k)
     (some->> [:req :req-un :opt :opt-un]
              (some (fn [key-type]
                      (get-in this [key-type k])))
