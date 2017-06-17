@@ -755,12 +755,26 @@
       m
       (throw (Exception. (format "Couldn't find method: %s %s %s" cls method spec))))))
 
+(defn class-is-deftype? [cls]
+  (isa? cls clojure.lang.IType))
+
+(defn class-is-defrecord? [cls]
+  (isa? cls clojure.lang.IRecord))
+
+(s/fdef java-spec-with-nil :args (s/cat :x c/class-spec?) :ret c/spect?)
 (defn java-spec-with-nil
   "Java functions are all implicitly (or nil), unless primitive."
   [s]
-  (if (-> s :cls j/primitive?)
-    s
-    (c/or- [s (c/value nil)])))
+  (let [c (:cls s)]
+    (assert (class? c))
+    (if (j/primitive? c)
+      s
+      (c/or- [s (c/value nil)]))))
+
+(s/fdef defrecord-create? :args (s/cat :cls class? :method symbol?) :ret boolean?)
+(defn defrecord-create? [cls method]
+  (and (or (class-is-deftype? cls) (class-is-defrecord? cls))
+       (= method 'create)))
 
 (s/fdef get-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret c/spect?)
 (defn get-java-method-spec
@@ -769,7 +783,10 @@
   (if-let [m (get-conforming-java-method cls method arg-spec)]
     (let [java-args (->> (mapv resolve-java-class-spec (:parameter-types m))
                          (mapv java-spec-with-nil))
-          ret (-> m :return-type resolve-java-class-spec java-spec-with-nil)]
+          ret (-> m :return-type resolve-java-class-spec)
+          ret (if (defrecord-create? cls method)
+                ret
+                (java-spec-with-nil ret))]
       (c/fn-spec (c/map->RegexCat {:ps java-args
                                    :forms java-args
                                    :ret []})
