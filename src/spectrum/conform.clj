@@ -2417,7 +2417,7 @@
   (let [v (:v spec)]
     (if-let [s (get-var-fn-spec v)]
       (invoke s args)
-      (unknown {:message (format "no spec for %s" v)}))))
+      (unknown {:message (format "value-invoke: no spec for %s" v)}))))
 
 (defmethod value-invoke :fn [spec args]
   (unknown {:message (format "no spec for fn invoke %s" (print-str spec))}))
