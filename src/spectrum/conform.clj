@@ -1169,6 +1169,7 @@
 
    Because specs are more precise than class checks, casting to a class can destroy information. Using this anywhere other than java interop is a code smell."
   [spec]
+  {:post [(s/valid? (s/or :s class? :or-s (s/coll-of class? :into #{})) %)]}
   (cond
     (class-spec? spec) (set [(:cls spec)])
     (and (pred-spec? spec) (data/get-type-transformer (:pred spec))) (set (apply-map maybe-class (data/get-type-transformer (:pred spec))))
