@@ -1,4 +1,4 @@
-(defproject spectrum "0.1.4"
+(defproject spectrum "0.1.5-SNAPSHOT"
   :description "Static 'type' checking for clojure.spec"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
