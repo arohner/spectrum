@@ -29,7 +29,7 @@
 
 
       ;; map
-      '(map inc (range 5)) {} (c/coll-of (c/class-spec Long))
+      '(map inc (range 5)) {} (c/coll-of (c/or- [(c/class-spec Long) (c/class-spec clojure.lang.BigInt)])) ; todo ann range to return more precise types when start & end are known
       '(map even? (range 5)) {} (c/coll-of (c/pred-spec #'boolean?))))
   (testing "falsey"
     (are [form args] (c/invalid? (check/type-of form args))
