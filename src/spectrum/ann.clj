@@ -10,7 +10,7 @@
 
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
-(s/fdef ann :args (s/cat :v var? :f ::transformer) :ret nil?)
+(s/fdef ann :args (s/cat :v var? :f ::transformer) :ret any?)
 (defn ann
   "Register a spec transformer. Takes a var or clojure.reflect.Method, and a transformer function
 
