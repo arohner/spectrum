@@ -8,6 +8,8 @@
             [spectrum.conform :as c]
             [spectrum.core-specs]
             [spectrum.ann :as ann]
+            [spectrum.analyzer :as analyzer]
+            [spectrum.classpath :as classpath]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.flow :as flow]
             [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
@@ -77,6 +79,9 @@
      (binding [*a* a]
        (flow/flow a)))))
 
+(defn analyze-ns-isolated [ns]
+  (classpath/eval-with-isolated-classloader (str `(do (require '[clojure.tools.analyzer.jvm]) (doall (clojure.tools.analyzer.jvm/analyze-ns (quote ~ns)))))))
+
 (defn check [ns]
   (maybe-load-clojure-builtins)
   (println "checking " ns)
@@ -85,6 +90,9 @@
    (map flow/flow)
    (mapcat check*)
    (filter identity)))
+
+(defn check-isolated [ns]
+  (classpath/eval-with-isolated-classloader (str `(binding [*warn-on-reflection* true] (require '[spectrum.check]) (spectrum.check/check (quote ~ns))))))
 
 (defn check-common [a]
   (let [ret (::flow/ret-spec a)]
