@@ -520,10 +520,8 @@
              (filter (fn [as]
                        (= (count args) (count as))) (c/all-possible-values (c/cat-sequential (:args spec))))
              [])
-        _ (println "zip-fn:" ss)
         spec* (apply map (fn [& args]
                            (c/or- args)) ss)]
-    (println "spec*" spec*)
     (map (fn [a s]
            (assoc a ::ret-spec s)) args spec*)))
 

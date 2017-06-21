@@ -318,7 +318,7 @@
     (map->Unknown {:form form :a-loc a-loc :message message})))
 
 (defn unknown-invoke [spec args]
-  (unknown {:message (format "don't know how to invoke %s" spec)}))
+  (unknown {:message (format "don't know how to invoke %s" (print-str spec))}))
 
 (extend-type Unknown
   Spect
@@ -1842,7 +1842,7 @@
 (defmulti coll-of-invoke #'coll-of-invoke-dispatch)
 
 (defmethod coll-of-invoke :default [s args]
-  (unknown {:message (format "don't know how to invoke %s" s)}))
+  (unknown {:message (format "don't know how to invoke %s" (print-str s))}))
 
 (defmethod coll-of-invoke :map [s args]
   (let [key (first* args)
@@ -1895,7 +1895,6 @@
 
 (defmethod parse-spec* 'clojure.spec/coll-of [x]
   (parse-coll-of x))
-
 
 (defrecord ArrayOf [p]
   Spect
@@ -1981,7 +1980,7 @@
                 (and (keys-spec? s1) (keys-spec? s2)) (merge-keys [s1 s2])
                 (and (or-spec? s1) (keys-spec? s2)) (merge-or-keys s1 s2)
                 (and (keys-spec? s1) (or-spec? s2)) (merge-or-keys s2 s1)
-                :else (throw (ex-info (str "don't know how to merge:" s1 s2) {:specs [s1 s2]}))))) specs))
+                :else (throw (ex-info (str "don't know how to merge:" (print-str s1) (print-str s2)) {:specs [s1 s2]}))))) specs))
 
 (s/fdef conform-map-of :args (s/cat :m ::spect :v value?) :ret any?)
 (defn conform-map-of [map-of v]
@@ -2436,7 +2435,7 @@
       :else (assert false))))
 
 (defmethod value-invoke :unknown [spec args]
-  (unknown {:message (format "don't know how to invoke %s %s" spec args)}))
+  (unknown {:message (format "don't know how to invoke %s %s" (print-str spec) args)}))
 
 (def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
 
