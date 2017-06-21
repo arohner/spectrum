@@ -411,10 +411,10 @@
     (assoc-in s [:ret] (c/maybe-or-disj (:ret s) (c/value nil)))
     s))
 
-(defn type-case
+(defn type-cond
   "`case for conforming spects. Takes a seq with an even number of values. left hand side values must be spects. Finds the first left hand side value that x conforms to, returns the right-hand side. Throws on no match.
 
-(type-case x
+(type-cond x
  (c/class-spec Long) :long
  (c/class-spec Double) :double)
 
@@ -433,8 +433,6 @@
 (defn big-int? [x]
   (or (instance? clojure.lang.BigInt x)
       (instance? BigInteger x)))
-
-
 
 (defn pred-count
   "Return the number of items in coll that conform to s"
