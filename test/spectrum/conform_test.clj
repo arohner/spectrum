@@ -107,6 +107,7 @@
       (c/class-spec String) (c/class-spec String)
       (c/pred-spec #'class?) (c/class-spec String)
       (c/class-spec Object) (c/value nil)
+      (c/class-spec String) (c/pred-spec #'any?)
 
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/value ["foo" :bar])
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)])

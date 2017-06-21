@@ -1192,6 +1192,8 @@
        (when (= Object cls)
          v)
        (when (and (seq v-classes) (every? (fn [vc] (isa-boxed? vc cls)) v-classes))
+         v)
+       (when (= v (pred-spec #'any?))
          v))))
   WillAccept
   (will-accept [this]
