@@ -1990,13 +1990,15 @@
                        (valid? (:vs map-of) v)) (vals (:v v))))
     v))
 
-(defrecord MapOf [ks vs]
+(defrecord MapOf [ks vs])
+
+(extend-type MapOf
   Spect
-  (conform* [this x]
+  (conform* [{:keys [ks vs] :as this} x]
     (cond
       (instance? MapOf x) (when (and (valid? (parse-spec ks) (parse-spec (:ks x)))
                                      (valid? (parse-spec vs) (parse-spec (:vs x))))
-                                 x)
+                            x)
       (value? x) (conform-map-of this x)
       :else false))
   DependentSpecs
@@ -2006,8 +2008,17 @@
   (truthyness [this]
     :truthy)
   Invoke
-  (invoke [this args]
-    (unknown-invoke this args)))
+  (invoke [{:keys [ks vs] :as this} args]
+    (assert (cat-spec? args))
+    (let [arg-count (count (:ps args))
+          k (first* args)
+          else (or (second* args) (value nil))]
+      (if (contains? #{1 2} arg-count)
+        (if (apply-some (fn [k s]
+                          (valid? s k)) k (parse-spec ks))
+          (or- [(parse-spec vs) else])
+          else)
+        (invalid {:message (format "wrong number of args passed to %s, got %s" (print-str this) (print-str args))})))))
 
 (extend-regex MapOf)
 (will-accept-this MapOf)
