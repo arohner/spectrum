@@ -1,6 +1,6 @@
 (ns spectrum.data
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [spectrum.util :refer (print-once protocol?)]))
 
 (defonce var-analysis

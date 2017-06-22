@@ -5,9 +5,9 @@
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer (defspec)]
             [clojure.tools.analyzer.jvm :as ana.jvm]
-            [clojure.spec :as s]
-            [clojure.spec.gen :as spec-gen]
-            [clojure.spec.test]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as spec-gen]
+            [clojure.spec.test.alpha]
             [spectrum.ann :as ann]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
@@ -21,7 +21,7 @@
                              OrSpec)
            [clojure.lang BigInt PersistentHashMap Ratio Seqable]))
 
-(clojure.spec.test/instrument)
+(clojure.spec.test.alpha/instrument)
 
 (check/ensure-analysis 'spectrum.analyzer-spec)
 

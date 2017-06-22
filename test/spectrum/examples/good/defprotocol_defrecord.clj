@@ -1,5 +1,5 @@
 (ns spectrum.examples.good.defprotocol-defrecord
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (defprotocol Foo
   (foo [this x]))

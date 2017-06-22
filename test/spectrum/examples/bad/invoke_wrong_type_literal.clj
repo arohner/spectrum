@@ -1,5 +1,5 @@
 (ns spectrum.examples.bad.invoke-wrong-type-literal
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (s/fdef foo :args (s/cat :x keyword?) :ret string?)
 

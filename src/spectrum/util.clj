@@ -1,6 +1,6 @@
 (ns spectrum.util
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
-            [clojure.spec :as s])
+            [clojure.spec.alpha :as s])
   (:import clojure.lang.Var))
 
 (defn literal? [x]

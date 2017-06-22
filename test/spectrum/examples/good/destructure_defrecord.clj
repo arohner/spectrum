@@ -1,5 +1,5 @@
 (ns spectrum.examples.good.destructure-defrecord
-  (:require [clojure.spec :as s]
+  (:require [clojure.spec.alpha :as s]
             [spectrum.ann :as ann]))
 
 (s/def ::a integer?)

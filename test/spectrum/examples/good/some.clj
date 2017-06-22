@@ -1,5 +1,5 @@
 (ns spectrum.examples.good.some
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (s/fdef foo :args (s/cat ) :ret (s/coll-of integer?))
 (defn foo []

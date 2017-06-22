@@ -1,5 +1,5 @@
 (ns spectrum.examples.good.if
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (s/fdef if-no-else :args (s/cat :x string?) :ret string?)
 (defn if-no-else [x]

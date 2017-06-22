@@ -1,5 +1,5 @@
 (ns spectrum.examples.bad.if-return
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 ;; if should return (or int? string?), falsifying :ret string?
 

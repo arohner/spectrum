@@ -1,6 +1,6 @@
 (ns spectrum.conform-test
-  (:require [clojure.spec :as s]
-            [clojure.spec.test]
+  (:require [clojure.spec.alpha :as s]
+            [clojure.spec.test.alpha]
             [clojure.test :refer :all]
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.conform :as c]
@@ -8,7 +8,7 @@
             [spectrum.flow :as flow])
   (:import clojure.lang.Keyword))
 
-(clojure.spec.test/instrument)
+(clojure.spec.test.alpha/instrument)
 
 (s/def ::integer integer?)
 (s/def ::string string?)
@@ -66,9 +66,9 @@
       (is (= (c/pred-spec #'boolean?)) (:ret fs)))
 
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?)))]
-      (is (nil? (:ret fs)))))
+      (is (= (c/pred-spec #'any?) (:ret fs)))))
   (testing "seq-of"
-    (is (= (c/pred-spec #'seqable?) (-> (c/parse-spec '(clojure.spec/* clojure.core/seqable?)) :ps first c/parse-spec)))))
+    (is (= (c/pred-spec #'seqable?) (-> (c/parse-spec '(clojure.spec.alpha/* clojure.core/seqable?)) :ps first c/parse-spec)))))
 
 (deftest any-spec-works
   (testing "truthy"
@@ -399,7 +399,7 @@
       #'str)))
 
 (deftest multispecs
-  (is (c/equivalent? (c/parse-spec (s/nilable (s/spec ::ana.jvm/analysis))) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
+  (is (c/equivalent? (c/or- [(c/parse-spec (s/spec ::ana.jvm/analysis)) (c/value nil)]) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
   (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second))))
 
 (deftest will-accept-works
@@ -440,15 +440,13 @@
   (testing "truthy"
     (are [spec args expected] (= expected (c/invoke (c/parse-spec spec) args))
       (c/pred-spec #'int?) (c/cat- [(c/value 3)]) (c/value true)
-      (s/map-of integer? string?) (c/cat- []) (c/invalid {:message "not enough args to invoke"})
+
       (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?)]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
-
       (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'keyword?)]) (c/or- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)])
-
       (s/map-of integer? string?) (c/cat- [(c/or- [(c/pred-spec #'integer?) (c/value nil)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
       (s/map-of integer? string?) (c/cat- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
-
       (s/map-of integer? string?) (c/cat- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
+      (s/map-of integer? string?) (c/cat- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/pred-spec #'keyword?)
 
       (c/value #'string?) (c/cat- [(c/value "foo")]) (c/value true)
       (c/pred-spec #'float?) (c/cat- [(c/value 3)]) (c/value false)
@@ -456,8 +454,10 @@
       (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)))
 
   (testing "falsey"
-    (are [spec args] (c/invalid? (c/invoke spec args))
+    (are [spec args] (c/invalid? (c/invoke (c/parse-spec spec) args))
       (c/value 1) (c/cat- [(c/value 2)])
+      (s/map-of integer? string?) (c/cat- [])
+      (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?) (c/pred-spec #'integer?)])
       ;; (c/pred-spec #'int?) (c/cat- [(c/cat- [(c/value 3)])])
       )))
 

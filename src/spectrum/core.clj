@@ -1,5 +1,5 @@
 (ns spectrum.core
-  (:require [clojure.spec :as s]
+  (:require [clojure.spec.alpha :as s]
             [spectrum.conform :as c]
             [spectrum.java :as j])
   (:import clojure.lang.Namespace))

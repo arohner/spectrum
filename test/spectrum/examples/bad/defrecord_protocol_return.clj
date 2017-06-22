@@ -1,5 +1,5 @@
 (ns spectrum.examples.bad.defrecord-protocol-return
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (defprotocol Foo
   (foo [x]))

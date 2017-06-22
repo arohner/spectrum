@@ -2,7 +2,7 @@
   (:require [clojure.pprint :as pprint :refer (pprint)]
             [clojure.reflect :as reflect]
             [clojure.string :as str]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]

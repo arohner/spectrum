@@ -1,5 +1,5 @@
 (ns spectrum.examples.bad.multi-method-bad-return
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (s/fdef foo :args (s/cat :x any?) :ret string?)
 

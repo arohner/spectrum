@@ -1,6 +1,6 @@
 (ns spectrum.core-specs
   (:require [clojure.core :as core]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [spectrum.ann :as ann]
             [spectrum.util :refer (protocol? predicate-spec)])
   (:import (java.lang Iterable)
@@ -98,6 +98,6 @@
 
 (s/fdef clojure.core/with-meta :args (s/cat :x imeta? :m (s/nilable map?)) :ret imeta?)
 
-(predicate-spec clojure.spec/spec?)
+(predicate-spec clojure.spec.alpha/spec?)
 
 ;;; core annotations

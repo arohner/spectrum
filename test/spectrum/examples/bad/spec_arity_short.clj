@@ -1,5 +1,5 @@
 (ns spectrum.examples.bad.spec-arity-short
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 
 ;; fn takes two args, spec takes one.

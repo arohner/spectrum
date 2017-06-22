@@ -2,8 +2,8 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer :all]
             [clojure.tools.namespace.find :as find]
-            [clojure.spec :as s]
-            [clojure.spec.test :as spec-test]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.test.alpha :as spec-test]
             [spectrum.conform :as c]
             [spectrum.check :as st]
             [spectrum.flow :as flow]))

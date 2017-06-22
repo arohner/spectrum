@@ -1,6 +1,6 @@
 (ns spectrum.integration-test
   (:require [clojure.test :refer :all]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [spectrum.conform :as c]
             [spectrum.check :as check]))
 

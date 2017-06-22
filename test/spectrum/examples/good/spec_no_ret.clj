@@ -1,5 +1,5 @@
 (ns spectrum.examples.good.spec-no-ret
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 ;; no :ret, should get no error
 (s/fdef foo :args (s/cat :x string?))

@@ -1,5 +1,5 @@
 (ns spectrum.ann
-  (:require [clojure.spec :as s]
+  (:require [clojure.spec.alpha :as s]
             [spectrum.conform :as c]
             [spectrum.data :as data]
             [spectrum.flow :as flow]

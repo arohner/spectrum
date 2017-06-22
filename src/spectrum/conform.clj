@@ -1,8 +1,8 @@
 (ns spectrum.conform
   (:require [clojure.core.memoize :as memo]
             [clojure.reflect :as reflect]
-            [clojure.spec :as s]
-            [clojure.spec.gen :as gen]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
             [spectrum.util :refer (fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq)]
@@ -799,7 +799,7 @@
 (defn parse-spec*-dispatch [x]
   (cond
     (s/spec? x) :spec
-    (s/regex? x) (:clojure.spec/op x)
+    (s/regex? x) (::s/op x)
     (spect? x) :literal
     (symbol? x) :fn-sym
     (var? x) :var
@@ -1240,24 +1240,24 @@
 (defmethod parse-spec* 'var [x]
   (parse-spec* (second x)))
 
-(defmethod parse-spec* 'clojure.spec/spec [x]
+(defmethod parse-spec* `s/spec [x]
   (spec-spec (parse-spec* (second x))))
 
-(defmethod parse-spec* :clojure.spec/pcat [x]
+(defmethod parse-spec* ::s/pcat [x]
   (map->RegexCat {:ks (:ks x)
                   :ps (mapv (fn [[form pred]]
-                              (if (:clojure.spec/op pred)
+                              (if (::s/op pred)
                                 pred
                                 form)) (map vector (:forms x) (:ps x)))
                   :forms (:forms x)
                   :ret (:ret x)}))
 
-(defmethod parse-spec* :clojure.spec/accept [x]
+(defmethod parse-spec* ::s/accept [x]
   (accept (if (= (:ret x) ::s/nil)
             (value nil)
             (:ret x))))
 
-(defmethod parse-spec* 'clojure.spec/cat [x]
+(defmethod parse-spec* `s/cat [x]
   (let [pairs (->> x rest (partition 2))
         ks (map first pairs)
         ps (map second pairs)]
@@ -1266,7 +1266,7 @@
                     :forms ps
                     :ret {}})))
 
-(defmethod parse-spec* :clojure.spec/rep [x]
+(defmethod parse-spec* ::s/rep [x]
   (let [forms (if (vector? (:forms x))
                 (:forms x)
                 [(:forms x)])]
@@ -1276,7 +1276,7 @@
                     :ret []
                     :splice (:splice x)})))
 
-(defmethod parse-spec* :clojure.spec/rep [x]
+(defmethod parse-spec* ::s/rep [x]
   (let [forms (if (vector? (:forms x))
                 (:forms x)
                 [(:forms x)])]
@@ -1286,14 +1286,14 @@
                     :ret []
                     :splice (:splice x)})))
 
-(defmethod parse-spec* 'clojure.spec/* [x]
+(defmethod parse-spec* `s/* [x]
   (let [forms (rest x)]
     (map->RegexSeq {:ps forms
                     :forms forms
                     :ret []
                     :splice false})))
 
-(defmethod parse-spec* :clojure.spec/alt [x]
+(defmethod parse-spec* ::s/alt [x]
   ;; evaled alt
   (let [pairs (map vector (:ps x) (:forms x))
         forms (map (fn [[p f]]
@@ -1313,11 +1313,11 @@
                     :forms forms
                     :ps forms})))
 
-(defmethod parse-spec* 'clojure.spec/alt [x]
+(defmethod parse-spec* `s/alt [x]
   ;; literal alt form
   (parse-literal-alt x))
 
-(defmethod parse-spec* 'clojure.spec/? [x]
+(defmethod parse-spec* `s/? [x]
   (map->RegexAlt {:ps [(second x) (accept (value nil))]}))
 
 (defn and-conform-literal [and-s x]
@@ -1419,7 +1419,7 @@
 (defn and-conj [s x]
   (and-spec (conj (:ps s) x)))
 
-(defmethod parse-spec* 'clojure.spec/and [x]
+(defmethod parse-spec* `s/and [x]
   (and-spec (rest x)))
 
 (defrecord OrSpec [ps ks])
@@ -1542,7 +1542,7 @@
   (every? (fn [p]
             (apply f p args)) (:ps or)))
 
-(defmethod parse-spec* 'clojure.spec/or [x]
+(defmethod parse-spec* `s/or [x]
   (let [pairs (map vec (partition 2 (rest x)))
         ks (map first pairs)
         ps (map second pairs)]
@@ -1604,7 +1604,7 @@
       (tuple-spec r)
       nil)))
 
-(defmethod parse-spec* 'clojure.spec/tuple [x]
+(defmethod parse-spec* `s/tuple [x]
   (let [preds (rest x)]
     (map->TupleSpec {:ps (vec preds)})))
 
@@ -1890,10 +1890,10 @@
         opts (apply hash-map (rest args))]
     (map->CollOfSpec (merge {:s s} opts))))
 
-(defmethod parse-spec* 'clojure.spec/every [x]
+(defmethod parse-spec* `s/every [x]
   (parse-coll-of x))
 
-(defmethod parse-spec* 'clojure.spec/coll-of [x]
+(defmethod parse-spec* `s/coll-of [x]
   (parse-coll-of x))
 
 (defrecord ArrayOf [p]
@@ -1915,18 +1915,18 @@
 (defn array-of [p]
   (map->ArrayOf {:p p}))
 
-(defmethod parse-spec* 'clojure.spec/nilable [x]
+(defmethod parse-spec* `s/nilable [x]
   (let [s (second x)]
     (or- [(parse-spec s) (parse-spec #'nil?)])))
 
-(defmethod parse-spec* 'clojure.spec/or [x]
+(defmethod parse-spec* `s/or [x]
   (let [pairs (partition 2 (rest x))
         keys (mapv first pairs)
         forms (mapv second pairs)]
     (map->OrSpec {:ks keys
                   :ps forms})))
 
-(defmethod parse-spec* 'clojure.spec/keys [x]
+(defmethod parse-spec* `s/keys [x]
   (let [args (->> (rest x)
                   (partition 2)
                   (map (fn [[key-type specs]]
@@ -2016,23 +2016,23 @@
   (map->MapOf {:ks key-pred
                :vs val-pred}))
 
-(defmethod parse-spec* 'clojure.spec/map-of [x]
+(defmethod parse-spec* `s/map-of [x]
   (let [k (nth x 1)
         v (nth x 2)]
     (map-of k v)))
 
-(defmethod parse-spec* 'clojure.spec/merge [x]
+(defmethod parse-spec* `s/merge [x]
   (apply merge-specs (rest x)))
 
-(defmethod parse-spec* 'clojure.spec/merge-spec-impl [x]
+(defmethod parse-spec* `s/merge-spec-impl [x]
   (let [[forms preds & _] (rest x)
         forms (second forms)]
     (merge-keys forms)))
 
-(defmethod parse-spec* 'clojure.spec/conformer [x]
+(defmethod parse-spec* `s/conformer [x]
   (value true))
 
-(defmethod parse-spec* 'clojure.spec/nonconforming [x]
+(defmethod parse-spec* `s/nonconforming [x]
   (parse-spec* (second x)))
 
 (defrecord FnSpec [args ret fn var])
@@ -2167,7 +2167,7 @@
   (truthyness [this]
     :truthy))
 
-(defmethod parse-spec* 'clojure.spec/fspec [x]
+(defmethod parse-spec* `s/fspec [x]
   (let [pairs (->> x rest (partition 2))
         pairs (map (fn [[k p]]
                      (when p
@@ -2311,7 +2311,7 @@
         (invalid {:message (format "transformed fn must conform to original spec. original: %s  with args %s transformed: %s" (print-str spec) (print-str args) (print-str spec*))})))
     spec))
 
-(defmethod parse-spec* 'clojure.spec/multi-spec [x]
+(defmethod parse-spec* `s/multi-spec [x]
   (let [retag (nth x 2)
         retag (cond
                 (keyword? retag) retag
@@ -2321,11 +2321,11 @@
     (multispec-default-spec (multispec method retag))))
 
 (extend-protocol Spect
-  clojure.spec.Spec
+  clojure.spec.alpha.Spec
   (conform* [spec x]
     (conform* (parse-spec spec) (parse-spec x))))
 
-(extend-type clojure.spec.Spec
+(extend-type clojure.spec.alpha.Spec
   Spect
   (conform* [spec x]
     (conform* (parse-spec* spec) x)))

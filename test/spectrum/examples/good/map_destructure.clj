@@ -1,5 +1,5 @@
 (ns spectrum.examples.good.map-destructure
-  (:require [clojure.spec :as s]))
+  (:require [clojure.spec.alpha :as s]))
 
 (s/def ::message string?)
 
