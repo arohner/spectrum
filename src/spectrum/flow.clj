@@ -16,6 +16,7 @@
 (declare recur?)
 (declare find-binding)
 
+(def ^:dynamic *inferring?* false)
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
 
 (s/def ::args ::c/spect)
@@ -240,8 +241,10 @@
         v (:var a*)
         ret-spec (if-let [s (c/get-var-fn-spec v)]
                    s
-                   (if-let [a (data/get-var-analysis v)]
-                     (infer a)
+                   (if *inferring?*
+                     (if-let [a (data/get-var-analysis v)]
+                       (infer a)
+                       (c/value @(:var a*)))
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
