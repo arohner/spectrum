@@ -318,7 +318,7 @@
     (map->Unknown {:form form :a-loc a-loc :message message})))
 
 (defn unknown-invoke [spec args]
-  (unknown {:message (format "don't know how to invoke %s" (print-str spec))}))
+  (unknown {:message (format "don't know how to invoke %s with %s" (print-str spec) (print-str args))}))
 
 (extend-type Unknown
   Spect
