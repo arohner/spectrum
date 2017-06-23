@@ -47,11 +47,13 @@
                       #'map?
                       #'number?
                       #'nil?
+                      #'qualified-keyword?
                       #'ratio?
                       #'seq?
                       #'set?
                       #'string?
                       #'symbol?
+                      #'simple-symbol?
                       #'var?
                       #'vector?])
 
