@@ -796,7 +796,7 @@
     (s/spec? x) :spec
     (s/regex? x) (::s/op x)
     (spect? x) :literal
-    (symbol? x) :fn-sym
+    (symbol? x) :sym
     (var? x) :var
     (fn-literal? x) :fn-literal
     (keyword? x) :keyword
@@ -1213,11 +1213,12 @@
 (extend-regex ClassSpec)
 (first-rest-singular ClassSpec)
 
-(defmethod parse-spec* :fn-sym [x]
+(defmethod parse-spec* :sym [x]
   (let [v (resolve x)]
-    (assert v (format "couldn't resolve %s" x))
-    (map->PredSpec {:pred v
-                    :form (symbol (str (.ns ^Var v)) (str (.sym ^Var v)))})))
+    (if v
+      (map->PredSpec {:pred v
+                      :form (symbol (str (.ns ^Var v)) (str (.sym ^Var v)))})
+      (value x))))
 
 (defmethod parse-spec* :fn-literal [x]
   (map->PredSpec {:pred (eval x)
