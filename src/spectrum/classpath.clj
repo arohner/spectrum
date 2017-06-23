@@ -21,7 +21,7 @@
             (finally
              (.setContextClassLoader (Thread/currentThread) cl#))))))
 
-(defn- invoke-in [cl class-method signature & params]
+(defn- invoke-in [^ClassLoader cl class-method signature & params]
   (let [class     (.loadClass cl (namespace class-method))
         signature (into-array Class (or signature []))
         method    (.getDeclaredMethod class (name class-method) signature)]
