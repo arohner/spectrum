@@ -1249,6 +1249,15 @@
                   :forms (:forms x)
                   :ret (:ret x)}))
 
+(defmethod parse-spec* `s/+ [x]
+  (let [forms (rest x)
+        p (first forms)]
+    (assert (= 1 (count forms)))
+    (map->RegexCat {:forms forms
+                    :ps [(parse-spec p) (regex-seq p)]
+                    :splice true
+                    :ret []})))
+
 (defmethod parse-spec* ::s/accept [x]
   (accept (if (= (:ret x) ::s/nil)
             (value nil)
