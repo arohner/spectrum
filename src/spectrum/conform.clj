@@ -1041,7 +1041,7 @@
           (if (var? (:pred s))
             (assoc fnspec :var (:pred s))
             fnspec))
-        (invalid {:message (format "no spec for %s used as pred-spec" (print-str s))})))
+        (unknown {:message (format "no spec for %s used as pred-spec" (print-str s))})))
     s))
 
 (def any?-form '(clojure.core/fn [x] true))
@@ -2206,12 +2206,14 @@
     (parse-spec (s/spec (:v x)))
     x))
 
-(s/fdef valid-invoke? :args (s/cat :s fn-spec? :args ::spect) :ret boolean?)
+(s/fdef valid-invoke? :args (s/cat :s spect? :args ::spect) :ret boolean?)
 (defn valid-invoke?
   "check that fnspec can be invoked w/ args"
   [spec args]
-  (when (fn-spec? spec)
-    (valid? (:args spec) args)))
+  (cond
+    (unknown? spec) spec
+    (fn-spec? spec) (valid? (:args spec) args)
+    :else (invalid {:message (format "can't invoke %s" spec)})))
 
 (s/fdef conform-pred-args? :args (s/cat :p pred-spec? :x spect?) :ret boolean?)
 (defn conform-pred-args?
