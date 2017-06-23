@@ -177,8 +177,8 @@
     data))
 
 (defn flow-walk-f [a path]
-  (try
-    (let [a* (get-in a path)]
+  (let [a* (get-in a path)]
+    (try
       (assert a*)
       (binding [*a* a*]
         (let [a* (get-in a path)
@@ -186,10 +186,10 @@
               a (flow* a path)
               a* (get-in a path)]
           (validate! ::c/spect-like (::ret-spec a*))
-          a)))
-    (catch Throwable t
-      (println "flow-walk exception while walking:" (a-loc-str a) (:form a))
-      (throw t))))
+          a))
+      (catch Throwable t
+        (println "flow-walk exception while walking:" (a-loc-str a*) (:op a*) (:form a*))
+        (throw t)))))
 
 (s/fdef walk-a :args (s/cat :f fn? :a ::ana.jvm/analysis :path vector?) :ret ::analysis)
 (defn walk-a [f a path]
@@ -512,18 +512,22 @@
                   fn-spec
                   (if f-a
                     (infer a path)))]
-    (assert (c/spect? fn-spec))
-    (assert (c/spect? args-spec))
-    (if (or (and f-a (= :fn (:op f-a)) (invoke-valid-arity? f-a arg-count))
-            (not f-a)
-            (not= :fn (:op f-a)))
-      (if fn-spec
-        (let [a (assoc-in a (conj path ::fn-spec) fn-spec)]
-          (assert (c/spect? fn-spec))
-          (assert (c/spect? args-spec))
-          (assoc-in a (conj path ::ret-spec) (c/invoke fn-spec args-spec)))
-        (assoc-in a (conj path ::ret-spec) (c/unknown {:message (format "invoke: no spec for %s" (:var (:fn a*)))})))
-      (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "invoke: wrong number of args %s" (:form a*))})))))
+    (try
+      (assert (c/spect? fn-spec))
+      (assert (c/spect? args-spec))
+      (if (or (and f-a (= :fn (:op f-a)) (invoke-valid-arity? f-a arg-count))
+              (not f-a)
+              (not= :fn (:op f-a)))
+        (if fn-spec
+          (let [a (assoc-in a (conj path ::fn-spec) fn-spec)]
+            (assert (c/spect? fn-spec))
+            (assert (c/spect? args-spec))
+            (assoc-in a (conj path ::ret-spec) (c/invoke fn-spec args-spec)))
+          (assoc-in a (conj path ::ret-spec) (c/unknown {:message (format "invoke: no spec for %s" (:var (:fn a*)))})))
+        (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "invoke: wrong number of args %s" (:form a*))})))
+      (catch Exception e
+        (println "flow :invoke while walking:" (:form a*) (:args a*) (a-loc-str a))
+        (throw e)))))
 
 (defn zip-fn-params
   "Given an fnspec and the untyped args to an invoke, bind specs. Returns nil on failure"
