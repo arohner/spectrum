@@ -1,5 +1,6 @@
 (ns spectrum.flow
   (:require [clojure.core.memoize :as memo]
+            [clojure.core.match :refer [match]]
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.reflect :as reflect]
             [clojure.set :as set]
@@ -957,26 +958,39 @@
               false)))))
     false))
 
+(def macro-form-spec (c/pred-spec #'any?))
+(def macro-env-spec (c/or- [(c/map-of (c/pred-spec symbol?) (c/class-spec clojure.lang.Compiler$LocalBinding)) (c/value nil)]))
+
 (s/fdef destructure-fn-params :args (s/cat :params ::ana.jvm/bindings :spec ::c/spect) :ret ::ana.jvm/bindings)
 (defn destructure-fn-params
   "Given a spect and ana.jvm/fn-method params, update params to include spec"
-  [params spec]
-  {:post [(every? (fn [p] (c/spect? (::ret-spec p))) %)]}
-  (if (arity-conform? spec params)
-    (loop [ret []
-           params params
-           spec spec]
-      (if (and (seq params)
-               spec)
-        (let [param (first params)
-              s (c/first* spec)]
-          (assert (c/spect? s))
-          (if (:variadic? param)
-            (conj ret (assoc param ::ret-spec (c/rest* spec)))
-            (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
-        ret))
-    (mapv (fn [p]
-            (assoc p ::ret-spec (c/unknown {:form (:name p) :message "destructure failed"}))) params)))
+  ([params spec macro?]
+   {:post [(do (println "destructure-fn-params:" spec " =>" (map (fn [p] (select-keys p [:name ::ret-spec])) %)) true) (every? (fn [p] (c/spect? (::ret-spec p))) %)]}
+   (let [ret (if macro?
+               [(assoc (first params) ::ret-spec macro-form-spec) (assoc (second params) ::ret-spec macro-env-spec)]
+               [])
+         params (if macro?
+                  (drop 2 params)
+                  params)]
+     (when macro?
+       (println "destructure:" spec params))
+     (if (arity-conform? spec params)
+       (loop [ret ret
+              params params
+              spec spec]
+         (if (and (seq params)
+                  spec)
+           (let [param (first params)
+                 s (c/first* spec)]
+             (assert (c/spect? s))
+             (if (:variadic? param)
+               (conj ret (assoc param ::ret-spec (c/rest* spec)))
+               (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
+           ret))
+       (mapv (fn [p]
+               (assoc p ::ret-spec (c/invalid {:form (:name p) :message "destructure failed"}))) params))))
+  ([params spec]
+   (destructure-fn-params params spec false)))
 
 (s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
 (defn strip-control-flow
@@ -988,11 +1002,19 @@
       (c/new- s ps))
     s))
 
+(s/fdef macro? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
+(defn macro?
+  "True if this analysis is in a macro definition (top level of the form is :def, and the var is a macro)"
+  [a]
+  (match a
+    {:op :do :statements ([{:op :def :var (_ :guard #(-> % meta :macro))} & rest] :seq)} true
+    :else false))
+
 (s/fdef flow-method* :args (s/cat :a ::analysis :path vector? :args (s/nilable c/spect?)))
-(defn flow-method* [a path args]
+(defn flow-method* [a path args-spec]
   (let [a* (get-in a path)
-        a (if args
-            (update-in a (conj path :params) destructure-fn-params args)
+        a (if args-spec
+            (update-in a (conj path :params) destructure-fn-params args-spec (macro? a))
             (update-in a (conj path :params) (fn [params]
                                                (mapv (fn [p]
                                                        (assoc p ::ret-spec (c/unknown {:message (format "method params: no spec for %s" (:form (get-in a (pop path)))) :form (:name p) :a-loc (a-loc a*)}))) params))))
