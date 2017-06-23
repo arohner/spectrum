@@ -777,7 +777,7 @@
              (apply set/union)))
   Truthyness
   (truthyness [this]
-    (let [b (distinct (map truthyness (:ps this)))]
+    (let [b (distinct (map truthyness (map parse-spec (:ps this))))]
       (if (= 1 (count b))
         (first b)
         :ambiguous))))
