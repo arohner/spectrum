@@ -1,7 +1,9 @@
 (ns spectrum.classpath
   (:require [clojure.java.io :as io]
-            [clojure.string :as string])
-  (:import [java.net URL URLClassLoader]))
+            [clojure.string :as string]
+            [cognitect.transit :as t])
+  (:import [java.net URL URLClassLoader]
+           [java.io ByteArrayOutputStream PipedInputStream PipedOutputStream]))
 
 ;; from weavejester/clj-daemon, which doesn't have official releases
 
@@ -28,11 +30,25 @@
 (defn eval-string
   "Eval the given string in a separate classloader."
   [cl string]
-  (println "classpath eval:" string)
+  (println "isolated eval:" string)
   (with-classloader cl
     (let [form   (invoke-in cl 'clojure.lang.RT/readString [String] string)
           result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)]
       (invoke-in cl 'clojure.lang.RT/printString [Object] result))))
+
+(defn eval-transit
+  "Eval the string, return transit. Use for large return values (i.e. analysis results)"
+  [cl string]
+  (with-classloader cl
+    (let [form   (invoke-in cl 'clojure.lang.RT/readString [String] string)
+          result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)
+          baos (java.io.ByteArrayOutputStream.)]
+      (with-open [pipe-in (PipedInputStream.)]
+        (let [pipe-out (PipedOutputStream. pipe-in)
+              writer (t/writer pipe-out :json)
+              reader (t/reader pipe-in :json)
+              f (future (t/write writer result))]
+          (t/read reader))))))
 
 (defn new-isolated-classloader []
   (-> (System/getProperty "java.class.path")

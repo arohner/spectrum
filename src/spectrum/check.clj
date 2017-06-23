@@ -92,7 +92,7 @@
    (filter identity)))
 
 (defn check-isolated [ns]
-  (classpath/eval-with-isolated-classloader (str `(binding [*warn-on-reflection* true] (require '[spectrum.check]) (spectrum.check/check (quote ~ns))))))
+  (classpath/eval-with-isolated-classloader (str `(do (require '[spectrum.check]) (binding [*warn-on-reflection* false] (spectrum.check/check (quote ~ns)))))))
 
 (defn check-common [a]
   (let [ret (::flow/ret-spec a)]
