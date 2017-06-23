@@ -68,7 +68,12 @@
     (let [fs (c/parse-spec (s/fspec :args (s/cat :x string?)))]
       (is (= (c/pred-spec #'any?) (:ret fs)))))
   (testing "seq-of"
-    (is (= (c/pred-spec #'seqable?) (-> (c/parse-spec '(clojure.spec.alpha/* clojure.core/seqable?)) :ps first c/parse-spec)))))
+    (is (= (c/pred-spec #'seqable?) (-> (c/parse-spec '(clojure.spec.alpha/* clojure.core/seqable?)) :ps first c/parse-spec))))
+  (testing "set"
+    (let [s (c/parse-spec #{:foo 3 "bar"})]
+      (is (c/spect? s))
+      (is (c/or-spec? s))
+      (is (every? c/value? (:ps s))))))
 
 (deftest any-spec-works
   (testing "truthy"

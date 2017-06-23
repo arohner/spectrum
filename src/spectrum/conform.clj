@@ -150,11 +150,6 @@
                  (fn []
                    spect-generator)))
 
-;; spect-like is hard. It should be 'anything that can be parsed into
-;; a spect (spec, symbol, var, keyword)' + 'anything that can be
-;; parsed into a value (any?)'. That's pretty wide, so this is just
-;; any?. There may be a narrower type, but I'm not sure what it is.
-
 (predicate-spec form?)
 (defn form? [x]
   (and (sequential? x)
@@ -162,7 +157,7 @@
        (symbol? (first x))))
 
 ;; a thing that parse-spec will return a valid ::spect on
-(s/def ::spect-like (s/or :spec s/spec? :spect ::spect :key keyword? :sym symbol? :var var? :form form?))
+(s/def ::spect-like (s/or :spec s/spec? :spect ::spect :key keyword? :sym symbol? :var var? :form form? :set set?))
 
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
 
@@ -806,6 +801,7 @@
     (fn-literal? x) :fn-literal
     (keyword? x) :keyword
     (and (seq? x) (symbol? (first x))) (first x)
+    (set? x) :set
     (coll? x) :coll
     (class? x) :class
     :else :literal))
@@ -1953,6 +1949,9 @@
                           (simple-keyword? k) (assoc-in state [:req-un k] (parse-spec v)))) {:req {}
                                                                                              :req-un {}} x)]
     (keys-spec (:req state) (:req-un state) {} {})))
+
+(defmethod parse-spec* :set [x]
+  (or- (mapv parse-spec x)))
 
 (defmethod parse-spec* :coll [x]
   (cond
