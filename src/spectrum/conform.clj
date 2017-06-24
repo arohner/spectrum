@@ -691,7 +691,7 @@
     [(seq (filter f ps)) ks forms]))
 
 (defn new-regex-alt [ps ks forms]
-  (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(not (reject? %)))]
+  (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(and (identity %) (not (reject? %))))]
     (when ps
       (let [ret (map->RegexAlt {:ps ps :ks ks :forms forms})]
         (if (nil? pr)
@@ -1251,10 +1251,11 @@
 
 (defmethod parse-spec* `s/+ [x]
   (let [forms (rest x)
-        p (first forms)]
+        p (first forms)
+        p (parse-spec p)]
     (assert (= 1 (count forms)))
     (map->RegexCat {:forms forms
-                    :ps [(parse-spec p) (regex-seq p)]
+                    :ps [p (regex-seq p)]
                     :splice true
                     :ret []})))
 
