@@ -34,14 +34,25 @@
   (is (-> (flow/flow (ana.jvm/analyze '(defn foo [x] (inc x)))) :init :expr ::flow/var))
   (is (-> (flow/flow (ana.jvm/analyze '(def foo (fn [x] (inc x))))) :init ::flow/var)))
 
-;; (deftest destructure-fn-params
-;;   (are [spec params result] (= result (flow/destructure-fn-params params (c/parse-spec spec) {}))
-;;        (s/cat :x integer?) '[{:name x__#0 :variadic? false}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)}]
-;;        (s/cat :x integer? :y keyword?) '[{:name x__#0 :variadic? false} {:name y__#0 :variadic? false}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)}
-;;                                                                                                          {:name 'y__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'keyword?)}]
+(def dummy-param {:op :binding
+                  :form 'dummy
+                  :env dummy-env})
 
-;;        (s/+ integer?) '[{:name x__#0 :variadic? false} {:name xs__#0, :variadic? false}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)} {:name 'xs__#0, :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)}]
-;;        (s/+ integer?) '[{:name x__#0 :variadic? false} {:name xs__#0, :variadic? true}] [{:name 'x__#0 :variadic? false ::flow/ret-spec (c/parse-spec 'integer?)} {:name 'xs__#0, :variadic? true ::flow/ret-spec (c/parse-spec (s/* integer?))}]))
+(defn test-param [x]
+  (merge dummy-param x))
+
+(deftest destructure-fn-params
+  (are [spec params result] (every? (fn [[param s]]
+                                      (c/equivalent? (::flow/ret-spec param) s)) (map vector (flow/destructure-fn-params params (c/parse-spec spec) false) result))
+    (s/cat :x integer?) [(test-param {:name 'x__#0 :variadic? false})] [(c/parse-spec 'integer?)]
+    (s/cat :x integer? :y keyword?) [(test-param {:name 'x__#0 :variadic? false}) (test-param {:name 'y__#0 :variadic? false})] [(c/parse-spec 'integer?) (c/parse-spec 'keyword?)]
+
+    (s/+ integer?) [(test-param {:name 'x__#0 :variadic? false}) (test-param {:name 'xs__#0, :variadic? false})] [(c/parse-spec 'integer?) (c/parse-spec 'integer?)]
+    (s/+ integer?) [(test-param {:name 'x__#0 :variadic? false}) (test-param {:name 'xs__#0, :variadic? true})] [(c/parse-spec 'integer?) (c/parse-spec (s/cat :x (s/* integer?)))])
+
+  (testing "truthy"
+    (are [params spec macro?] (every? c/conformy? (map ::flow/ret-spec (flow/destructure-fn-params params spec macro?)))
+      [(test-param {:name '&form__#0}) (test-param {:name '&env__#0}) (test-param {:name 'decl__#0 :variadic? true})] (:args (c/parse-spec (s/spec 'clojure.core/let))) true)))
 
 (deftest conforming-java-method
   (testing "truthy"

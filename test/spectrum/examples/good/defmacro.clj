@@ -4,4 +4,6 @@
 (s/fdef foo :args (s/cat :x int?))
 
 (defmacro foo [x]
-  `(inc x))
+  `(inc ~x))
+
+(foo 5)

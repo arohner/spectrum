@@ -37,12 +37,16 @@
                          'spectrum.flow
                          'spectrum.ann
                          'spectrum.check])
+
 (deftest test-self
   (st/ensure-analysis 'spectrum.analyzer-spec)
   (doseq [ns self-checking-nses]
     (testing (str "testing: " ns)
       ;; currently only testing for non-explosion. Testing for no errors is on the roadmap!
       (st/check ns))))
+
+(deftest test-clojure
+  (st/check 'clojure.core))
 
 (deftest type-of-works
   (testing "truthy"

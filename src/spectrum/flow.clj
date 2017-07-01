@@ -502,7 +502,6 @@
   (c/unknown {:message (format "don't know how to get spec or analysis for %s %s" (:op a) (:form a))}))
 
 (defmethod flow* :invoke [a path]
-  {:post [(c/spect? (::ret-spec (get-in % path)))]}
   (let [a (flow-walk a path)
         a* (get-in a path)
         fn-spec (-> a* :fn ::ret-spec)
@@ -527,7 +526,7 @@
           (assoc-in a (conj path ::ret-spec) (c/unknown {:message (format "invoke: no spec for %s" (:var (:fn a*)))})))
         (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "invoke: wrong number of args %s" (:form a*))})))
       (catch Exception e
-        (println "flow :invoke while walking:" (:form a*) (:args a*) (a-loc-str a))
+        (println "flow :invoke while walking:" (:form a*) (a-loc-str a))
         (throw e)))))
 
 (defn zip-fn-params
@@ -953,27 +952,26 @@
               args* (seq (rest args))]
           (if (and spec* args*)
             (recur spec* args*)
-            (if (and (nil? spec*) (nil? args*))
+            (if (and (nil? args*) (or (nil? spec*) (c/accept-nil? spec*)))
               true
               false)))))
     false))
 
 (def macro-form-spec (c/pred-spec #'any?))
-(def macro-env-spec (c/or- [(c/map-of (c/pred-spec symbol?) (c/class-spec clojure.lang.Compiler$LocalBinding)) (c/value nil)]))
+(def macro-env-spec (c/or- [(c/map-of (c/pred-spec #'symbol?) (c/class-spec clojure.lang.Compiler$LocalBinding)) (c/value nil)]))
 
-(s/fdef destructure-fn-params :args (s/cat :params ::ana.jvm/bindings :spec ::c/spect) :ret ::ana.jvm/bindings)
+(s/fdef destructure-fn-params :args (s/cat :params ::ana.jvm/bindings :spec ::c/spect :macro? (s/? boolean?)) :ret ::ana.jvm/bindings)
 (defn destructure-fn-params
   "Given a spect and ana.jvm/fn-method params, update params to include spec"
   ([params spec macro?]
-   {:post [(do (println "destructure-fn-params:" spec " =>" (map (fn [p] (select-keys p [:name ::ret-spec])) %)) true) (every? (fn [p] (c/spect? (::ret-spec p))) %)]}
+   {:post [(every? (fn [p] (c/spect? (::ret-spec p))) %)
+           (= (count params) (+ (count %)))]}
    (let [ret (if macro?
                [(assoc (first params) ::ret-spec macro-form-spec) (assoc (second params) ::ret-spec macro-env-spec)]
                [])
          params (if macro?
-                  (drop 2 params)
+                  (vec (drop 2 params))
                   params)]
-     (when macro?
-       (println "destructure:" spec params))
      (if (arity-conform? spec params)
        (loop [ret ret
               params params
@@ -981,10 +979,11 @@
          (if (and (seq params)
                   spec)
            (let [param (first params)
-                 s (c/first* spec)]
+                 ss (c/will-accept spec)
+                 s (c/or- ss)]
              (assert (c/spect? s))
              (if (:variadic? param)
-               (conj ret (assoc param ::ret-spec (c/rest* spec)))
+               (conj ret (assoc param ::ret-spec spec))
                (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
            ret))
        (mapv (fn [p]
@@ -996,10 +995,14 @@
 (defn strip-control-flow
   "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
   [s]
-  (if (satisfies? c/Compound s)
-    (let [ps (c/filter* (fn [p] (not (control-flow? p))) s)
-          ps (map strip-control-flow ps)]
-      (c/new- s ps))
+  (if (c/compound-spec? s)
+    (->> s
+         (c/filter* (fn [p] (not (control-flow? p))))
+         (map strip-control-flow)
+         ((fn [ps]
+            (if (seq ps)
+              (c/new- s ps)
+              (c/invalid {:message (format "control flow in both branches: %s" (print-str s))})))))
     s))
 
 (s/fdef macro? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)

@@ -12,8 +12,7 @@
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.check :as check]
-            [spectrum.flow :as flow]
-            [spectrum.flow-test :as flow-test])
+            [spectrum.flow :as flow])
   (:import (spectrum.conform Unknown
                              PredSpec
                              ClassSpec
@@ -67,6 +66,7 @@
     (are [arg] (= false (ann/empty-seq? arg))
       (c/coll-of (c/pred-spec #'keyword?)))))
 
+(deftest map-coll-arity)
 (deftest map-tests
   (testing "successful"
     (are [args expected] (= expected (c/invoke (c/get-var-fn-spec #'map) args))
