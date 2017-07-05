@@ -76,7 +76,7 @@
                (count)))))
 
 (deftest java-method-spec
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i 3)))
+  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/value 3)]))
           :ret
           (= (c/class-spec Long/TYPE))))
 
@@ -166,11 +166,11 @@
 
 (deftest strip-control-flow
   (are [in out] (= out (flow/strip-control-flow in))
-    (c/or- [(c/pred-spec #'int?) (flow/recur-form 'x)]) (c/or- [(c/pred-spec #'int?)])
+    (c/or- [(c/pred-spec #'int?) (c/recur-form 'x)]) (c/or- [(c/pred-spec #'int?)])
 
     (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)])
     (c/or- []) (c/or- [])
-    (c/or- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (flow/recur-form (c/cat- [(c/pred-spec #'int?)]) )]) (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])))
+    (c/or- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/recur-form (c/cat- [(c/pred-spec #'int?)]) )]) (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])))
 
 (deftest maybe-disj-works
   (are [spec pred expected] (= expected (flow/maybe-disj-pred spec pred))
