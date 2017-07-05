@@ -1580,10 +1580,10 @@
                           [k (f (parse-spec p))])))]
       (map second kps)))
   (filter- [this f]
-    (let [kps (->> (mapv vector (or (:ks this) (repeat nil)) (:ps this))
-                   (filter (fn [[k p]]
-                             (f (parse-spec p)))))]
-      (map second kps)))
+    (->> this
+         :ps
+         (map parse-spec)
+         (filter f)))
   (new- [this ps]
     (or- ps))
   KeywordInvoke
