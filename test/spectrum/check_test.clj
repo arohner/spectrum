@@ -45,8 +45,8 @@
       ;; currently only testing for non-explosion. Testing for no errors is on the roadmap!
       (st/check ns))))
 
-(deftest test-clojure
-  (st/check 'clojure.core))
+;; (deftest test-clojure
+;;   (st/check 'clojure.core))
 
 (deftest type-of-works
   (testing "truthy"
