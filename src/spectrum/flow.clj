@@ -916,10 +916,11 @@
   "Given a spect and ana.jvm/fn-method params, update params to include spec"
   ([params spec macro?]
    {:post [(every? (fn [p] (c/spect? (::ret-spec p))) %)
-           (= (count params) (+ (count %)))]}
+           (= (count params) (count %))]}
    (let [ret (if macro?
                [(assoc (first params) ::ret-spec macro-form-spec) (assoc (second params) ::ret-spec macro-env-spec)]
                [])
+         params-original params
          params (if macro?
                   (vec (drop 2 params))
                   params)]
@@ -938,7 +939,7 @@
                (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
            ret))
        (mapv (fn [p]
-               (assoc p ::ret-spec (c/invalid {:form (:name p) :message "destructure failed"}))) params))))
+               (assoc p ::ret-spec (c/invalid {:form (:name p) :message "destructure failed"}))) params-original))))
   ([params spec]
    (destructure-fn-params params spec false)))
 
@@ -946,9 +947,10 @@
 (defn strip-control-flow
   "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
   [s]
+
   (if (c/compound-spec? s)
     (->> s
-         (c/filter* (fn [p] (not (control-flow? p))))
+         (c/filter* (fn [p] (not (c/control-flow? p))))
          (map strip-control-flow)
          ((fn [ps]
             (if (seq ps)
@@ -1147,7 +1149,7 @@
 (defmethod flow* :recur [a path]
   (let [a (flow-walk a path)
         a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (recur-form (analysis-args->spec (:exprs a*))))))
+    (assoc-in a (conj path ::ret-spec) (c/recur-form (analysis-args->spec (:exprs a*))))))
 
 (defmethod flow* :throw [a path]
   (let [a (flow-walk a path)
@@ -1423,7 +1425,7 @@
                                                 b-path (:path b)]
                                             (assert b-path)
                                             (infer-add-constraint a b-path (::ret-spec arg)))
-                        (:const :invoke) a)) a args)
+                        a)) a args)
             a)
         ret-spec (if (and s (:ret s))
                    (:ret s)
@@ -1453,12 +1455,12 @@
         bind-args (map vector args method-specs)]
     (reduce (fn [a [arg method-spec]]
               (case (:op arg)
-                (:local) (let [b (find-binding a path (:name arg))
-                               b-path (:path b)]
-                           (assert b-path)
-                           (assert (c/spect? method-spec))
-                           (infer-add-constraint a b-path method-spec))
-                (:const :invoke) a)) a bind-args)))
+                (:local :binding) (let [b (find-binding a path (:name arg))
+                                        b-path (:path b)]
+                                    (assert b-path)
+                                    (assert (c/spect? method-spec))
+                                    (infer-add-constraint a b-path method-spec))
+                a)) a bind-args)))
 
 (defmethod infer* :local [a path]
   (let [a (infer-walk a path)
@@ -1494,7 +1496,7 @@
     (infer-walk a path)))
 
 (defn infer-loop-let [a path]
-  {:post [(spect-or-control-flow? (::ret-spec (get-in % path)))]}
+  {:post [(c/spect-or-control-flow? (::ret-spec (get-in % path)))]}
   (let [a* (get-in a path)
         a (infer-walk a path)
         a* (get-in a path)

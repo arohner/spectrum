@@ -879,16 +879,18 @@
       (assoc cs :transformer t)
       cs)))
 
+
 (defn parse-spec*-dispatch [x]
   (cond
     (s/spec? x) :spec
     (s/regex? x) (::s/op x)
     (spect? x) :literal
+    (and (seq? x) (symbol? (first x)) (var? (resolve (first x))) (.isMacro (resolve (first x)))) :macro
+    (and (seq? x) (symbol? (first x))) (first x)
     (symbol? x) :sym
     (var? x) :var
     (fn-literal? x) :fn-literal
     (keyword? x) :keyword
-    (and (seq? x) (symbol? (first x))) (first x)
     (set? x) :set
     (coll? x) :coll
     (class? x) :class
@@ -1132,7 +1134,7 @@
         (unknown {:message (format "no spec for %s used as pred-spec" (print-str s))})))
     s))
 
-(def any?-form '(clojure.core/fn [x] true))
+(def any?-form '(fn* ([x] true)))
 
 (s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
 (defn any-spec?
@@ -1302,6 +1304,12 @@
 (extend-regex ClassSpec)
 (first-rest-singular ClassSpec)
 
+(defmethod parse-spec* :macro [x]
+  (let [v (resolve (first x))
+        args (rest x)
+        form (apply v nil nil args)]
+    (parse-spec* form)))
+
 (defmethod parse-spec* :sym [x]
   (let [v (resolve x)]
     (if v
@@ -1313,7 +1321,7 @@
   (map->PredSpec {:pred (eval x)
                   :form x}))
 
-(defmethod parse-spec* 'clojure.core/fn [x]
+(defmethod parse-spec* 'fn* [x]
   (if (= x any?-form)
     (pred-spec #'any?)
     (do
@@ -1329,37 +1337,34 @@
 (defmethod parse-spec* `s/spec [x]
   (spec-spec (parse-spec* (second x))))
 
+(defn unquote-form
+  "Given a '(quote foo), return 'foo"
+  [f]
+  (first (rest f)))
+
+(defmethod parse-spec* `s/spec-impl [x]
+  (let [[form pred & _ ] (rest x)]
+    (spec-spec (unquote-form form))))
+
 (defmethod parse-spec* ::s/pcat [x]
   (map->RegexCat {:ks (:ks x)
                   :ps (mapv (fn [[form pred]]
                               (if (::s/op pred)
                                 pred
-                                (parse-spec form))) (map vector (:forms x) (:ps x)))
+                                form)) (map vector (:forms x) (:ps x)))
                   :forms (:forms x)
                   :ret []}))
-
-(defmethod parse-spec* `s/+ [x]
-  (let [forms (rest x)
-        p (first forms)
-        p (parse-spec p)]
-    (assert (= 1 (count forms)))
-    (map->RegexCat {:forms forms
-                    :ps [p (regex-seq p)]
-                    :splice true
-                    :ret []})))
 
 (defmethod parse-spec* ::s/accept [x]
   (accept (if (= (:ret x) ::s/nil)
             (value nil)
             (:ret x))))
 
-(defmethod parse-spec* `s/cat [x]
-  (let [pairs (->> x rest (partition 2))
-        ks (map first pairs)
-        ps (map second pairs)]
+(defmethod parse-spec* `s/cat-impl [x]
+  (let [[ks ps forms] (rest x)
+        forms (unquote-form forms)]
     (map->RegexCat {:ks ks
-                    :ps ps
-                    :forms ps
+                    :ps forms
                     :ret []})))
 
 (defmethod parse-spec* ::s/rep [x]
@@ -1372,12 +1377,21 @@
                     :ret []
                     :splice (:splice x)})))
 
-(defmethod parse-spec* `s/* [x]
-  (let [forms (rest x)]
-    (map->RegexSeq {:ps forms
-                    :forms forms
+(defmethod parse-spec* `s/rep-impl [x]
+  (let [[form pred] (rest x)
+        form (unquote-form form)]
+    (map->RegexSeq {:ps [form]
+                    :forms [form]
                     :ret []
                     :splice false})))
+
+(defmethod parse-spec* `s/rep+impl [x]
+  (let [[form pred] (rest x)
+        form (unquote-form form)]
+    (map->RegexCat {:forms [form]
+                    :ps [form (regex-seq form)]
+                    :splice true
+                    :ret []})))
 
 (defmethod parse-spec* ::s/alt [x]
   (let [pairs (map vector (:ps x) (:forms x))
@@ -1390,22 +1404,19 @@
                     :forms (:forms x)
                     :ps forms})))
 
-(defn parse-literal-alt [x]
-  (let [pairs (partition 2 (rest x))
-        ks (mapv first pairs)
-        forms (mapv second pairs)]
+(defmethod parse-spec* `s/alt-impl [x]
+  (let [[ks ps forms] (rest x)]
     (map->RegexAlt {:ks ks
                     :forms forms
-                    :ps forms})))
+                    :ps (unquote-form forms)})))
 
-(defmethod parse-spec* `s/alt [x]
-  (parse-literal-alt x))
+(defmethod parse-spec* `s/maybe-impl [x]
+  (let [[pred form] (rest x)
+        form (unquote-form form)]
+    (map->RegexAlt {:ps [form (accept (value nil))]})))
 
-(defmethod parse-spec* `s/? [x]
-  (map->RegexAlt {:ps [(second x) (accept (value nil))]}))
-
-(defmethod parse-spec* `s/& [x]
-  (println "s/&:" x)
+(defmethod parse-spec* `s/amp-impl [x]
+  (println "s/amp-impl:" x)
   (unknown {:message (format "TODO don't know how to handle %s" x)}))
 
 (defn and-conform-literal [and-s x]
@@ -1510,8 +1521,10 @@
 
 (extend-regex AndSpec)
 
-(defmethod parse-spec* `s/and [x]
-  (and-spec (rest x)))
+(defmethod parse-spec* `s/and-spec-impl [x]
+  (let [[forms preds gen-fn] (rest x)
+        ps (unquote-form forms)]
+    (and-spec ps)))
 
 (defrecord OrSpec [ps ks])
 
@@ -1632,12 +1645,11 @@
   (every? (fn [p]
             (apply f p args)) (:ps or)))
 
-(defmethod parse-spec* `s/or [x]
-  (let [pairs (map vec (partition 2 (rest x)))
-        ks (map first pairs)
-        ps (map second pairs)]
+(defmethod parse-spec* `s/or-spec-impl [x]
+  (let [[ks forms ps gen-fn] (rest x)
+        forms (unquote-form forms)]
     (map->OrSpec {:ks ks
-                  :ps ps})))
+                  :ps forms})))
 
 (defrecord NotSpec [s])
 
@@ -1697,9 +1709,9 @@
       (tuple-spec r)
       nil)))
 
-(defmethod parse-spec* `s/tuple [x]
-  (let [preds (rest x)]
-    (map->TupleSpec {:ps (vec preds)})))
+(defmethod parse-spec* `s/tuple-impl [x]
+  (let [[forms preds] (rest x)]
+    (map->TupleSpec {:ps (unquote-form forms)})))
 
 (defn keyspec-get-key-
   ([s key]
@@ -1726,8 +1738,6 @@
        else))))
 
 (defrecord KeysSpec [req req-un opt opt-un])
-
-
 
 (predicate-spec keys-spec?)
 (defn keys-spec? [x]
@@ -1994,12 +2004,6 @@
     (map->CollOfSpec (merge {:s s
                              :empty-kind empty-kind} opts))))
 
-(defmethod parse-spec* `s/every [x]
-  (parse-coll-of x))
-
-(defmethod parse-spec* `s/coll-of [x]
-  (parse-coll-of x))
-
 (defrecord ArrayOf [p]
   Spect
   (conform* [this x]
@@ -2019,9 +2023,10 @@
 (defn array-of [p]
   (map->ArrayOf {:p p}))
 
-(defmethod parse-spec* `s/nilable [x]
-  (let [s (second x)]
-    (or- [(parse-spec s) (parse-spec #'nil?)])))
+(defmethod parse-spec* `s/nilable-impl [x]
+  (let [[form pred gen-fn] (rest x)
+        form (unquote-form form)]
+    (or- [form (pred-spec #'nil?)])))
 
 (defmethod parse-spec* `s/or [x]
   (let [pairs (partition 2 (rest x))
@@ -2043,6 +2048,16 @@
                (:req-un args)
                (:opt args)
                (:opt-un args))))
+
+(defmethod parse-spec* `s/map-spec-impl [x]
+  (let [args (first (rest x))]
+    (let [parse-keys (fn [ks]
+                       (into {} (map (fn [k]
+                                       [k k]) ks)))]
+      (keys-spec (parse-keys (unquote-form (:req args)))
+                 (parse-keys (unquote-form (:req-un args)))
+                 (parse-keys (unquote-form (:opt args)))
+                 (parse-keys (unquote-form (:opt-un args)))))))
 
 (defn parse-spec-seq [x]
   (let [v (mapv parse-spec* x)]
@@ -2137,18 +2152,35 @@
   (map->MapOf {:ks key-pred
                :vs val-pred}))
 
+(defn parse-map-of [x]
+  (let [[form pred opts] (rest x)
+        tuple (unquote-form form)
+        [_ k v] tuple]
+    (map->MapOf {:ks (parse-spec k)
+                 :vs (parse-spec v)})))
+
+(defmethod parse-spec* `s/every-impl [x]
+  (let [[form pred opts] (rest x)
+        form (unquote-form form)
+        s (parse-spec form)
+        empty-kind (get kind->coll (get opts :kind))]
+    (if (= 'clojure.core/map? (:kind opts))
+      (parse-map-of x)
+      (map->CollOfSpec (merge {:s s
+                               :empty-kind empty-kind} opts)))))
+
+(defmethod parse-spec* `s/coll-of [x]
+  (parse-coll-of x))
+
 (defmethod parse-spec* `s/map-of [x]
   (let [k (nth x 1)
         v (nth x 2)]
     (map-of k v)))
 
-(defmethod parse-spec* `s/merge [x]
-  (apply merge-specs (rest x)))
-
 (defmethod parse-spec* `s/merge-spec-impl [x]
   (let [[forms preds & _] (rest x)
-        forms (second forms)]
-    (merge-keys forms)))
+        forms (unquote-form forms)]
+    (apply merge-specs forms)))
 
 (defmethod parse-spec* `s/conformer [x]
   (value true))
@@ -2289,13 +2321,23 @@
   (truthyness [this]
     :truthy))
 
-(defmethod parse-spec* `s/fspec [x]
-  (let [pairs (->> x rest (partition 2))
-        pairs (map (fn [[k p]]
-                     (when p
-                       [k (parse-spec p)])) pairs)
-        args (into {} pairs)]
-    (map->FnSpec args)))
+(defmethod parse-spec* `s/fspec-impl [x]
+  (let [[arg-spec arg-form ret-spec ret-form fn-spec fn-form gen-fn] (rest x)
+        args (unquote-form arg-form)
+        ret (unquote-form ret-form)
+        fn (unquote-form fn-form)
+        args (when args
+               (parse-spec args))
+        ret (when ret
+              (parse-spec ret))
+        fn (when fn
+             (parse-spec fn))]
+    (map->FnSpec (merge (when arg-spec
+                          {:args args})
+                        (when ret-spec
+                          {:ret ret})
+                        (when fn-spec
+                          {:fn fn})))))
 
 (defn multispec-dispatch-values
   "Returns the seq of allowed dispatch values in the multimethod"
@@ -2435,14 +2477,11 @@
         (invalid {:message (format "transformed fn must conform to original spec. original: %s  with args %s transformed: %s" (print-str spec) (print-str args) (print-str spec*))})))
     spec))
 
-(defmethod parse-spec* `s/multi-spec [x]
-  (let [retag (nth x 2)
-        retag (cond
-                (keyword? retag) retag
-                (symbol? retag) (resolve retag))
-        method (resolve (nth x 1))]
-    (assert retag)
-    (multispec-default-spec (multispec method retag))))
+(defmethod parse-spec* `s/multi-spec-impl [x]
+  (let [[form mmvar-form retag] (rest x)
+        mmvar (resolve (second mmvar-form))]
+    (assert (var? mmvar))
+    (multispec-default-spec (multispec mmvar retag))))
 
 (extend-protocol Spect
   clojure.spec.alpha.Spec
@@ -2465,18 +2504,20 @@
         (do (println "infinite re-conform:" spec* data*)
             (assert false)
             (invalid {:message "infinite"}))
-        (let [x (first* data)]
-          (if (nil? x)
-            (if (accept-nil? spec)
-              (return spec)
-              (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
-            (if-let [dp (derivative spec x)]
-              (if (conformy? dp)
-                (if (infinite? (rest* data))
-                  (return dp)
-                  (recur dp (rest* data) (inc iter)))
+        (if (first-rest? data)
+          (let [x (first* data)]
+            (if (nil? x)
+              (if (accept-nil? spec)
+                (return spec)
                 (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
-              (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))))))
+              (if-let [dp (derivative spec x)]
+                (if (conformy? dp)
+                  (if (infinite? (rest* data))
+                    (return dp)
+                    (recur dp (rest* data) (inc iter)))
+                  (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
+                (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))
+          reject)))))
 
 (defn re-explain [spec path via in data]
   (loop [spec spec
@@ -2662,9 +2703,10 @@
 
 (s/fdef valid-return? :args (s/cat :s ::spect :args ::spect) :ret boolean?)
 (defn valid-return?
-  "True if spec conforms, as a return value. Conform must return truthy c/value"
+  "True if spec conforms, as a return value"
   [spec args]
-  (valid? spec args))
+  (and (not (control-flow? args))
+       (valid? spec args)))
 
 (defn valid-return-java?
   "True if spec conforms, in a java interop context"

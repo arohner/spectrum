@@ -482,3 +482,7 @@
     (c/keys-spec {} {:integer (c/value 1)} {} {}) :integer (c/value 1)
     (c/and-spec [(c/keys-spec {} {:integer (c/value 1)} {} {}) (c/not-spec (c/pred-spec #'seq?))]) :integer (c/value 1)
     (c/keys-spec {} {:integer (c/value 1)} {} {}) :bogus nil))
+
+(deftest can-parse-everything
+  (doseq [[key val] (s/registry)]
+    (is (c/parse-spec (s/spec key)))))
