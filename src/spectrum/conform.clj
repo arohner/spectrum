@@ -360,6 +360,54 @@
   (keys-get [this k]
     nil))
 
+(defrecord RecurForm [args]
+  Spect
+  (conform* [this x]
+    false)
+  Truthyness
+  (truthyness [this]
+    :ambiguous)
+  WillAccept
+  (will-accept [this]
+    #{}))
+
+(defrecord ThrowForm [exception-class]
+  Spect
+  (conform* [this x]
+    false)
+  Truthyness
+  (truthyness [this]
+    :ambiguous)
+  WillAccept
+  (will-accept [this]
+    #{}))
+
+(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
+(defn recur? [x]
+  (instance? RecurForm x))
+
+(defn recur-form [args]
+  (map->RecurForm {:args args}))
+
+(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
+(defn throwable? [x]
+  (instance? Throwable x))
+
+(s/fdef throw? :args (s/cat :x any?) :ret boolean?)
+(defn throw? [x]
+  (instance? ThrowForm x))
+
+(s/fdef throw-form :args (s/cat :e class?) :ret throw?)
+(defn throw-form [e]
+  (map->ThrowForm {:exception-class e}))
+
+(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
+(defn control-flow? [x]
+  (or (throw? x) (recur? x)))
+
+(defn spect-or-control-flow? [x]
+  (or (spect? x) (control-flow? x)))
+
 (defn known? [x]
   (not (unknown? x)))
 

@@ -14,7 +14,6 @@
             [spectrum.util :as util :refer (print-once protocol? namespace? validate!)])
   (:import [clojure.lang Var Namespace]))
 
-(declare recur?)
 (declare find-binding)
 
 (def ^:dynamic *inferring?* false)
@@ -23,54 +22,6 @@
 (s/def ::args ::c/spect)
 (s/def ::ret ::c/spect)
 (s/def ::fn (s/nilable ::c/spect))
-
-(defrecord RecurForm [args]
-  c/Spect
-  (conform* [this x]
-    false)
-  c/Truthyness
-  (truthyness [this]
-    :ambiguous)
-  c/WillAccept
-  (will-accept [this]
-    #{}))
-
-(defrecord ThrowForm [exception-class]
-  c/Spect
-  (conform* [this x]
-    false)
-  c/Truthyness
-  (truthyness [this]
-    :ambiguous)
-  c/WillAccept
-  (will-accept [this]
-    #{}))
-
-(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
-(defn recur? [x]
-  (instance? RecurForm x))
-
-(defn recur-form [args]
-  (map->RecurForm {:args args}))
-
-(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
-(defn throwable? [x]
-  (instance? Throwable x))
-
-(s/fdef throw? :args (s/cat :x any?) :ret boolean?)
-(defn throw? [x]
-  (instance? ThrowForm x))
-
-(s/fdef throw-form :args (s/cat :e class?) :ret throw?)
-(defn throw-form [e]
-  (map->ThrowForm {:exception-class e}))
-
-(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
-(defn control-flow? [x]
-  (or (throw? x) (recur? x)))
-
-(defn spect-or-control-flow? [x]
-  (or (c/spect? x) (control-flow? x)))
 
 (s/def ::args-spec ::c/spect-like)
 (s/def ::ret-spec ::c/spect-like)
@@ -899,7 +850,7 @@
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defn flow-loop-let [a path]
-  {:post [(spect-or-control-flow? (::ret-spec (get-in % path)))]}
+  {:post [(c/spect-or-control-flow? (::ret-spec (get-in % path)))]}
   (let [a* (get-in a path)
         a (flow-walk a path)
         a* (get-in a path)
