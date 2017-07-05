@@ -279,7 +279,7 @@
                   :form `(filter ~f ~coll)}))))
 
 (defn ann-filter [spect args-spect]
-  (if (= 1 (flow/cat-count args-spect))
+  (if (= 1 (count (c/coll-items args-spect)))
     (assoc spect :ret transducer-fn-spec)
     (let [f (c/first* args-spect)
           coll (c/second* args-spect)]
@@ -319,7 +319,7 @@
 
 ;; [[X->Y] [X] -> [Y]]
 (defn map-ann [spect args-spect]
-  (if (= 1 (flow/cat-count args-spect))
+  (if (= 1 (count (c/coll-items args-spect)))
     (assoc spect :ret transducer-fn-spec)
     (let [f (c/first* args-spect)
           colls (c/rest* args-spect)
@@ -328,7 +328,7 @@
       (if (pos? coll-count)
         (cond
           (c/fn-spec? f) (map-fn spect args-spect)
-          :else spect)
+          :else (assoc spect :ret (c/pred-spec #'seq?)))
         (assoc spect :ret (c/value (list)))))))
 
 (ann #'map map-ann)
@@ -359,7 +359,7 @@
 
 ;; [[X->Y] [X] -> [Y]]
 (defn mapcat-ann [spect args-spect]
-  (if (= 1 (flow/cat-count args-spect))
+  (if (= 1 (count (c/coll-items args-spect)))
     (assoc spect :ret transducer-fn-spec)
     (let [f (c/first* args-spect)
           colls (c/rest* args-spect)
