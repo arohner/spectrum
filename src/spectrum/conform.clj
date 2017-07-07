@@ -5,7 +5,7 @@
             [clojure.spec.gen.alpha :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.util :refer (fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq)]
+            [spectrum.util :refer (fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq multimethod-dispatch-values)]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)
@@ -880,13 +880,29 @@
       cs)))
 
 
+(declare can-parse?)
+
+(defn form? [x]
+  (and (seq? x) (symbol? (first x))))
+
+(defn macro? [v]
+  (and (var? v) (.isMacro v)))
+
+(defn known-form? [x]
+  (let [sym (first x)
+        v (resolve sym)]
+    (and (seq? x) (symbol? (first x)) (var? v) (can-parse? sym))))
+
 (defn parse-spec*-dispatch [x]
+  {:post [(do (when (nil? %)
+                (println "don't know how to parse" x)) true)
+          %]}
   (cond
     (s/spec? x) :spec
     (s/regex? x) (::s/op x)
     (spect? x) :literal
-    (and (seq? x) (symbol? (first x)) (var? (resolve (first x))) (.isMacro (resolve (first x)))) :macro
-    (and (seq? x) (symbol? (first x))) (first x)
+    (and (form? x) (known-form? x)) (first x)
+    (and (form? x) (not (known-form? x)) (macro? (resolve (first x)))) :macro
     (symbol? x) :sym
     (var? x) :var
     (fn-literal? x) :fn-literal
@@ -897,6 +913,9 @@
     :else :literal))
 
 (defmulti parse-spec* #'parse-spec*-dispatch)
+
+(defn can-parse? [x]
+  (contains? (set (multimethod-dispatch-values parse-spec*)) x))
 
 (defmethod parse-spec* :literal [x]
   (if (spect? x)
@@ -1134,14 +1153,16 @@
         (unknown {:message (format "no spec for %s used as pred-spec" (print-str s))})))
     s))
 
-(def any?-form '(fn* ([x] true)))
+(def any?-form '(clojure.core/fn [x] true))
+(def any?-macroexpanded '(fn* ([x] true)))
 
 (s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
 (defn any-spec?
   "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
   [pred-spec]
   (or (-> pred-spec :pred (= #'any?))
-      (-> pred-spec :pred (= any?-form))))
+      (-> pred-spec :pred (= any?-form))
+      (-> pred-spec :pred (= any?-macroexpanded))))
 
 (s/fdef pred-invoke-truthy? :args (s/cat :spec pred-spec? :x any?) :ret boolean?)
 (defn pred-invoke-truthy?
@@ -1321,6 +1342,13 @@
   (map->PredSpec {:pred (eval x)
                   :form x}))
 
+(defmethod parse-spec* 'clojure.core/fn [x]
+  (if (= x any?-form)
+    (pred-spec #'any?)
+    (do
+      (map->PredSpec {:pred nil ;;(eval x)
+                      :form x}))))
+
 (defmethod parse-spec* 'fn* [x]
   (if (= x any?-form)
     (pred-spec #'any?)
@@ -1360,6 +1388,15 @@
             (value nil)
             (:ret x))))
 
+(defmethod parse-spec* `s/cat [x]
+  (let [pairs (->> x rest (partition 2))
+        ks (map first pairs)
+        ps (map second pairs)]
+    (map->RegexCat {:ks ks
+                    :ps ps
+                    :forms ps
+                    :ret []})))
+
 (defmethod parse-spec* `s/cat-impl [x]
   (let [[ks ps forms] (rest x)
         forms (unquote-form forms)]
@@ -1385,6 +1422,18 @@
                     :ret []
                     :splice false})))
 
+
+
+(defmethod parse-spec* `s/+ [x]
+  (let [forms (rest x)
+        p (first forms)
+        p (parse-spec p)]
+    (assert (= 1 (count forms)))
+    (map->RegexCat {:forms forms
+                    :ps [p (regex-seq p)]
+                    :splice true
+                    :ret []})))
+
 (defmethod parse-spec* `s/rep+impl [x]
   (let [[form pred] (rest x)
         form (unquote-form form)]
@@ -1392,6 +1441,13 @@
                     :ps [form (regex-seq form)]
                     :splice true
                     :ret []})))
+
+(defmethod parse-spec* `s/* [x]
+  (let [forms (rest x)]
+    (map->RegexSeq {:ps forms
+                    :forms forms
+                    :ret []
+                    :splice false})))
 
 (defmethod parse-spec* ::s/alt [x]
   (let [pairs (map vector (:ps x) (:forms x))
@@ -1404,6 +1460,17 @@
                     :forms (:forms x)
                     :ps forms})))
 
+(defmethod parse-spec* `s/? [x]
+  (map->RegexAlt {:ps [(second x) (accept (value nil))]}))
+
+(defmethod parse-spec* `s/alt [x]
+  (let [pairs (partition 2 (rest x))
+        ks (mapv first pairs)
+        forms (mapv second pairs)]
+    (map->RegexAlt {:ks ks
+                    :forms forms
+                    :ps forms})))
+
 (defmethod parse-spec* `s/alt-impl [x]
   (let [[ks ps forms] (rest x)]
     (map->RegexAlt {:ks ks
@@ -1414,6 +1481,9 @@
   (let [[pred form] (rest x)
         form (unquote-form form)]
     (map->RegexAlt {:ps [form (accept (value nil))]})))
+
+(defmethod parse-spec* :clojure.spec.alpha/amp [x]
+  (unknown {:message (format "TODO don't know how to handle %s" x)}))
 
 (defmethod parse-spec* `s/amp-impl [x]
   (println "s/amp-impl:" x)
@@ -1521,6 +1591,9 @@
 
 (extend-regex AndSpec)
 
+(defmethod parse-spec* `s/and [x]
+  (and-spec (rest x)))
+
 (defmethod parse-spec* `s/and-spec-impl [x]
   (let [[forms preds gen-fn] (rest x)
         ps (unquote-form forms)]
@@ -1614,7 +1687,6 @@
   [f or-spec]
   (some f (->> or-spec :ps (map parse-spec))))
 
-
 (defn equivalent? [s1 s2]
   (and (valid? s1 s2)
        (valid? s2 s1)))
@@ -1645,11 +1717,16 @@
   (every? (fn [p]
             (apply f p args)) (:ps or)))
 
+(defmethod parse-spec* `s/or [x]
+  (let [pairs (map vec (partition 2 (rest x)))
+        ks (map first pairs)
+        ps (map second pairs)]
+    (or- ps)))
+
 (defmethod parse-spec* `s/or-spec-impl [x]
   (let [[ks forms ps gen-fn] (rest x)
         forms (unquote-form forms)]
-    (map->OrSpec {:ks ks
-                  :ps forms})))
+    (or- forms)))
 
 (defrecord NotSpec [s])
 
@@ -1708,6 +1785,10 @@
     (if-let [r (-> this :ps rest seq)]
       (tuple-spec r)
       nil)))
+
+(defmethod parse-spec* `s/tuple [x]
+  (let [preds (rest x)]
+    (map->TupleSpec {:ps (vec preds)})))
 
 (defmethod parse-spec* `s/tuple-impl [x]
   (let [[forms preds] (rest x)]
@@ -2023,6 +2104,10 @@
 (defn array-of [p]
   (map->ArrayOf {:p p}))
 
+(defmethod parse-spec* `s/nilable [x]
+  (let [s (second x)]
+    (or- [(parse-spec s) (parse-spec #'nil?)])))
+
 (defmethod parse-spec* `s/nilable-impl [x]
   (let [[form pred gen-fn] (rest x)
         form (unquote-form form)]
@@ -2159,6 +2244,9 @@
     (map->MapOf {:ks (parse-spec k)
                  :vs (parse-spec v)})))
 
+(defmethod parse-spec* `s/every [x]
+  (parse-coll-of x))
+
 (defmethod parse-spec* `s/every-impl [x]
   (let [[form pred opts] (rest x)
         form (unquote-form form)
@@ -2176,6 +2264,9 @@
   (let [k (nth x 1)
         v (nth x 2)]
     (map-of k v)))
+
+(defmethod parse-spec* `s/merge [x]
+  (apply merge-specs (rest x)))
 
 (defmethod parse-spec* `s/merge-spec-impl [x]
   (let [[forms preds & _] (rest x)
@@ -2321,6 +2412,14 @@
   (truthyness [this]
     :truthy))
 
+(defmethod parse-spec* `s/fspec [x]
+  (let [pairs (->> x rest (partition 2))
+        pairs (map (fn [[k p]]
+                     (when p
+                       [k (parse-spec p)])) pairs)
+        args (into {} pairs)]
+    (map->FnSpec args)))
+
 (defmethod parse-spec* `s/fspec-impl [x]
   (let [[arg-spec arg-form ret-spec ret-form fn-spec fn-form gen-fn] (rest x)
         args (unquote-form arg-form)
@@ -2338,12 +2437,6 @@
                           {:ret ret})
                         (when fn-spec
                           {:fn fn})))))
-
-(defn multispec-dispatch-values
-  "Returns the seq of allowed dispatch values in the multimethod"
-  [^clojure.lang.MultiFn ms]
-  (->> (.getMethodTable ms)
-       (keys)))
 
 (defn maybe-resolve-keyword-spec [x]
   (if (and (value? x) (keyword? (:v x)) (#'s/maybe-spec (:v x)))
@@ -2431,7 +2524,7 @@
   "When we can't determine the correct multispec dispatch value, get the lowest common denominator spec, Or'ing all of the possible values together"
   [ms]
   (or- (map (fn [v]
-              (multispec-dispatch-ret-value ms v)) (multispec-dispatch-values @(:multimethod ms)))))
+              (multispec-dispatch-ret-value ms v)) (multimethod-dispatch-values @(:multimethod ms)))))
 
 (defn multispec-resolve-spec
   "Given a multispec and a dispatch value, attempt to return the spec for that defmethod call. Returns specific spec, or multispec-default-spec"
@@ -2476,6 +2569,15 @@
         spec*
         (invalid {:message (format "transformed fn must conform to original spec. original: %s  with args %s transformed: %s" (print-str spec) (print-str args) (print-str spec*))})))
     spec))
+
+(defmethod parse-spec* `s/multi-spec [x]
+  (let [retag (nth x 2)
+        retag (cond
+                (keyword? retag) retag
+                (symbol? retag) (resolve retag))
+        method (resolve (nth x 1))]
+    (assert retag)
+    (multispec-default-spec (multispec method retag))))
 
 (defmethod parse-spec* `s/multi-spec-impl [x]
   (let [[form mmvar-form retag] (rest x)
