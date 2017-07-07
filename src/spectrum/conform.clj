@@ -1605,21 +1605,21 @@
 (defn or-spec? [x]
   (instance? OrSpec x))
 
+(s/def :or/ps (s/coll-of ::spect-like :kind set?))
+
+(s/fdef map->OrSpec :args (s/cat :m (s/keys :req-un [:or/ps])) :ret or-spec?)
+
 (s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret or-spec?)
 (defn or- [ps]
-  (cond
-    (>= (count ps) 2) (map->OrSpec {:ps (if (set? ps)
-                                          ps
-                                          (distinct ps))})
-    (= 1 (count ps)) (first ps)
-    :else (invalid {:message "or spect requires at least one arg"})))
-
-(defn or-spec [ks ps]
-  (cond
-    (>= (count ps) 2) (map->OrSpec {:ks ks
-                                    :ps ps})
-    (= 1 (count ps)) (first ps)
-    :else (invalid {:message "or spect requires at least one arg"})))
+  (let [or-ps (mapcat (fn [p] (when (or-spec? p)
+                                (:ps p))) ps)
+        ps (remove or-spec? ps)
+        ps (concat ps or-ps)
+        ps (set ps)]
+    (cond
+      (>= (count ps) 2) (map->OrSpec {:ps ps})
+      (= 1 (count ps)) (first ps)
+      :else (invalid {:message "or spect requires at least one arg"}))))
 
 (extend-type OrSpec
   Spect
@@ -2117,8 +2117,7 @@
   (let [pairs (partition 2 (rest x))
         keys (mapv first pairs)
         forms (mapv second pairs)]
-    (map->OrSpec {:ks keys
-                  :ps forms})))
+    (or- forms)))
 
 (defmethod parse-spec* `s/keys [x]
   (let [args (->> (rest x)

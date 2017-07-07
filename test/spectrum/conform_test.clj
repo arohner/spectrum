@@ -374,6 +374,12 @@
       (c/pred-spec #'integer?) (c/value 3)
       (c/value 3) (c/pred-spec #'integer?))))
 
+(deftest or-conj
+  (is (= (c/or- [(c/pred-spec #'string?)]) (c/pred-spec #'string?)))
+  (is (= (c/or- [(c/pred-spec #'string?) (c/pred-spec #'string?)])) (c/pred-spec #'string?))
+
+  (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'int?)])]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'string?) (c/pred-spec #'int?)]))))
+
 (deftest or-disj
   (is (= (c/pred-spec #'int?) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil)]) (c/value nil))))
 
@@ -381,9 +387,7 @@
 
   (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/pred-spec #'nil?))))
 
-  (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/value nil))))
-
-  (is (c/spect? (c/or-disj (c/or- [(c/value nil) (c/value nil)]) (c/value nil)))))
+  (is (= (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/pred-spec #'nil?) (c/or- [(c/pred-spec #'string?) (c/value nil)])]) (c/value nil)))))
 
 (deftest var-predicate
   (testing "truthy"
