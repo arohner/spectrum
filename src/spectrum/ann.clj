@@ -340,7 +340,7 @@
   (let [f (c/first* args-spect)
         colls (c/rest* args-spect)
         _ (assert (c/cat-spec? colls))
-        colls (:ps colls)]
+        colls (c/coll-items colls)]
     (let [invoke-args (cond
                         (every? c/first-rest? colls) (c/cat- (map c/first* colls))
                         (every? c/value? colls) (let [colls (map :v colls)]
