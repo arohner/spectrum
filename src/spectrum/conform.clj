@@ -353,12 +353,12 @@
     (unknown-invoke spec args))
   FirstRest
   (first* [this]
-    nil)
+    (unknown {:message "first on unknown"}))
   (rest* [this]
-    nil)
+    (unknown {:message "rest on unknown"}))
   KeysGet
   (keys-get [this k]
-    nil))
+    (unknown {:message "get on unknown"})))
 
 (defrecord RecurForm [args]
   Spect
