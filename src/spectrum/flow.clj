@@ -220,7 +220,7 @@
 (defmethod find-binding* :default [a name]
   nil)
 
-(defmethod find-binding* :let [a name]
+(defn find-binding-let [a name]
   (some->> a
            :bindings
            (map-indexed (fn [i b]
@@ -228,19 +228,19 @@
            (filter (fn [b] (= name (:name b))))
            first
            (#(assoc % :path [:bindings (:index %)]))))
+
+(defmethod find-binding* :let [a name]
+  (find-binding-let a name))
+
+(defmethod find-binding* :letfn [a name]
+  (find-binding-let a name))
+
+(defmethod find-binding* :loop [a name]
+  (find-binding-let a name))
 
 (defmethod find-binding* :local [a name]
   (when (and (= (:name a) name) (::ret-spec a))
     a))
-
-(defmethod find-binding* :loop [a name]
-  (some->> a
-           :bindings
-           (map-indexed (fn [i b]
-                          (assoc b :index i)))
-           (filter (fn [b] (= name (:name b))))
-           first
-           (#(assoc % :path [:bindings (:index %)]))))
 
 (defmethod find-binding* :binding [a name]
   (when (= name (:name a))
@@ -451,6 +451,27 @@
 
 (defmethod invoke-get-fn-spec :default [a]
   (c/unknown {:message (format "don't know how to get spec or analysis for %s %s" (:op a) (:form a))}))
+
+(defn contains-control-flow? [s]
+  (if (c/compound-spec? s)
+    (->> s
+         (c/map* contains-control-flow?)
+         (some identity))
+    (c/control-flow? s)))
+
+(s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
+(defn strip-control-flow
+  "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
+  [s]
+  (if (c/compound-spec? s)
+    (->> s
+         (c/filter* (fn [p] (not (c/control-flow? p))))
+         (map strip-control-flow)
+         ((fn [ps]
+            (if (seq ps)
+              (c/new- s ps)
+              (c/invalid {:message (format "control flow in both branches: %s" (print-str s))})))))
+    s))
 
 (defmethod flow* :invoke [a path]
   (let [a (flow-walk a path)
@@ -760,23 +781,25 @@
   [a]
   {:post [(::ret-spec %)]}
   (let [{:keys [class method instance]} a
-        a (maybe-flow-multi-method a)
-        args-spec (analysis-args->spec (util/zip a :args))
-        meth (get-conforming-java-method class method args-spec)
-        spec (get-java-method-spec class method args-spec)
-        spec (if (and meth spec (c/known? (:args spec)))
-               (c/maybe-transform-method meth spec args-spec)
-               spec)]
+        a (maybe-flow-multi-method a)]
+    (if (and class method)
+      (let [args-spec (analysis-args->spec (util/zip a :args))
+            meth (get-conforming-java-method class method args-spec)
+            spec (get-java-method-spec class method args-spec)
+            spec (if (and meth spec (c/known? (:args spec)))
+                   (c/maybe-transform-method meth spec args-spec)
+                   spec)]
 
-    (if (c/fn-spec? spec)
-      (do
-        (assert (:ret spec))
-        (if (c/every-known? args-spec)
-          (assoc a ::ret-spec (:ret spec) ::args-spec (:args spec))
-          (assoc a ::ret-spec (c/unknown {:form (:form a) :message (format "invoke %s with unknown args %s" (print-str spec) (print-str args-spec))}))))
-      (do
-        (assert (c/invalid? spec))
-        (assoc a ::ret-spec spec)))))
+        (if (c/fn-spec? spec)
+          (do
+            (assert (:ret spec))
+            (if (c/every-known? args-spec)
+              (assoc a ::ret-spec (:ret spec) ::args-spec (:args spec))
+              (assoc a ::ret-spec (c/unknown {:form (:form a) :message (format "invoke %s with unknown args %s" (print-str spec) (print-str args-spec))}))))
+          (do
+            (assert (c/invalid? spec))
+            (assoc a ::ret-spec spec))))
+      (assoc a ::ret-spec (c/unknown {:message (format "no spec on reflection: %s" (:form a))})))))
 
 (defmethod flow* :static-call [a path]
   (let [a (flow-walk a path)
@@ -829,7 +852,6 @@
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defn flow-loop-let [a path]
-  {:post [(c/spect-or-control-flow? (::ret-spec (get-in % path)))]}
   (let [a* (get-in a path)
         a (flow-walk a path)
         a* (get-in a path)
@@ -840,8 +862,46 @@
 (defmethod flow* :let [a path]
   (flow-loop-let a path))
 
+(defn find-loop
+  "Given a recur, find the enclosing loop. returns the path"
+  [a path]
+  (loop [path path]
+    (let [a* (get-in a path)]
+      (if (contains? #{:loop :fn-method} (:op a*))
+        path
+        (if (seq path)
+          (recur (pop path))
+          (assert false (format "couldn't find loop in %s" (:form a))))))))
+
 (defmethod flow* :loop [a path]
-  (flow-loop-let a path))
+  {:post [(not (contains-control-flow? %))]}
+  (let [a (flow-loop-let a path)
+        a* (get-in a path)]
+    (update-in a (conj path ::ret-spec) (fn [s]
+                                          (strip-control-flow s)))))
+
+(defmethod flow* :recur [a path]
+  (let [a (flow-walk a path)
+        a* (get-in a path)
+        loop-path (find-loop a path)
+        loop (get-in a loop-path)
+        loop-specs (map ::ret-spec (or (:bindings loop) (:params loop)))
+        loop-arg-count (count loop-specs)
+        recur-specs (map ::ret-spec (:exprs a*))
+        recur-arg-count (count recur-specs)]
+    (if (= loop-arg-count recur-arg-count)
+      (let [a (assoc-in a (conj path ::ret-spec) (c/recur-form (analysis-args->spec (:exprs a*))))
+            loop-specs* (map (fn [l r] (c/or- [l r])) loop-specs recur-specs)]
+        (if (= loop-specs loop-specs*)
+          a
+          (let [bindings-key (if (:bindings loop)
+                               :bindings
+                               :params)
+                a (update-in a (conj loop-path bindings-key) (fn [bindings]
+                                                            (mapv (fn [b s]
+                                                                    (assoc b ::ret-spec s)) bindings loop-specs*)))]
+            (flow-walk a loop-path))))
+      (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "recur bad arity, loop takes %s args, got %s" loop-arg-count recur-arg-count)})))))
 
 (s/fdef method-arity-conform :args (s/cat :params (s/coll-of ::ana.jvm/binding) :args c/spect?))
 (defn method-arity-conform?
@@ -921,21 +981,6 @@
                (assoc p ::ret-spec (c/invalid {:form (:name p) :message "destructure failed"}))) params-original))))
   ([params spec]
    (destructure-fn-params params spec false)))
-
-(s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
-(defn strip-control-flow
-  "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
-  [s]
-
-  (if (c/compound-spec? s)
-    (->> s
-         (c/filter* (fn [p] (not (c/control-flow? p))))
-         (map strip-control-flow)
-         ((fn [ps]
-            (if (seq ps)
-              (c/new- s ps)
-              (c/invalid {:message (format "control flow in both branches: %s" (print-str s))})))))
-    s))
 
 (s/fdef macro? :args (s/cat :a ::ana.jvm/analysis) :ret boolean?)
 (defn macro?
@@ -1125,11 +1170,6 @@
         ret-spec (c/keys-spec (:req ret-keys) (:req-un ret-keys) {} {})]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
-(defmethod flow* :recur [a path]
-  (let [a (flow-walk a path)
-        a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (c/recur-form (analysis-args->spec (:exprs a*))))))
-
 (defmethod flow* :throw [a path]
   (let [a (flow-walk a path)
         a* (get-in a path)]
@@ -1235,6 +1275,11 @@
   (let [a (flow-walk a path)
         a* (get-in a path)]
     (assoc-in a (conj path ::ret-spec) (c/unknown {:message "reflection, cannot be resolved at compile time"}))))
+
+(defmethod flow* :letfn [a path]
+  (let [a (flow-walk a path)
+        a* (get-in a path)]
+    (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec))))
 
 (s/fdef get-fn-method-invoke :args (s/cat :a ::ana.jvm/fn :args c/spect?))
 (defn get-fn-method-invoke
@@ -1396,7 +1441,6 @@
         f-a (invoke-get-fn-analysis a path)
         s (invoke-get-fn-spec (:fn a*))
         args (:args a*)
-        _ (println "infer* invoke:" (:form a*) args)
         a (if (and s (:args s))
             (reduce (fn [a arg]
                       (case (:op arg)

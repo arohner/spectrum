@@ -87,7 +87,7 @@
   (println "checking " ns)
   (some->>
    (ana.jvm/analyze-ns ns)
-   (map flow/flow)
+   (flow/flow-ns)
    (mapcat check*)
    (filter identity)))
 

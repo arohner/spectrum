@@ -92,3 +92,9 @@
     (throw (ex-info "spec does not conform" {:spec s
                                              :args args
                                              :data (s/explain-data s args)}))))
+
+(defn multimethod-dispatch-values
+  "Returns the seq of allowed dispatch values in the multimethod"
+  [^clojure.lang.MultiFn ms]
+  (->> (.getMethodTable ms)
+       (keys)))

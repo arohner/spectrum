@@ -80,6 +80,7 @@
     (are [s] (c/any-spec? s)
       (c/pred-spec #'any?)
       (-> (c/pred-spec #'any?) (c/resolve-pred-spec) :args c/first*)))
+
   (testing "falsey"
     (are [s] (not (c/any-spec? s))
       (c/pred-spec #'integer?))))
