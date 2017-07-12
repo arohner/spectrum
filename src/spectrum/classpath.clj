@@ -11,7 +11,7 @@
   (println "url-classloader" urls)
   (URLClassLoader.
    (into-array URL (map io/as-url urls))
-   (.getParent (.getClassLoader clojure.lang.RT))))
+   (.getParent (clojure.lang.RT/baseLoader))))
 
 (defmacro with-classloader [cl & body]
   `(binding [*use-context-classloader* true]
@@ -27,35 +27,71 @@
         method    (.getDeclaredMethod class (name class-method) signature)]
     (.invoke method class (into-array Object params))))
 
+(defn construct-in [^ClassLoader cl signature & params]
+  (let [class     (.loadClass cl)
+        signature (into-array Class (or signature []))
+        constructor    (.getConstructor class signature)]
+    (.newInstance constructor (into-array Object params))))
+
+(defn clj-var-in
+  "Return a var in a another runtime. Call using .invoke"
+  ([^ClassLoader cl ns name]
+   (invoke-in cl 'clojure.java.api.Clojure/var [Object Object] ns name))
+  ([^ClassLoader cl qualified-name]
+   (invoke-in cl 'clojure.java.api.Clojure/var [Object] qualified-name)))
+
+(defn read-in [cl form]
+  {:pre [(string? form)]}
+  (invoke-in cl 'clojure.java.api.Clojure/read [String] form))
+
+(defn require-in [^ClassLoader cl ns]
+  {:pre [(string? ns)]}
+  (.invoke (clj-var-in cl "clojure.core/require") (read-in cl ns)))
+
 (defn eval-string
   "Eval the given string in a separate classloader."
   [cl string]
   (println "isolated eval:" string)
-  (with-classloader cl
-    (let [form   (invoke-in cl 'clojure.lang.RT/readString [String] string)
-          result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)]
-      (invoke-in cl 'clojure.lang.RT/printString [Object] result))))
+  (let [s (with-classloader cl
+            (let [form   (invoke-in cl 'clojure.lang.RT/readString [String] string)
+                  result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)]
+              (invoke-in cl 'clojure.lang.RT/printString [Object] result)))]
+    (read-string s)))
 
 (defn eval-transit
   "Eval the string, return transit. Use for large return values (i.e. analysis results)"
   [cl string]
-  (with-classloader cl
-    (let [form   (invoke-in cl 'clojure.lang.RT/readString [String] string)
-          result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)
-          baos (java.io.ByteArrayOutputStream.)]
-      (with-open [pipe-in (PipedInputStream.)]
-        (let [pipe-out (PipedOutputStream. pipe-in)
-              writer (t/writer pipe-out :json)
-              reader (t/reader pipe-in :json)
-              f (future (t/write writer result))]
-          (t/read reader))))))
+  (let [baos (java.io.ByteArrayOutputStream.)]
+    (with-classloader cl
+      (let [form   (invoke-in cl 'clojure.lang.RT/readString [String] string)
+
+            _ (require-in cl "cognitect.transit")
+            transit-writer-var (clj-var-in cl "cognitect.transit" "writer")
+            transit-write-var (clj-var-in cl "cognitect.transit" "write")
+            keyword-var (clj-var-in cl "clojure.core" "keyword")
+            json (.invoke keyword-var "json")
+            writer (.invoke transit-writer-var baos json)
+            result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)
+            _ (println "done evaling")
+            _ (.invoke transit-write-var writer result)]
+        (println "done writing, " (.size baos))))
+    (let [bais (java.io.ByteArrayInputStream. (.toByteArray baos))
+          _ (.reset baos)
+          reader (t/reader bais :json)]
+      (t/read reader))))
+
+(defn init-cl [cl]
+  (invoke-in cl 'java.lang.Class/forName [String] "clojure.java.api.Clojure")
+  (invoke-in cl 'java.lang.Class/forName [String] "clojure.lang.RT")
+  cl)
 
 (defn new-isolated-classloader []
   (-> (System/getProperty "java.class.path")
       (string/split #":")
       (->>
        (map io/file)
-       (url-classloader))))
+       url-classloader
+       init-cl)))
 
 (def isolated-classloader (delay (new-isolated-classloader)))
 
