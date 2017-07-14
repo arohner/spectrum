@@ -1786,6 +1786,8 @@
       (tuple-spec r)
       nil)))
 
+(extend-regex TupleSpec)
+
 (defmethod parse-spec* `s/tuple [x]
   (let [preds (rest x)]
     (map->TupleSpec {:ps (vec preds)})))
