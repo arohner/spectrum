@@ -87,6 +87,14 @@
               :else (assert false)) ]
     `(s/fdef ~sym :args (s/cat :x any?) :ret boolean?)))
 
+(defmacro def-instance-predicate
+  "(defn name [x] (instance? cls x))"
+  [name cls]
+  `(do
+     (defn ~name [x#]
+       (instance? ~cls x#))
+     (predicate-spec ~name)))
+
 (defn validate! [s args]
   (if-not (s/valid? s args)
     (throw (ex-info "spec does not conform" {:spec s
