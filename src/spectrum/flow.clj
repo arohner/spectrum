@@ -1452,12 +1452,16 @@
             a)
         ret-spec (if (and s (:ret s))
                    (:ret s)
-                   (c/unknown {:message (format "no ret spec for %s" (:fn a*))}))]
+                   (c/unknown {:message "infer invoke: no ret spec for"
+                               :form (:form a*)
+                               :a-loc (a-loc a*)}))]
 
     (assoc-in a (conj path ::ret-spec)
               (if (and s (:ret s))
                 (:ret s)
-                (c/unknown {:message (format "no ret spec on %s" (:form f-a))})))))
+                (c/unknown {:message "infer invoke: no ret spec"
+                            :form (:form f-a)
+                            :a-loc (a-loc a*)})))))
 
 (defmethod infer* :static-call [a path]
   (let [a (infer-walk a path [:args])
