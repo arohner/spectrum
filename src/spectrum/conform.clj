@@ -1486,7 +1486,6 @@
   (unknown {:message (format "TODO don't know how to handle %s" x)}))
 
 (defmethod parse-spec* `s/amp-impl [x]
-  (println "s/amp-impl:" x)
   (unknown {:message (format "TODO don't know how to handle %s" x)}))
 
 (defn and-conform-literal [and-s x]
@@ -2832,12 +2831,13 @@
   (let [{:keys [file line column]} spec]
     (.write w (str "#Unknown[" (if (seq (:message spec))
                                  (:message spec)
-                                 (print-str (:form spec)))
+                                 (print-method (:form spec) w))
                    (when file
                      (str file line column)) "]"))))
 
-(defn regex-print-method [re-name spec ^Writer writer]
-  (.write writer (str "#" re-name "[" (str/join ", " (map print-str (:ps spec))) "]")))
+(defn regex-print-method [re-name spec ^Writer w]
+  (.write w (str "#" re-name ))
+  (print-method (:ps spec) w))
 
 (defmethod print-method RegexCat [v ^Writer w]
   (regex-print-method "Cat" v w))
@@ -2849,45 +2849,51 @@
   (regex-print-method "Alt" v w))
 
 (defmethod print-method Value [v ^Writer w]
-  (.write w (format "#Value[%s]" (print-str (:v v)))))
+  (.write w "#Value[")
+  (print-method (:v v) w)
+  (.write w "]"))
 
 (defmethod print-method PredSpec [v ^Writer w]
-  (.write w (format "#Pred[%s]" (print-str (:form v)))))
+  (.write w (format "#Pred[" ))
+  (print-method (:form v) w)
+  (.write w "]"))
 
 (defmethod print-method ClassSpec [v ^Writer w]
-  (.write w (format "#Class[%s]" (print-str (:cls v)))))
+  (.write w "#Class[")
+  (print-method (:cls v) w)
+  (.write w "]"))
 
 (defmethod print-method AndSpec [v ^Writer w]
-  (.write w (format "#And[%s]" (str/join ", " (map print-str (:ps v))))))
+  (.write w "#And")
+  (print-method (:ps v) w))
 
 (defmethod print-method OrSpec [v ^Writer w]
-  (.write w (format "#Or[%s]" (str/join ", " (map print-str (:ps v))))))
+  (.write w (format "#Or"))
+  (#'clojure.core/print-sequential "[" print-method " " "]" (:ps v) w))
 
 (defmethod print-method FnSpec [s ^Writer w]
-  (.write w (format "#Fn[%s]" (->> (map #(find s %) [:var :args :ret :fn])
-                                   (filter (fn [[k v]]
-                                             (identity v)))
-                                   (mapv (fn [[k v]]
-                                           (str k " " (print-str v))))
-                                   (str/join " ")))))
+  (.write w "#Fn")
+  (->> (map #(find s %) [:var :args :ret :fn])
+       (filter (fn [[k v]]
+                 (identity v)))
+       (apply concat)
+       (vec)
+       (#(print-method % w))))
 
 (defmethod print-method KeysSpec [spec ^Writer w]
-  (.write w (format "#Keys{%s}" (->> [:req :req-un :opt :opt-un]
-                                          (map (fn [k]
-                                                 [k (get spec k)]))
-                                          (filter (fn [[k v]]
-                                                    v))
-                                          (map (fn [[key-type key-preds]]
-                                                 (format "%s{%s}" key-type (->> key-preds
-                                                                                (map (fn [[k v]]
-                                                                                       (format "%s %s" k (print-str v))))
-                                                                                (str/join " " )))))
-                                          (str/join " ")))))
+  (.write w "#Keys{")
+  (doseq [type [:req :req-un :opt :opt-un]
+          keys (get spec type)
+          :when keys]
+    (.write w (str type))
+    (#'clojure.core/print-sequential "{" print-method " " "}" keys w))
+  (.write w "}"))
 
 (defmethod print-method CollOfSpec [spec ^Writer w]
-  (.write w (let [[open close] (condp = (:kind spec)
-                                      map? ["{" "}"]
-                                      vector? ["[" "]"]
-                                      set? ["#{" "}"]
-                                      ["(" ")"])]
-              (str "#CollOf "open  (print-str (:s spec))  close))))
+  (let [[open close] (condp = (:kind spec)
+                       map? ["{" "}"]
+                       vector? ["[" "]"]
+                       set? ["#{" "}"]
+                       ["[" "]"])]
+    (.write w "#CollOf")
+    (#'clojure.core/print-sequential open print-method " " close [(:s spec)] w)))
