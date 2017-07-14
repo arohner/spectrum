@@ -5,8 +5,6 @@
   (:import [java.net URL URLClassLoader]
            [java.io ByteArrayOutputStream PipedInputStream PipedOutputStream]))
 
-;; from weavejester/clj-daemon, which doesn't have official releases
-
 (defn url-classloader [urls]
   (println "url-classloader" urls)
   (URLClassLoader.
@@ -57,28 +55,6 @@
                   result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)]
               (invoke-in cl 'clojure.lang.RT/printString [Object] result)))]
     (read-string s)))
-
-(defn eval-transit
-  "Eval the string, return transit. Use for large return values (i.e. analysis results)"
-  [cl string]
-  (let [baos (java.io.ByteArrayOutputStream.)]
-    (with-classloader cl
-      (let [form   (invoke-in cl 'clojure.lang.RT/readString [String] string)
-
-            _ (require-in cl "cognitect.transit")
-            transit-writer-var (clj-var-in cl "cognitect.transit" "writer")
-            transit-write-var (clj-var-in cl "cognitect.transit" "write")
-            keyword-var (clj-var-in cl "clojure.core" "keyword")
-            json (.invoke keyword-var "json")
-            writer (.invoke transit-writer-var baos json)
-            result (invoke-in cl 'clojure.lang.Compiler/eval [Object] form)
-            _ (println "done evaling")
-            _ (.invoke transit-write-var writer result)]
-        (println "done writing, " (.size baos))))
-    (let [bais (java.io.ByteArrayInputStream. (.toByteArray baos))
-          _ (.reset baos)
-          reader (t/reader bais :json)]
-      (t/read reader))))
 
 (defn init-cl [cl]
   (invoke-in cl 'java.lang.Class/forName [String] "clojure.java.api.Clojure")
