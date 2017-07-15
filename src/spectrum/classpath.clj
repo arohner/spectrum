@@ -73,3 +73,7 @@
 
 (defn eval-with-isolated-classloader [str]
   (eval-string @isolated-classloader str))
+
+(defn var-analysis-in [cl v]
+  (-> (clj-var-in cl "spectrum.data" "get-var-analysis")
+      (.invoke (clj-var-in cl (str (.ns v)) (str (.sym v))))))
