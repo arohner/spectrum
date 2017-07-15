@@ -826,9 +826,7 @@
           r (if (nil? p0)
               nil
               (return p0))]
-      (if k0
-        [k0 r]
-        r)))
+      r))
   (with-return- [this r]
     (let [ret (return this)]
       (if (= ret (value nil))
