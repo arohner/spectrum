@@ -486,7 +486,9 @@
   (are [spec key expected] (= expected (c/keys-get spec key))
     (c/keys-spec {} {:integer (c/value 1)} {} {}) :integer (c/value 1)
     (c/and-spec [(c/keys-spec {} {:integer (c/value 1)} {} {}) (c/not-spec (c/pred-spec #'seq?))]) :integer (c/value 1)
-    (c/keys-spec {} {:integer (c/value 1)} {} {}) :bogus nil))
+    (c/keys-spec {} {:integer (c/value 1)} {} {}) :bogus (c/value nil)
+    (c/keys-spec {} {} {} {:integer (c/value 1)}) :integer (c/or- [(c/value 1) (c/value nil)])
+    (c/or- [(c/keys-spec {} {:integer (c/value 1)} {} {}) (c/class-spec clojure.lang.PersistentHashMap)]) :integer (c/or- [(c/value 1) (c/value nil)])))
 
 (deftest can-parse-everything
   (doseq [[key val] (s/registry)]

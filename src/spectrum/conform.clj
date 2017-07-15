@@ -50,7 +50,10 @@
     "Extra specs that are true of this spec"))
 
 (defprotocol KeysGet
-  (keys-get [this key]))
+  (keys-get- [this key]))
+
+(defn keys-get? [s]
+  (satisfies? KeysGet s))
 
 (defn dependent-specs? [s]
   (satisfies? DependentSpecs s))
@@ -133,6 +136,13 @@
 (defn with-return [s ret]
   {:post [(s/valid? :with-return/ret %)]}
   (with-return- s ret))
+
+(s/fdef keys-get :args (s/cat :s spect? :k keyword?) :ret spect?)
+(defn keys-get [s k]
+  {:post [(s/valid? spect? %)]}
+  (if (keys-get? s)
+    (keys-get- s k)
+    (value nil)))
 
 (defprotocol FirstRest
   (first* [this])
@@ -357,7 +367,7 @@
   (rest* [this]
     (unknown {:message "rest on unknown"}))
   KeysGet
-  (keys-get [this k]
+  (keys-get- [this k]
     (unknown {:message "get on unknown"})))
 
 (defrecord RecurForm [args]
@@ -462,9 +472,7 @@
   (return- [this]
     this)
   (regex? [this]
-    false)
-  (keys-get [this k]
-    nil))
+    false))
 
 (def spect-regex-impl
   {:derivative spec-dx
@@ -1044,10 +1052,10 @@
   (will-accept [this]
     #{this})
   KeysGet
-  (keys-get [{:keys [v] :as this} k]
+  (keys-get- [{:keys [v] :as this} k]
     (if (coll? v)
-      (get v k)
-      nil)))
+      (value (get v k))
+      (value nil))))
 
 (extend-regex Value)
 
@@ -1579,7 +1587,7 @@
   (new- [this ps]
     (and-spec (map parse-spec ps)))
   KeysGet
-  (keys-get [this k]
+  (keys-get- [this k]
     (->> this
          :ps
          (map parse-spec)
@@ -1671,11 +1679,11 @@
   (invoke [this args]
     (unknown-invoke this args))
   KeysGet
-  (keys-get [this k]
+  (keys-get- [this k]
     (->> this
          :ps
-         (map parse-spec)
-         (map keys-get)
+         (mapv parse-spec)
+         (mapv (fn [p] (keys-get p k)))
          (distinct)
          (or-))))
 
@@ -1748,10 +1756,7 @@
       (condp = t
         :ambiguous :ambiguous
         :truthy :falsey
-        :falsey :truthy)))
-  KeysGet
-  (keys-get [this k]
-    nil))
+        :falsey :truthy))))
 
 (extend-regex NotSpec)
 
@@ -1912,12 +1917,19 @@
   (invoke [this args]
     (unknown-invoke this args))
   KeysGet
-  (keys-get [this k]
+  (keys-get- [this k]
     (assert (keyword? k))
-    (some->> [:req :req-un :opt :opt-un]
-             (some (fn [key-type]
-                     (get-in this [key-type k])))
-             (parse-spec)))
+    (or
+     (some->> [:req :req-un]
+              (some (fn [key-type]
+                      (get-in this [key-type k])))
+              (parse-spec))
+     (some->> [:opt :opt-un]
+              (some (fn [key-type]
+                      (get-in this [key-type k])))
+              (parse-spec)
+              (#(or- [% (value nil)])))
+     (value nil)))
   Spect
   (conform* [this x]
     (cond
