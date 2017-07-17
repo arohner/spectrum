@@ -13,7 +13,11 @@
 
 (defn namespace? [x] (instance? clojure.lang.Namespace))
 
-(defn array? [x] (.isArray ^Class (class x)))
+(defn array? [x]
+  (some-> x
+          class
+          ^Class
+          (.isArray)))
 
 (s/fdef coll-reduce? :args (s/cat :x any?) :ret boolean?)
 (defn coll-reduce? [x]
