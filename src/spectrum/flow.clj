@@ -67,7 +67,7 @@
 
 (s/fdef flow-ns :args (s/cat :as ::analyses) :ret ::analyses)
 
-(s/fdef maybe-strip-meta :args (s/cat :a ::ana.jvm/analysis) :ret ::ana.jvm/analysis)
+(s/fdef maybe-strip-meta :args (s/cat :a (s/nilable ::ana.jvm/analysis)) :ret ::ana.jvm/analysis)
 (defn maybe-strip-meta
   "If a is a :op :with-meta, strip it and return the :expr, or a"
   [a]
@@ -102,7 +102,7 @@
   {:post [(do (println "infer-var" (:form a) "=>" %) true) (if (:init a) % true)]}
   (let [a* (infer a)]
     (if (:init a*)
-      (-> a* :init maybe-strip-meta ::ret-spec)
+      (-> a* :init maybe-strip-meta ::ret-spec (assoc :var (:var a)))
       (c/value (clojure.lang.Var$Unbound. (:var a*))))))
 
 (defn flow-ns
@@ -1009,9 +1009,13 @@
   (let [a* (get-in a path)
         a (if args-spec
             (update-in a (conj path :params) destructure-fn-params args-spec (macro? a))
-            (update-in a (conj path :params) (fn [params]
-                                               (mapv (fn [p]
-                                                       (assoc p ::ret-spec (c/unknown {:message (format "method params: no spec for %s" (:form (get-in a (pop path)))) :form (:name p) :a-loc (a-loc a*)}))) params))))
+            (do
+              (when *inferring?*
+                (println "flow-method: no spec for" (:form a*))
+                (assert false))
+              (update-in a (conj path :params) (fn [params]
+                                                 (mapv (fn [p]
+                                                         (assoc p ::ret-spec (c/unknown {:message (format "method params: no spec for %s" (:form (get-in a (pop path)))) :form (:name p) :a-loc (a-loc a*)}))) params)))))
         a (flow* a (conj path :body))
         body (get-in a (conj (conj path :body)))
         body-ret-spec (strip-control-flow (::ret-spec body))]
@@ -1474,7 +1478,10 @@
   (let [a (infer-walk a path [:args])
         a* (get-in a path)
         f-a (invoke-get-fn-analysis a path)
-        s (invoke-get-fn-spec (:fn a*))
+        invoke-var? (get-in a (concat path [:fn :var]))
+        s (if (and invoke-var? (recursive? a (conj path :fn)))
+            (c/unknown {:message "TODO self-recursion"})
+            (invoke-get-fn-spec (:fn a*)))
         args (:args a*)
         a (if (and s (:args s))
             (reduce (fn [a arg]
@@ -1506,6 +1513,7 @@
         ret-spec (->> ms
                       (map :return-type)
                       (map j/resolve-java-class)
+                      (map c/class-spec)
                       (c/or-))
         a (assoc-in a (conj path ::ret-spec) ret-spec)
         method-specs (->> ms
@@ -1535,7 +1543,12 @@
     (assoc-in a (conj path ::ret-spec) (::ret-spec b))))
 
 (defmethod infer* :fn [a path]
-  (let [a (infer-walk a path)
+  (let [a* (get-in a path)
+        a (if (:local a*)
+            ;; FIXME this local could be self-recursive, need complete spec here, but don't have it yet. Maybe re-flow after first infer pass?
+            (assoc-in a (concat path [:local ::ret-spec]) (c/pred-spec #'fn?))
+            a)
+        a (infer-walk a path)
         a* (get-in a path)
         args (map (fn [m]
                     (c/cat- (mapv ::ret-spec (:params m)))) (:methods a*))
@@ -1547,15 +1560,62 @@
 
 (defmethod infer* :fn-method [a path]
   (let [a* (get-in a path)
-        params (mapv (fn [p] (assoc p ::ret-spec (c/pred-spec #'any?))) (:params a*))
+        params (mapv (fn [p]
+                       (let [ret-spec (cond
+                                        (:variadic? p) (c/and-spec [(c/seq-of (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)])
+                                        (:tag p) (c/class-spec (:tag p))
+                                        :else (c/pred-spec #'any?))]
+                         (assoc p ::ret-spec ret-spec))) (:params a*))
         a (assoc-in a (conj path :params) params)
         a (infer-walk a path)
         a* (get-in a path)]
     a))
 
 (defmethod infer* :binding [a path]
-  (let [a* (get-in a path)]
-    (infer-walk a path)))
+  (let [a (infer-walk a path)
+        a* (get-in a path)
+        _ (println "infer* binding:" a*)
+        a* (if (:init a*)
+             (assoc a* ::ret-spec (::ret-spec (:init a*)))
+             a*)]
+    (when-not (::ret-spec a*)
+      (println "binding fail:" (:op a*) a*)
+      (println "infer* :binding fail" (:form a) (a-loc-str a)))
+    (assert (::ret-spec a*))
+    (assoc-in a (conj path ::ret-spec) (::ret-spec a*))))
+
+(defmethod infer* :do [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)]
+    (assoc-in a (conj path ::ret-spec) (-> a* :ret ::ret-spec))))
+
+
+(defmethod infer* :new [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)
+        cls (:class a*)
+        constructors (-> a*
+                         :class
+                         reflect/reflect
+                         :members
+                         (->>
+                          (filter (fn [m]
+                                    (instance? clojure.reflect.Constructor m)
+                                    (= (count (:parameter-types m)) (count (:args a*)))))))
+        constructor-specs (map c/or- (apply map vector (map :parameter-types constructors)))
+        a (reduce (fn [a [arg spec]]
+                    (let [b (find-binding a path (:name arg))
+                          b-path (:path b)]
+                      (assert b-path)
+                      (assert spec)
+                      (infer-add-constraint a b-path spec))) a (map vector (:args a*) constructor-specs))]
+
+    (assoc-in a (conj path ::ret-spec) (c/class-spec (-> a* :class :val)))))
+
+(defmethod infer* :with-meta [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)]
+    (assoc-in a (conj path ::ret-spec) (-> a* :expr ::ret-spec))))
 
 (defn infer-loop-let [a path]
   {:post [(c/spect-or-control-flow? (::ret-spec (get-in % path)))]}
