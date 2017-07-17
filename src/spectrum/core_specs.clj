@@ -78,12 +78,12 @@
 (def-core-predicates)
 
 (s/fdef clojure.core/any? :args (s/cat :x (fn [x] true)) :ret boolean?)
-(s/fdef clojure.core/assoc :args (s/cat :m (s/nilable associative?) :k any? :v any?) :ret associative?)
+(s/fdef clojure.core/assoc :args (s/cat :m (s/nilable associative?) :pairs (s/+ (s/cat :k any? :v any?))) :ret associative?)
 (s/fdef clojure.core/assoc-in :args (s/cat :m (s/nilable associative?) :ks (s/coll-of any?) :v any?) :ret associative?)
 (s/fdef clojure.core/bigdec :args (s/cat :x number?) :ret bigdec?)
 (s/fdef clojure.core/concat :args (s/* ::seq-like) :ret seq?)
-(s/fdef clojure.core/commute :args (s/cat :r ref? :f fn?) :ret any?)
-(s/fdef clojure.core/conj :args (s/cat :c (s/nilable coll?) :x any?) :ret coll?)
+(s/fdef clojure.core/commute :args (s/cat :r ref? :f fn? :args (s/* any?)) :ret any?)
+(s/fdef clojure.core/conj :args (s/cat :c (s/? (s/nilable coll?)) :x (s/* any?)) :ret coll?)
 (s/fdef clojure.core/contains? :args (s/cat :coll (s/alt :nil nil? :a associative? :s set? :m map? :arr array?) :key any?) :ret any?)
 (s/fdef clojure.core/deref :args (s/cat :r deref? :ms (s/? pos-int?) :val (s/? any?)))
 (s/fdef clojure.core/dissoc :args (s/cat :x (s/nilable map?) :ks (s/* any?)) :ret map?)
@@ -93,10 +93,13 @@
 (s/fdef clojure.core/filter :args (s/cat :f any? :coll (s/? ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/first :args (s/cat :coll ::seq-like) :ret any?)
 (s/fdef clojure.core/format :args (s/cat :fmt string? :args (s/* any?)) :ret string?)
-(s/def ::gettable (s/or :l ilookup? :m map? :s set? :a array?))
+(s/def ::gettable (s/or :l ilookup? :m map? :s set? :a array? :n nil?))
 (s/fdef clojure.core/get :args (s/cat :m ::gettable :k any? :not-found (s/? any?)))
 (s/fdef clojure.core/get-in :args (s/cat :m ::gettable :ks (s/coll-of any?) :not-found (s/? any?)))
-(s/fdef clojure.core/hash-map :args (s/* (s/cat :k any? :v any?)) :ret map?)
+
+;; FIXME this breaks all kinds of things
+;;(s/fdef clojure.core/hash-map :args (s/* (s/cat :k any? :v any?)) :ret map?)
+
 (s/fdef clojure.core/identity :args (s/cat :x any?) :ret any?)
 (s/fdef clojure.core/in-ns :args (s/cat :ns symbol?) :ret namespace?)
 (s/fdef clojure.core/inc :args (s/cat :x number?) :ret number?)
@@ -111,16 +114,21 @@
 (s/fdef clojure.core/not :args (s/cat :x any?) :ret boolean?)
 (s/fdef clojure.core/println :args (s/* any?) :ret nil?)
 (s/fdef clojure.core/pr-str :args (s/* any?) :ret string?)
-(s/fdef clojure.core/push-thread-bindings :args (s/* (s/tuple var? any?)) :ret nil?)
-(s/fdef clojure.core/pop-thread-bindings :args (s/cat) :ret nil?)
+;; (s/fdef clojure.core/push-thread-bindings :args (s/map-of var? any?) :ret nil?)
+;; (s/fdef clojure.core/pop-thread-bindings :args (s/cat) :ret nil?)
 (s/fdef clojure.core/range :args (s/cat :start (s/? integer?) :end (s/? integer?) :step (s/? integer?)) :ret (s/coll-of integer?))
-(s/fdef clojure.core/reduce :args (s/cat :f fn? :init-val (s/? any?) :coll (s/coll-of any?)) :ret (s/or :f fn? :c coll?))
+;; (s/fdef clojure.core/reduce :args (s/cat :f fn? :init-val (s/? any?) :coll (s/nilable (s/coll-of any?))) :ret (s/or  :f fn? :c coll?))
+
 (s/def ::refer-rename (s/cat :r #{:rename} :m (s/map-of symbol? symbol?)))
 (s/def ::refer-exclude (s/cat :r #{:exclude} :m (s/coll-of symbol?)))
 (s/def ::refer-refer (s/cat :r #{:refer} :m #{:all}))
+(s/def ::refer-only (s/cat :r #{:only} :syms (s/coll-of symbol?)))
 (s/def ::refer-filter (s/alt :rename ::refer-rename :exclude ::refer-exclude :refer ::refer-refer :only ::refer-only))
 (s/fdef clojure.core/refer :args (s/cat :ns symbol? :refer-filters (s/* ::refer-filter)) :ret nil?)
 
+(s/def ::local-name (s/and simple-symbol? #(not= '& %)))
+(s/def ::as ::local-name)
+(s/def ::refer (s/or :all #{:all} :syms (s/coll-of simple-symbol?)))
 (s/def ::prefix-list
   (s/spec
     (s/cat :prefix simple-symbol?
@@ -139,5 +147,3 @@
 (s/fdef clojure.core/with-meta :args (s/cat :x imeta? :m (s/nilable map?)) :ret imeta?)
 
 (predicate-spec clojure.spec.alpha/spec?)
-
-;;; core annotations
