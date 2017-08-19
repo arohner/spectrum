@@ -273,7 +273,7 @@
   (let [f (c/first* args-spect)
         coll (c/second* args-spect)]
     (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/all-possible-values coll)))
-      (assoc spect :ret (c/coll-of (c/and-spec [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
+      (assoc spect :ret (c/coll-of (c/and- [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
       (c/invalid {:message (format "filter f does not conform: %s w/ %s" (print-str f) (print-str (first (filter (fn [arg]
                                                                                                                    (c/invalid? (c/invoke f (c/cat- [arg])))) (c/all-possible-values coll)))))
                   :form `(filter ~f ~coll)}))))
@@ -447,7 +447,7 @@
   (let [args [(c/class-spec a) (c/class-spec b)]
         int-count (pred-count (c/pred-spec #'int?) args)
         float-count (pred-count (c/pred-spec #'float?) args)
-        big-int-count (pred-count (c/and-spec [(c/pred-spec #'integer?) (c/not-spec (c/pred-spec #'int?))]) args)
+        big-int-count (pred-count (c/and- [(c/pred-spec #'integer?) (c/not- (c/pred-spec #'int?))]) args)
         big-dec-count (pred-count (c/pred-spec #'bigdec?) args)
         ratio-count (pred-count (c/pred-spec #'ratio?) args)]
     (cond
@@ -473,3 +473,10 @@
 (ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Double/TYPE) (c/class-spec Object)]) add-transformer)
 (ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Double/TYPE)]) add-transformer)
 (ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Object)]) add-transformer)
+
+(defn ann-apply [spect args]
+  (let [f (c/first* args)
+        f-args (c/rest* args)]
+    (assoc spect :ret (c/invoke f f-args))))
+
+(ann #'apply ann-apply)

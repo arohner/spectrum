@@ -168,6 +168,22 @@
     '(+ x y) {:x (c/class-spec BigDecimal)
               :y (c/class-spec BigInt)} (c/class-spec BigDecimal)))
 
+(deftest apply
+  (testing "truthy"
+    (are [form args expected]
+        '(apply inc [1]) {} (c/value 2)
+        '(apply inc x) {:x (c/value [1])} (c/value 2)
+        '(apply :foo [{:foo 1}]) {} (c/value 1)))
+  (testing "falsey"
+    (are [form args] (c/invalid? (c/check/type-of form args))
+      '(apply inc x) {:x (c/coll-of (c/pred-spec #'string?))}
+      '(apply inc x) {:x (c/pred-spec #'string?)}
+      '(apply inc x) {:x (c/pred-spec #'int?)})))
+
+(deftest dependendent-specs
+  (are [s expected] (= expected (c/dependent-specs s))
+    (c/pred-spec #'even?) #{(c/pred-spec #'integer?)}))
+
 ;; TODO
 
 ;; (deftest filter-tests

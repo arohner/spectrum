@@ -86,7 +86,7 @@
   (maybe-load-clojure-builtins)
   (println "checking " ns)
   (some->>
-   (ana.jvm/analyze-ns ns)
+   (ana.jvm/analyze-ns ns (ana.jvm/empty-env) {:eval? false})
    (flow/flow-ns)
    (mapcat check*)
    (filter identity)))

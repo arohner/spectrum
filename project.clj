@@ -19,4 +19,5 @@
   :jvm-opts ["-Xmx1024m"
              "-XX:-OmitStackTraceInFastThrow"
              "-XX:+UseConcMarkSweepGC"
-             "-Dfile.encoding=UTF-8"])
+             "-Dfile.encoding=UTF-8"
+             "-agentlib:jdwp=transport=dt_socket,address=8000,server=y,suspend=n"])

@@ -3,9 +3,7 @@
             [clojure.spec.test.alpha]
             [clojure.test :refer :all]
             [clojure.tools.analyzer.jvm :as ana.jvm]
-            [spectrum.conform :as c]
-            [spectrum.check :as check]
-            [spectrum.flow :as flow])
+            [spectrum.conform :as c])
   (:import clojure.lang.Keyword))
 
 (clojure.spec.test.alpha/instrument)
@@ -35,7 +33,7 @@
       (s/and #(> % 10))))
 
   (testing "nil"
-    (is (= (c/value nil) (c/parse-spec ::s/nil))))
+    (is (= (c/accept nil) (c/parse-spec ::s/nil))))
 
   (testing "returns Regex"
     (are [spec] (c/regex? (c/parse-spec spec))
@@ -99,7 +97,7 @@
       (c/pred-spec #'any?) (c/unknown {:message ""})
       (c/parse-spec #'even?) (c/pred-spec #'even?)
       (c/pred-spec #'integer?) (c/parse-spec #'even?)
-      (c/pred-spec #'even?) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)])
+      (c/pred-spec #'even?) (c/and- [(c/pred-spec #'int?) (c/pred-spec #'even?)])
       (c/pred-spec #'any?) (c/pred-spec #'boolean?)
       (c/pred-spec #'any?) (c/pred-spec #'integer?)
       (c/pred-spec #'int?) (c/pred-spec #'int?)
@@ -120,11 +118,14 @@
 
       (c/tuple-spec []) (c/value [])
       (c/tuple-spec []) (c/tuple-spec [])
-      (c/not-spec (c/pred-spec #'string?)) (c/pred-spec #'keyword?)
+      (c/not- (c/pred-spec #'string?)) (c/pred-spec #'keyword?)
 
-      (c/and-spec [(c/not-spec (c/pred-spec #'string?)) (c/not-spec (c/pred-spec #'keyword?))]) (c/class-spec Long)
+      (c/and- [(c/not- (c/pred-spec #'string?)) (c/not- (c/pred-spec #'keyword?))]) (c/class-spec Long)
 
-      (c/and-spec [(c/class-spec Long) (c/not-spec (c/pred-spec #'keyword?))]) (c/class-spec Long)))
+      (c/and- [(c/class-spec Long) (c/not- (c/pred-spec #'keyword?))]) (c/class-spec Long)
+
+      (c/pred-spec #'fn?) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)
+      (c/pred-spec #'fn?) (c/get-var-fn-spec #'inc)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform (c/parse-spec spec) val))
@@ -143,11 +144,11 @@
 
          (s/and integer? even?) (c/value 10) (c/value 10)
          (s/and integer? even?) (c/parse-spec (s/and integer? even?)) (c/parse-spec (s/and integer? even?))
-         (c/pred-spec #'int?) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and-spec [(c/pred-spec #'int?) (c/pred-spec #'even?)])
+         (c/pred-spec #'int?) (c/and- [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and- [(c/pred-spec #'int?) (c/pred-spec #'even?)])
          (s/or :int integer? :str string?) (c/value "foo") (c/value "foo")
          (s/or :int integer? :str string?) (c/pred-spec #'string?) (c/parse-spec 'string?)
 
-         (c/or- [(c/pred-spec #'seq?) (c/pred-spec #'nil?)]) (c/or- [(c/and-spec [(c/pred-spec #'seq?) (c/pred-spec #'any?)]) (c/pred-spec #'nil?)]) (c/or- [(c/and-spec [(c/pred-spec #'seq?) (c/pred-spec #'any?)]) (c/pred-spec #'nil?)])
+         (c/or- [(c/pred-spec #'seq?) (c/pred-spec #'nil?)]) (c/or- [(c/and- [(c/pred-spec #'seq?) (c/pred-spec #'any?)]) (c/pred-spec #'nil?)]) (c/or- [(c/and- [(c/pred-spec #'seq?) (c/pred-spec #'any?)]) (c/pred-spec #'nil?)])
 
          (s/* integer?) (c/value []) (c/cat- [])
          (s/* integer?) (c/value [1]) (c/cat- [(c/value 1)])
@@ -206,7 +207,7 @@
 
          (c/class-spec java.util.concurrent.Callable) (c/parse-spec (s/and fn? ifn?)) (c/parse-spec (s/and fn? ifn?))
 
-         (c/cat- [(c/class-spec java.util.concurrent.Callable)]) (c/cat- [(c/and-spec [(c/pred-spec #'fn?) (c/pred-spec #'ifn?)])]) (c/cat- [(c/and-spec [(c/pred-spec #'fn?) (c/pred-spec #'ifn?)])])
+         (c/cat- [(c/class-spec java.util.concurrent.Callable)]) (c/cat- [(c/and- [(c/pred-spec #'fn?) (c/pred-spec #'ifn?)])]) (c/cat- [(c/and- [(c/pred-spec #'fn?) (c/pred-spec #'ifn?)])])
 
          (s/coll-of int?) (c/coll-of (c/pred-spec #'int?)) (c/coll-of (c/pred-spec #'int?))
          (c/or- [(c/pred-spec #'int?) (c/value true)]) (c/pred-spec #'int?) (c/pred-spec #'int?)
@@ -273,11 +274,14 @@
       (c/tuple-spec []) (c/value [1])
       (c/tuple-spec [(c/pred-spec #'integer?)]) (c/tuple-spec [])
 
-      (c/not-spec (c/pred-spec #'string?)) (c/pred-spec #'string?)
+      (c/not- (c/pred-spec #'string?)) (c/pred-spec #'string?)
 
       (c/class-spec Long) (c/class-spec Short)
       (c/class-spec Short) (c/class-spec Long)
-      (c/class-spec Long) (c/class-spec Double))))
+      (c/class-spec Long) (c/class-spec Double)
+
+      (c/pred-spec #'keyword?) (c/cat- [(c/pred-spec #'keyword?)])
+      (c/pred-spec #'keyword?) (c/seq-of (c/pred-spec #'keyword?)))))
 
 (deftest first-rest
   (is (= (c/parse-spec 'integer?) (c/first* (c/parse-spec (s/+ integer?)))))
@@ -304,7 +308,7 @@
     (c/class-spec Boolean) :ambiguous
 
     (c/pred-spec #'integer?) :truthy
-    (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) :truthy
+    (c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) :truthy
 
     (c/or- [(c/class-spec clojure.lang.ISeq) (c/class-spec clojure.lang.Seqable)]) :truthy
 
@@ -315,12 +319,7 @@
 
     (c/value true) :truthy
     (c/value false) :falsey
-    (c/class-spec Integer) :truthy
-    ))
-
-(deftest dependendent-specs
-  (are [s expected] (= expected (c/dependent-specs s))
-    (c/pred-spec #'even?) #{(c/pred-spec #'integer?)}))
+    (c/class-spec Integer) :truthy))
 
 (s/def ::a string?)
 (s/def ::nilable-string string?)
@@ -348,7 +347,6 @@
   (is (= (c/parse-spec (s/keys :req [::a ::b])) (c/parse-spec (s/merge (s/keys :req [::a]) (s/keys :req [::b]))))))
 
 (deftest keyword-invoke-works
-
   (are [result spec args] (c/valid? (c/keyword-invoke spec args) result )
     (c/value nil) (c/value 3) (c/cat- [(c/value ::a)])
     (c/value ::b) (c/value 3) (c/cat- [(c/value ::a) (c/value ::b)])
@@ -375,11 +373,40 @@
       (c/pred-spec #'integer?) (c/value 3)
       (c/value 3) (c/pred-spec #'integer?))))
 
-(deftest or-conj
-  (is (= (c/or- [(c/pred-spec #'string?)]) (c/pred-spec #'string?)))
-  (is (= (c/or- [(c/pred-spec #'string?) (c/pred-spec #'string?)])) (c/pred-spec #'string?))
+(deftest or-
+  (let [a (c/value :a)
+        b (c/value :b)
+        c (c/value :c)]
+    (are [start expected] (= expected start)
+      (c/or- [a]) a
+      (c/or- [a a]) a
+      (c/or- [a b]) (c/or- [a b])
+      (c/or- [c b a]) (c/or- [a b c]))))
 
-  (is (c/equivalent? (c/or- [(c/pred-spec #'string?) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'int?)])]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'string?) (c/pred-spec #'int?)]))))
+;; (deftest or-conj
+;;   (let [a (c/value :a)
+;;         b (c/value :b)
+;;         c (c/value :c)]
+;;     (are [start arg expected] (= expected (c/or-conj start arg))
+;;       a a a
+;;       a b (c/or- [a b])
+;;       (c/or- [a b]) a (c/or- [a b])
+;;       (c/or- [a b]) b (c/or- [a b])
+;;       (c/and- [a b]) b (c/and- [a b])
+;;       (c/and- [a b c]) (c/not- b) (c/or- [(c/and- [a b c]) (c/and- [a c (c/not- b)])]))))
+
+;; (deftest and-conj
+;;   (let [a (c/value :a)
+;;         b (c/value :b)
+;;         c (c/value :c)]
+;;     (are [start arg expected] (= expected (c/and-conj start arg))
+;;       a a a
+;;       a b (c/and- [a b])
+;;       (c/and- [a b]) a (c/and- [a b])
+;;       (c/and- [a b]) b (c/and- [a b])
+;;       (c/or- [a b]) a a
+;;       (c/or- [a b]) (c/not- b) a
+;;       (c/or- [a b c]) (c/not- b) (c/or- [a c]))))
 
 (deftest or-disj
   (is (= (c/pred-spec #'int?) (c/or-disj (c/or- [(c/pred-spec #'int?) (c/value nil)]) (c/value nil))))
@@ -407,7 +434,7 @@
       #'str)))
 
 (deftest multispecs
-  (is (c/equivalent? (c/or- [(c/parse-spec (s/spec ::ana.jvm/analysis)) (c/value nil)]) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
+  ;; (is (c/equivalent? (c/or- [(c/parse-spec (s/spec ::ana.jvm/analysis)) (c/value nil)]) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
   (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second))))
 
 (deftest will-accept-works
@@ -415,7 +442,8 @@
     (c/cat- [(c/pred-spec #'integer?)]) #{(c/pred-spec #'integer?)}
     (c/parse-spec (s/cat :x (s/? keyword?) :y integer?)) #{(c/pred-spec #'keyword?) (c/pred-spec #'integer?)}
     (c/parse-spec (s/? keyword?)) #{(c/pred-spec #'keyword?)}
-    (c/derivative (c/parse-spec (s/+ keyword?)) (c/pred-spec #'keyword?)) #{(c/pred-spec #'keyword?)}))
+    (c/derivative (c/parse-spec (s/+ keyword?)) (c/pred-spec #'keyword?)) #{(c/pred-spec #'keyword?)}
+    (c/alt- [(c/pred-spec #'simple-symbol?) (c/cat- [(c/pred-spec #'simple-symbol?) (c/pred-spec #'simple-symbol?)])]) #{(c/pred-spec #'simple-symbol?) (c/cat- [(c/pred-spec #'simple-symbol?) (c/pred-spec #'simple-symbol?)])}))
 
 (deftest infinite-works
   (are [in expected] (= expected (c/infinite? (c/parse-spec in)))
@@ -432,13 +460,20 @@
   (is (= [(c/cat- [(c/pred-spec #'integer?)])] (c/all-possible-values (c/parse-spec (s/cat :x integer?)))))
   (is (= [(c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?)])] (c/all-possible-values (c/parse-spec (s/cat :x integer? :y integer?)))))
   (is (= 2 (count (c/all-possible-values (c/parse-spec (s/cat :x (s/? integer?) :y integer?))))))
+  (is (> (count (c/all-possible-values (c/seq-of (c/pred-spec #'int?)))) 1))
 
   (let [vs (set (take 5 (c/all-possible-values (c/parse-spec (s/cat :a (s/* keyword?) :b (s/* string?) :c integer?)))))]
     (are [v] (contains? vs v)
       (c/cat- [(c/pred-spec #'integer?)])
       (c/cat- [(c/cat- [(c/pred-spec #'keyword?)]) (c/pred-spec #'integer?)])
       (c/cat- [(c/cat- [(c/pred-spec #'string?)]) (c/pred-spec #'integer?)])
-      (c/cat- [(c/cat- [(c/pred-spec #'keyword?)]) (c/cat- [(c/pred-spec #'string?)]) (c/pred-spec #'integer?)]))))
+      (c/cat- [(c/cat- [(c/pred-spec #'keyword?)]) (c/cat- [(c/pred-spec #'string?)]) (c/pred-spec #'integer?)])))
+
+  ;; (testing "no infinite hang"
+  ;;   (c/all-possible-values-arity-n (:args (c/get-var-fn-spec #'refer)) 1)
+  ;;   (c/all-possible-values-arity-n (:args (c/get-var-fn-spec #'require)) 14)
+  ;;   (is (seq (c/all-possible-values-arity-n (:args (c/get-var-fn-spec #'require)) 14))))
+  )
 
 (deftest invoke
   (testing "truthy"
@@ -448,22 +483,24 @@
       (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?)]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
       (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'keyword?)]) (c/or- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)])
       (s/map-of integer? string?) (c/cat- [(c/or- [(c/pred-spec #'integer?) (c/value nil)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
-      (s/map-of integer? string?) (c/cat- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
-      (s/map-of integer? string?) (c/cat- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
+      (s/map-of integer? string?) (c/cat- [(c/and-[(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
+      (s/map-of integer? string?) (c/cat- [(c/and-[(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
       (s/map-of integer? string?) (c/cat- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/pred-spec #'keyword?)
 
       (c/value #'string?) (c/cat- [(c/value "foo")]) (c/value true)
       (c/pred-spec #'float?) (c/cat- [(c/value 3)]) (c/value false)
 
+      (c/pred-spec #'keyword?) (c/cat- [(c/pred-spec #'keyword?)]) (c/value true)
+      (c/pred-spec #'keyword?) (c/cat- [(c/spec-spec (c/pred-spec #'keyword?))]) (c/value true)
+      (c/pred-spec #'keyword?) (c/cat- [(c/cat- [(c/pred-spec #'keyword?)])]) (c/value true)
+      (c/pred-spec #'keyword?) (c/cat- [(c/spec-spec (c/cat- [(c/pred-spec #'keyword?)]))]) (c/value false)
       (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)))
 
-  (testing "falsey"
+  (testing "invalid"
     (are [spec args] (c/invalid? (c/invoke (c/parse-spec spec) args))
       (c/value 1) (c/cat- [(c/value 2)])
       (s/map-of integer? string?) (c/cat- [])
-      (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?) (c/pred-spec #'integer?)])
-      ;; (c/pred-spec #'int?) (c/cat- [(c/cat- [(c/value 3)])])
-      )))
+      (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?) (c/pred-spec #'integer?)]))))
 
 (deftest fnspec
   (testing "truthy"
@@ -485,7 +522,7 @@
 (deftest keys-get
   (are [spec key expected] (= expected (c/keys-get spec key))
     (c/keys-spec {} {:integer (c/value 1)} {} {}) :integer (c/value 1)
-    (c/and-spec [(c/keys-spec {} {:integer (c/value 1)} {} {}) (c/not-spec (c/pred-spec #'seq?))]) :integer (c/value 1)
+    (c/and-[(c/keys-spec {} {:integer (c/value 1)} {} {}) (c/not- (c/pred-spec #'seq?))]) :integer (c/value 1)
     (c/keys-spec {} {:integer (c/value 1)} {} {}) :bogus (c/value nil)
     (c/keys-spec {} {} {} {:integer (c/value 1)}) :integer (c/or- [(c/value 1) (c/value nil)])
     (c/or- [(c/keys-spec {} {:integer (c/value 1)} {} {}) (c/class-spec clojure.lang.PersistentHashMap)]) :integer (c/or- [(c/value 1) (c/value nil)])))
@@ -493,3 +530,18 @@
 (deftest can-parse-everything
   (doseq [[key val] (s/registry)]
     (is (c/parse-spec (s/spec key)))))
+
+(deftest spec->classes
+  (are [s expected] (= expected (c/spec->classes s))
+    (c/pred-spec #'string?) #{String}
+    (c/pred-spec #'string?) #{String}
+    (c/or- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) #{String Keyword}))
+
+(deftest contradictions
+  (are [s] (not (c/conformy? s))
+    (c/and- [(c/pred-spec #'string?) (c/not- (c/pred-spec #'string?))])
+    (c/and- [(c/class-spec String) (c/class-spec Number)])
+    (c/cat- [(c/invalid {:message ""})])
+    (c/cat- [c/reject])
+    (c/seq-of (c/invalid {:message ""}))
+    (c/alt-  [(c/pred-spec #'string?) (c/invalid {:message ""})])))

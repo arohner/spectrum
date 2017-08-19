@@ -8,7 +8,6 @@
            (clojure.lang ISeq
                          Seqable)))
 
-
 ;;; specs for clojure.core fns, used as hacks/testing. Delete when official versions become available
 
 (defn namespace? [x] (instance? clojure.lang.Namespace))
@@ -79,6 +78,7 @@
 
 (s/fdef clojure.core/any? :args (s/cat :x (fn [x] true)) :ret boolean?)
 (s/fdef clojure.core/assoc :args (s/cat :m (s/nilable associative?) :pairs (s/+ (s/cat :k any? :v any?))) :ret associative?)
+(s/fdef clojure.core/apply :args (s/cat :f ifn? :args (s/* any?) :ret any?))
 (s/fdef clojure.core/assoc-in :args (s/cat :m (s/nilable associative?) :ks (s/coll-of any?) :v any?) :ret associative?)
 (s/fdef clojure.core/bigdec :args (s/cat :x number?) :ret bigdec?)
 (s/fdef clojure.core/concat :args (s/* ::seq-like) :ret seq?)
@@ -106,8 +106,8 @@
 (s/fdef clojure.core/instance? :args (s/cat :c class? :x any?) :ret boolean?)
 (s/fdef clojure.core/into :args (s/cat :to (s/nilable coll?) :xform (s/? fn?) :from ::seq-like) :ret coll?)
 (s/fdef clojure.core/keyword :args (s/or :qualified (s/cat :ns (s/nilable string?) :name string?) :unqualified (s/cat :name any?)) :ret (s/or :k keyword? :n nil?))
-(s/fdef clojure.core/map :args (s/cat :x (s/or :f fn? :k keyword?) :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
-(s/fdef clojure.core/map-indexed :args (s/cat :x (s/or :f fn? :k keyword?) :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
+(s/fdef clojure.core/map :args (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
+(s/fdef clojure.core/map-indexed :args (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/mapcat :args (s/cat :x any? :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/mapv :args (s/cat :x any? :coll (s/* ::seq-like)) :ret vector?)
 (s/fdef clojure.core/merge :args (s/cat :ms (s/* (s/nilable map?))) :ret map?)
@@ -121,7 +121,7 @@
 
 (s/def ::refer-rename (s/cat :r #{:rename} :m (s/map-of symbol? symbol?)))
 (s/def ::refer-exclude (s/cat :r #{:exclude} :m (s/coll-of symbol?)))
-(s/def ::refer-refer (s/cat :r #{:refer} :m #{:all}))
+(s/def ::refer-refer (s/cat :r #{:refer} :m (s/or :all #{:all} :syms (s/coll-of symbol?))))
 (s/def ::refer-only (s/cat :r #{:only} :syms (s/coll-of symbol?)))
 (s/def ::refer-filter (s/alt :rename ::refer-rename :exclude ::refer-exclude :refer ::refer-refer :only ::refer-only))
 (s/fdef clojure.core/refer :args (s/cat :ns symbol? :refer-filters (s/* ::refer-filter)) :ret nil?)
@@ -146,4 +146,6 @@
 (s/fdef clojure.core/vector :args (s/* any?) :ret vector?)
 (s/fdef clojure.core/with-meta :args (s/cat :x imeta? :m (s/nilable map?)) :ret imeta?)
 
+
+(s/fdef clojure.set/union :args (s/* set?) :ret set?)
 (predicate-spec clojure.spec.alpha/spec?)
