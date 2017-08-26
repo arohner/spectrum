@@ -541,7 +541,20 @@
   (are [s] (not (c/conformy? s))
     (c/and- [(c/pred-spec #'string?) (c/not- (c/pred-spec #'string?))])
     (c/and- [(c/class-spec String) (c/class-spec Number)])
+    (c/and- [(c/value "foo") (c/value "bar")])
     (c/cat- [(c/invalid {:message ""})])
     (c/cat- [c/reject])
     (c/seq-of (c/invalid {:message ""}))
     (c/alt-  [(c/pred-spec #'string?) (c/invalid {:message ""})])))
+
+(deftest non-contradiction?
+  (testing "truthy"
+    (are [s constraint] (c/non-contradiction? s constraint)
+      (c/pred-spec #'string?) (c/value "foo")))
+
+  (testing "falsey"
+    (are [s contraint] (false? (c/non-contradiction? s contraint))
+      (c/pred-spec #'string?) (c/not- (c/pred-spec #'string?))
+      (c/class-spec String) (c/class-spec Number)
+      (c/value "foo") (c/value "bar")
+      (c/value :reload) (c/pred-spec #'simple-symbol?))))

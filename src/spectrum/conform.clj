@@ -236,7 +236,7 @@
 (extend-type Invalid
   Spect
   (conform* [this x]
-    false)
+    reject)
   Truthyness
   (truthyness [this]
     :ambiguous)
@@ -300,6 +300,8 @@
     (:ret this))
   (with-return- [this ret]
     ret)
+  (regex? [this]
+    false)
   WillAccept
   (will-accept- [this]
     #{reject}))
@@ -382,7 +384,7 @@
 (defrecord RecurForm [args]
   Spect
   (conform* [this x]
-    false)
+    reject)
   Truthyness
   (truthyness [this]
     :ambiguous)
@@ -390,16 +392,20 @@
   (will-accept- [this]
     #{}))
 
+(extend-regex RecurForm)
+
 (defrecord ThrowForm [exception-class]
   Spect
   (conform* [this x]
-    false)
+    reject)
   Truthyness
   (truthyness [this]
     :ambiguous)
   WillAccept
   (will-accept- [this]
     #{}))
+
+(extend-regex ThrowForm)
 
 (s/fdef recur? :args (s/cat :x any?) :ret boolean?)
 (defn recur? [x]
@@ -913,9 +919,7 @@
              :ps
              (map parse-spec)
              (remove accept?)
-             (map (fn [s]
-                       (will-accept s)))
-             (apply set/union)))
+             set))
   Truthyness
   (truthyness [this]
     (let [b (distinct (map truthyness (map parse-spec (:ps this))))]
@@ -1384,8 +1388,11 @@
 (defmethod parse-spec* :sym [x]
   (let [v (resolve x)]
     (if v
-      (map->PredSpec {:pred v
-                      :form (symbol (str (.ns ^Var v)) (str (.sym ^Var v)))})
+      (cond
+        (var? v) (map->PredSpec {:pred v
+                                 :form (symbol (str (.ns ^Var v)) (str (.sym ^Var v)))})
+        (class? v) (map->ClassSpec {:cls v})
+        :else (assert false (format "unknown: %s" x)))
       (value x))))
 
 (defmethod parse-spec* :fn-literal [x]
@@ -1562,7 +1569,7 @@
   (instance? AndSpec x))
 
 (defn and-classes-compatible?
-  "True if the and pred java classes aren't incompatible (concrete classes that aren't ancestors)"
+  "True if the and pred java classes are incompatible (concrete classes that aren't ancestors)"
   [ps]
   (let [compatible? (fn [a b]
                       {:pre [(class? a) (class? b)]}
@@ -1592,6 +1599,14 @@
             (some (fn [np]
                     (valid? np p)) not-preds)) ps)))
 
+(defn and-value-contradiction?
+  "true if and ps contains two non-equal values"
+  [ps]
+  (let [values (filter value? ps)]
+    (if (seq values)
+      (not (apply = (map :v values)))
+      false)))
+
 (s/fdef and- :args (s/cat :forms (s/coll-of ::spect-like)) :ret spect?)
 (defn and- [ps]
   (let [ps (mapcat (fn [p] (if (and-spec? p)
@@ -1601,6 +1616,7 @@
     (cond
       (not (and-classes-compatible? ps)) (invalid {:message "and contains incompatible java classes"})
       (and-not-contradiction? ps) (invalid {:message "and- contains contradictions"})
+      (and-value-contradiction? ps) (invalid {:message "and- contains incompatible values"})
       (>= (count ps) 2) (map->AndSpec {:ps ps})
       :else (first ps))))
 
@@ -1608,6 +1624,24 @@
 (defn and-conj
   [s x]
   (and- (conj (:ps s) x)))
+
+(s/fdef add-constraint :args (s/cat :a spect? :b spect?) :ret spect?)
+(defn add-constraint
+  "Given a spec s, update it to also conform to spec `constraint`"
+  [s constraint]
+  {:pre [(spect? s)]
+   :post [(spect? %)]}
+  (cond
+    (= (pred-spec #'any?) s) constraint
+    (and-spec? s) (and-conj s constraint)
+    :else (and- [s constraint])))
+
+(s/fdef non-contradiction? :args (s/cat :s spect? :constraint spect?) :ret boolean?)
+(defn non-contradiction?
+  "True if adding constraint to s won't result in contradiction"
+  [s constraint]
+  {:pre [(do (when-not (spect? s) (println "non-contradiction:" s)) true) (spect? s) (spect? constraint)]}
+  (conformy? (add-constraint s constraint)))
 
 (extend-type AndSpec
   Spect
@@ -1779,9 +1813,41 @@
          (mapv parse-spec)
          (mapv (fn [p] (keys-get p k)))
          (distinct)
+         (or-)))
+  Regex
+  (regex? [this]
+    (->> this
+         :ps
+         (map parse-spec)
+         (some regex?)))
+  (derivative [this x]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map (fn [p]
+                (derivative p x)))
+         ((fn [ps]
+            (if (seq (filter conformy? ps))
+              (or- (filter conformy? ps))
+              reject)))))
+  (accept-nil? [this]
+    (->> this
+         :ps
+         (map parse-spec)
+         (some accept-nil?)))
+  (return- [this]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map return)
+         (or-)))
+  (with-return- [this x]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map (fn [p]
+                (with-return p x)))
          (or-))))
-
-(extend-regex OrSpec)
 
 (defn or-some
   "clojure.core/some, called on each pred in the orspec"
@@ -2059,9 +2125,10 @@
   (->> s
        (will-accept)
        (mapcat (fn [p]
-              (if (alt? p)
-                (will-accept-concrete p)
-                [p])))
+                 (if (or (alt? p)
+                         (or-spec? p))
+                   (will-accept-concrete p)
+                   [p])))
        (distinct)))
 
 (s/fdef all-possible-values* :args (s/cat :q (s/and queue? (s/coll-of spect?)) :seen (s/coll-of spect? :kind set?)) :ret (s/coll-of spect?))
@@ -2305,7 +2372,7 @@
                                      (valid? (parse-spec vs) (parse-spec (:vs x))))
                             x)
       (value? x) (conform-map-of this x)
-      :else false))
+      :else nil))
   DependentSpecs
   (dependent-specs- [s]
     #{(class-spec clojure.lang.PersistentHashMap)})
@@ -2879,7 +2946,7 @@
                                               (if (seq q)
                                                 (recur (first q) (rest q) (set/union seen ds))
                                                 (invalid {:message (format "%s does not conform to %s" (print-str args-orig) (print-str spec))})))
-              :else (do (println "conform bfs unhandled" val) (assert false)))))))))
+              :else (do (println "conform bfs " spec args "=>" val "unhandled") (assert false)))))))))
 
 
 (s/fdef conform- :args (s/cat :s ::spect :args (s/nilable (s/and spect? map?))) :ret ::spect)

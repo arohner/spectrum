@@ -12,7 +12,7 @@
             [spectrum.conform :as c]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j]
-            [spectrum.util :as util :refer (print-once protocol? namespace? validate!)])
+            [spectrum.util :as util :refer [print-once protocol? namespace? queue validate!]])
   (:import [clojure.lang Var Namespace]))
 
 (declare find-binding)
@@ -153,7 +153,6 @@
 
 (defn flow-walk-f [a path]
   (let [a* (get-in a path)]
-    (println "flow walk" path (a-loc-str a))
     (try
       (assert a*)
       (binding [*a* a*]
@@ -175,7 +174,6 @@
             (if (contains? (get-in a path) c)
               (let [new-path (conj path c)
                     c-node (get-in a new-path)]
-                (println "flow-walk" path)
                 (if (sequential? c-node)
                   (reduce (fn [a i]
                             (f a (conj new-path i))) a (range (count c-node)))
@@ -401,24 +399,13 @@
           (let [p* (pop path*)]
             (recur p*)))))))
 
-(s/fdef add-constraint :args (s/cat :a c/spect? :b c/spect?) :ret c/spect?)
-(defn add-constraint
-  "Given a spec s, update it to also conform to spec `constraint`"
-  [s constraint]
-  {:pre [(c/spect? s)]
-   :post [(c/spect? %)]}
-  (cond
-    (= (c/pred-spec #'any?) s) constraint
-    (c/and-spec? s) (c/and-conj s constraint)
-    :else (c/and- [s constraint])))
-
 (s/fdef infer-add-constraint :args (s/cat :a ::analysis :b-path vector? :method-spec c/spect?))
 (defn infer-add-constraint [a b-path method-spec]
   (let [b (get-in a b-path)]
     (assert b (format "binding not found: %s %s" (:form a) b-path))
     (assert b-path)
     (assert (::ret-spec b) (format "no ret-spec on %s %s %s %s" (:name b) (keys b) (:op b) (a-loc-str a)))
-    (update-in a (conj b-path ::ret-spec) add-constraint method-spec)))
+    (update-in a (conj b-path ::ret-spec) c/add-constraint method-spec)))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret ::c/spect)
 (defn analysis-args->spec
@@ -1430,7 +1417,6 @@
     (when-not a*
       (println "infer-wrap fail:" path (:form (get-in a (pop (pop (pop path))))) (a-loc-str a)))
     (assert a*)
-    (println "infer-wrap" (:op a*) path)
     (binding [*a* a*]
       (let [a-post (infer* a path)
             a*-post (get-in a-post path)
@@ -1446,7 +1432,6 @@
   ([a path]
    (infer-walk a path (get-in a (conj path :children))))
   ([a path children]
-   (println "infer-walk" path children)
    (if (seq children)
      (reduce (fn [a c]
                (if (contains? (get-in a path) c)
@@ -1469,7 +1454,6 @@
 
 (defmethod infer* :const [a path]
   (let [a* (get-in a path)
-        _ (println "infer* const" (:type a*) (:form a*) (:children a*))
         a (infer-walk a path)
         a* (get-in a path)]
     (assoc-in a (conj path ::ret-spec) (c/value (:val a*)))))
@@ -1520,17 +1504,49 @@
         a* (get-in a path)]
     (assoc-in a (conj path ::ret-spec) (c/value (:var a*)))))
 
-(defn infer-invoke-add-constraint
-  "Given a spec and incompletely-inferred args, determine possibly conforming spec args and return them"
+(defn infer-invoke-constraint- [queue]
+  (let [q (first queue)
+        {:keys [spec args ret]} q
+        qr (rest queue)
+        [a & ar] args]
+    (if q
+      (if (and a spec (c/conformy? spec))
+        (let [wa (c/will-accept spec)
+              was (filter (fn [wa]
+                            (c/non-contradiction? a wa)) wa)]
+          (if (seq was)
+            (lazy-cat (infer-invoke-constraint- (concat qr (->> was
+                                                                    (map (fn [wa]
+                                                                           (let [s-next (c/derivative spec wa)]
+                                                                             (when (c/conformy? s-next)
+                                                                               {:spec s-next
+                                                                                :args ar
+                                                                                :ret (conj ret wa)}))))
+                                                                    (filter identity)))))
+            (infer-invoke-constraint- qr)))
+        (if (and (not a) (c/accept-nil? spec))
+          (lazy-cat [ret] (infer-invoke-constraint- qr))
+          (do
+            (infer-invoke-constraint- qr))))
+      nil)))
+
+(defn infer-invoke-constraints
   [spec args]
-  ;; will this spec accept args of length n?
-  ;; can't just naively conform, because spec won't accept any? (default state of unknown args)
-  ;;
-  )
+  (let [rets (infer-invoke-constraint- (queue [{:spec spec
+                                                    :args args
+                                                    :ret []}]))]
+    (if (seq rets)
+      (let [_ (assert (every? (fn [r]
+                                (= (count args) (count r))) rets))
+            constraints (apply map (fn [& rs]
+                                     (c/or- rs)) rets)
+            _ (assert (= (count constraints) (count args)))]
+        constraints)
+      (c/invalid {:message (format "can't invoke %s with %s" (print-str spec) (print-str args))}))))
+
 (defmethod infer* :invoke [a path]
   (let [a-orig a
         a* (get-in a path)
-        _ (println "infer invoke" path (:form a*))
         a (infer-walk a path [:args])
         a* (get-in a path)
         f-a (invoke-get-fn-analysis a path)
@@ -1540,11 +1556,7 @@
             (invoke-get-fn-spec (:fn a*)))
         a-args (:args a*)
         s-args (when (and s (:args s))
-                 (println "infer :invoke all possible" (:form a*) invoke-var? (count (:args a*)))
-                 (println "existing specs:" (map ::ret-spec (:args a*)))
-                 ;; (c/all-possible-values-arity-n (:args s) (count (:args a*)))
-                 )
-        _ (println "infer :invoke all possible done")
+                 (infer-invoke-constraints (:args s) (map ::ret-spec a-args)))
         args (map vector a-args s-args)
         a (if (and s (:args s))
             (reduce (fn [a [a-arg s-arg]]
@@ -1556,7 +1568,7 @@
                                             (infer-add-constraint a b-path s))
                         a)) a args)
             a)
-        ;; don't use invoke, because we don't know the args are proper type during infer
+        ;; can't use c/invoke, because we don't know the args are proper until infer is done
         ret-spec (if (and s (:ret s))
                    (:ret s)
                    (c/unknown {:message "infer invoke: no ret spec for"

@@ -110,6 +110,8 @@
    #'map-entry? java.util.Map$Entry
    #'map? clojure.lang.IPersistentMap
    #'number? Number
+   #'qualified-symbol? clojure.lang.Symbol
+   #'qualified-keyword? clojure.lang.Keyword
    #'ratio? clojure.lang.Ratio
    #'reader-conditional? clojure.lang.ReaderConditional
    #'reversible? clojure.lang.Reversible
@@ -118,6 +120,8 @@
    #'set? clojure.lang.IPersistentSet
    #'sorted? clojure.lang.Sorted
    #'string? String
+   #'simple-symbol? clojure.lang.Symbol
+   #'simple-keyword? clojure.lang.Keyword
    #'symbol? clojure.lang.Symbol
    #'tagged-literal? clojure.lang.TaggedLiteral
    #'uri? java.net.URI
