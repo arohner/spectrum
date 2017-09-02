@@ -484,7 +484,7 @@
 
 (extend-regex RecurForm)
 
-(defrecord ThrowForm [exception-class]
+(defrecord ThrowForm [s]
   Spect
   (conform* [this x]
     reject)
@@ -512,9 +512,10 @@
 (defn throw? [x]
   (instance? ThrowForm x))
 
-(s/fdef throw-form :args (s/cat :e class?) :ret throw?)
+(s/fdef throw-form :args (s/cat :e spect?) :ret throw?)
 (defn throw-form [e]
-  (map->ThrowForm {:exception-class e}))
+  (assert (spect? e))
+  (map->ThrowForm {:s e}))
 
 (s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
 (defn control-flow? [x]
