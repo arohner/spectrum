@@ -1421,7 +1421,7 @@
                 (println "infer-wrap invalid:" (:op (get-in a path)) ))
             a-post (if (::ret-spec (get-in a-post path))
                      a-post
-                     (assoc-in a-post (conj path ::ret-spec) (c/unknown {:message (format "infer walk %s todo" (get-in a (conj path :op)))})))]
+                     (assert false (format "no ::ret-spec on %s %s" (:op (get-in a-post path)) (:form (get-in a-post path)))))]
         (assert (::ret-spec (get-in a-post path)))
         a-post))))
 
@@ -1639,7 +1639,8 @@
                          (assoc p ::ret-spec ret-spec))) (:params a*))
         a (assoc-in a (conj path :params) params)
         a (infer-walk a path)
-        a* (get-in a path)]
+        a* (get-in a path)
+        a (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec))]
     a))
 
 (defmethod infer* :binding [a path]
@@ -1785,7 +1786,7 @@
                                 (assert b-path)
                                 (infer-add-constraint a b-path (::ret-spec e)))
             a)]
-    (assoc-in a (conj path ::ret-spec) (c/throw-form e))))
+    (assoc-in a (conj path ::ret-spec) (c/throw-form (::ret-spec e)))))
 
 (defmethod infer* :keyword-invoke [a path]
   (let [a (infer-walk a path)
@@ -1824,6 +1825,30 @@
     (assoc-in a (conj path ::ret-spec) (if (and spec (:ret spec))
                                          (:ret spec)
                                          (c/unknown {:message (format "protocol-invoke: no spec for %s" (:var (:fn a)))})))))
+
+(defmethod infer* :case [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)
+        rets (map ::ret-spec (:thens a*))
+        rets (if (:default a*)
+               (do
+                 (assert (-> a* :default ::ret-spec))
+                 (conj rets (-> a* :default ::ret-spec)))
+               rets)
+        ret-spec (c/or- rets)]
+    (assoc-in a (conj path ::ret-spec) ret-spec)))
+
+(defmethod infer* :case-test [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)]
+    (assert (::ret-spec (:test a*)))
+    (assoc-in a (conj path ::ret-spec) (::ret-spec (:test a*)))))
+
+(defmethod infer* :case-then [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)]
+    (assert (::ret-spec (:then a*)))
+    (assoc-in a (conj path ::ret-spec) (::ret-spec (:then a*)))))
 
 (defn print-walk-dispatch [a]
   (:op a))
