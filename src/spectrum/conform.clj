@@ -311,7 +311,7 @@
 (extend-type Reject
   Spect
   (conform* [spec x]
-    false)
+    reject)
   Regex
   (derivative [spec x]
     reject)
@@ -380,58 +380,6 @@
   KeysGet
   (keys-get- [this k]
     (unknown {:message "get on unknown"})))
-
-(defrecord RecurForm [args]
-  Spect
-  (conform* [this x]
-    reject)
-  Truthyness
-  (truthyness [this]
-    :ambiguous)
-  WillAccept
-  (will-accept- [this]
-    #{}))
-
-(extend-regex RecurForm)
-
-(defrecord ThrowForm [exception-class]
-  Spect
-  (conform* [this x]
-    reject)
-  Truthyness
-  (truthyness [this]
-    :ambiguous)
-  WillAccept
-  (will-accept- [this]
-    #{}))
-
-(extend-regex ThrowForm)
-
-(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
-(defn recur? [x]
-  (instance? RecurForm x))
-
-(defn recur-form [args]
-  (map->RecurForm {:args args}))
-
-(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
-(defn throwable? [x]
-  (instance? Throwable x))
-
-(s/fdef throw? :args (s/cat :x any?) :ret boolean?)
-(defn throw? [x]
-  (instance? ThrowForm x))
-
-(s/fdef throw-form :args (s/cat :e class?) :ret throw?)
-(defn throw-form [e]
-  (map->ThrowForm {:exception-class e}))
-
-(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
-(defn control-flow? [x]
-  (or (throw? x) (recur? x)))
-
-(defn spect-or-control-flow? [x]
-  (or (spect? x) (control-flow? x)))
 
 (defn known? [x]
   (not (unknown? x)))
@@ -522,6 +470,58 @@
   (extend s WillAccept {:will-accept- (fn [this] #{this})}))
 
 (extend-regex Unknown)
+
+(defrecord RecurForm [args]
+  Spect
+  (conform* [this x]
+    reject)
+  Truthyness
+  (truthyness [this]
+    :ambiguous)
+  WillAccept
+  (will-accept- [this]
+    #{}))
+
+(extend-regex RecurForm)
+
+(defrecord ThrowForm [exception-class]
+  Spect
+  (conform* [this x]
+    reject)
+  Truthyness
+  (truthyness [this]
+    :ambiguous)
+  WillAccept
+  (will-accept- [this]
+    #{}))
+
+(extend-regex ThrowForm)
+
+(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
+(defn recur? [x]
+  (instance? RecurForm x))
+
+(defn recur-form [args]
+  (map->RecurForm {:args args}))
+
+(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
+(defn throwable? [x]
+  (instance? Throwable x))
+
+(s/fdef throw? :args (s/cat :x any?) :ret boolean?)
+(defn throw? [x]
+  (instance? ThrowForm x))
+
+(s/fdef throw-form :args (s/cat :e class?) :ret throw?)
+(defn throw-form [e]
+  (map->ThrowForm {:exception-class e}))
+
+(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
+(defn control-flow? [x]
+  (or (throw? x) (recur? x)))
+
+(defn spect-or-control-flow? [x]
+  (or (spect? x) (control-flow? x)))
 
 (s/def ::dependent-specs (s/coll-of spect? :into #{}))
 
@@ -807,10 +807,9 @@
         nil)))
   WillAccept
   (will-accept- [this]
-    (let [[p1 p2] (:ps this)
-          p1 (parse-spec p1)]
+    (let [[p1 p2] (map parse-spec (:ps this))]
       (if (accept-nil? p1)
-        #{p1 (parse-spec p2)}
+        #{p1 p2}
         #{p1})))
   Truthyness
   (truthyness [this]
@@ -1821,15 +1820,9 @@
          (map parse-spec)
          (some regex?)))
   (derivative [this x]
-    (->> this
-         :ps
-         (map parse-spec)
-         (map (fn [p]
-                (derivative p x)))
-         ((fn [ps]
-            (if (seq (filter conformy? ps))
-              (or- (filter conformy? ps))
-              reject)))))
+    (if (valid? this x)
+      (accept x)
+      reject))
   (accept-nil? [this]
     (->> this
          :ps
@@ -1845,7 +1838,7 @@
     (->> this
          :ps
          (map parse-spec)
-         (map (fn [p]
+         (mapcat (fn [p]
                 (with-return p x)))
          (or-))))
 

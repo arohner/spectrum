@@ -75,7 +75,7 @@
   (.write w "#queue ")
   (print-method (sequence q) w))
 
-(defn var-sym [v]
+(defn var-sym [^Var v]
   (symbol (str (.name (.-ns v))) (str (.-sym v))))
 
 (defmacro predicate-spec
@@ -97,9 +97,10 @@
 
 (defn validate! [s args]
   (if-not (s/valid? s args)
-    (throw (ex-info "spec does not conform" {:spec s
-                                             :args args
-                                             :data (s/explain-data s args)}))))
+    (throw (ex-info (s/explain-str s args)
+                    {:spec s
+                     :args args
+                     :data (s/explain-data s args)}))))
 
 (defn multimethod-dispatch-values
   "Returns the seq of allowed dispatch values in the multimethod"

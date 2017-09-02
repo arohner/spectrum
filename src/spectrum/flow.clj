@@ -17,7 +17,6 @@
 
 (declare find-binding)
 
-(def ^:dynamic *inferring?* true)
 (def empty-fn-spec {:args nil, :ret nil, :fn nil})
 
 (s/def ::args ::c/spect)
@@ -217,10 +216,8 @@
         v (:var a*)
         ret-spec (if-let [s (c/get-var-fn-spec v)]
                    s
-                   (if *inferring?*
-                     (if-let [a (data/get-var-analysis v)]
-                       (infer-var a)
-                       (c/value @(:var a*)))
+                   (if-let [a (data/get-var-analysis v)]
+                     (infer-var a)
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
@@ -234,7 +231,7 @@
         a* (get-in a path)
         v (::var a*)
         fn-spec (some-> v c/get-var-fn-spec)
-        a (if (or fn-spec (not *inferring?*))
+        a (if fn-spec
             (flow-walk a path)
             (infer* a path))
         ret-spec (or
@@ -461,7 +458,7 @@
     (assert (var? v))
     (if-let [s (c/get-var-fn-spec v)]
       s
-      (if-let [a (and *inferring?* (data/get-var-analysis v))]
+      (if-let [a (data/get-var-analysis v)]
         (infer-var a)
         (c/unknown {:message (format "couldn't find spec or analysis for %s" v)})))))
 
@@ -1028,12 +1025,12 @@
         a (if args-spec
             (update-in a (conj path :params) destructure-fn-params args-spec (macro? a))
             (do
-              (when *inferring?*
-                (println "flow-method: no spec for" (:form (get-in a (pop (pop path)))))
-                (assert false))
-              (update-in a (conj path :params) (fn [params]
-                                                 (mapv (fn [p]
-                                                         (assoc p ::ret-spec (c/unknown {:message (format "method params: no spec for %s" (:form (get-in a (pop path)))) :form (:name p) :a-loc (a-loc a*)}))) params)))))
+              (println "flow-method: no spec for" (:form (get-in a (pop (pop path)))))
+              (assert false)
+              ;; (update-in a (conj path :params) (fn [params]
+              ;;                                    (mapv (fn [p]
+              ;;                                            (assoc p ::ret-spec (c/unknown {:message (format "method params: no spec for %s" (:form (get-in a (pop path)))) :form (:name p) :a-loc (a-loc a*)}))) params)))
+              ))
         a (flow* a (conj path :body))
         body (get-in a (conj (conj path :body)))
         body-ret-spec (strip-control-flow (::ret-spec body))]
@@ -1044,7 +1041,7 @@
   (let [a* (get-in a path)
         v (some-> a (get-in (pop (pop path))) ::var)
         s (some-> v c/get-var-fn-spec)
-        a (if s (flow-method* a path (:args s)))
+        a (flow-method* a path (:args s))
         ret-spec (::ret-spec a)]
     a))
 
@@ -1461,8 +1458,7 @@
 (defn recursive?
   "True if path is a :var analysis inside it's own :def"
   [a path]
-  {:pre [a]
-   :post [(do (when % (println "recursive?:" (:form (get-in a path)))) true)]}
+  {:pre [a]}
   (let [a* (get-in a path)
         a*-var (:var a*)]
     (assert a*)
@@ -1533,8 +1529,8 @@
 (defn infer-invoke-constraints
   [spec args]
   (let [rets (infer-invoke-constraint- (queue [{:spec spec
-                                                    :args args
-                                                    :ret []}]))]
+                                                :args args
+                                                :ret []}]))]
     (if (seq rets)
       (let [_ (assert (every? (fn [r]
                                 (= (count args) (count r))) rets))
@@ -1577,7 +1573,7 @@
     (assoc-in a (conj path ::ret-spec)
               (if (and s (:ret s))
                 (:ret s)
-                (c/unknown {:message "infer invoke: no ret spec"
+                (c/unknown {:message (format "infer invoke: no ret spec on %s" (:form (:fn a*)))
                             :form (:form f-a)
                             :a-loc (a-loc a*)})))))
 

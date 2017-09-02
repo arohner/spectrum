@@ -205,7 +205,10 @@
 (defn ensure-analysis [ns]
   (when-not (data/analyzed-ns? ns)
     (println "analyzing" ns)
-    (flow-ns ns)
+    (binding [*warn-on-reflection* false
+              *print-level* 3
+              *print-length* 100]
+      (flow-ns ns))
     (data/mark-ns-analyzed! ns)))
 
 (defn type-of

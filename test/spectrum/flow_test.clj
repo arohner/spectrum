@@ -170,7 +170,7 @@
 
     (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)])
     (c/or- []) (c/or- [])
-    (c/or- [(c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/recur-form (c/cat- [(c/pred-spec #'int?)]) )]) (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)])))
+    (c/or- [(c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/recur-form (c/cat- [(c/pred-spec #'int?)]) )]) (c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)])))
 
 (deftest maybe-disj-works
   (are [spec pred expected] (= expected (flow/maybe-disj-pred spec pred))
@@ -235,3 +235,12 @@
   (are [cls method expected] (= expected (flow/class-is-protocol? cls))
     Integer '.intValue false
     spectrum.conform.Spect 'conform* true))
+
+(deftest infer-invoke
+  (are [spec args expected] (c/equivalent? expected (flow/infer-invoke-constraints spec args))
+
+    (:args (c/get-var-fn-spec #'inc)) [(c/pred-spec #'any?)] (c/pred-spec #'number?)
+    (:args (c/get-var-fn-spec #'keyword)) [(c/pred-spec #'any?)] (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?) (c/pred-spec #'any?)])
+
+    (:args (c/get-var-fn-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] (c/parse-spec (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)))
+    (:args (c/get-var-fn-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] []))
