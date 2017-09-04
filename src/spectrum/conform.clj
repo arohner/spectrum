@@ -30,6 +30,7 @@
 (declare re-conform)
 (declare re-explain)
 (declare cat-)
+(declare or-)
 
 (defprotocol Spect
   (conform* [spec x]
@@ -323,6 +324,8 @@
     (invalid {:message "reject"}))
   (with-return- [this ret]
     reject)
+  (regex? [this]
+    false)
   WillAccept
   (will-accept- [this]
     #{reject})
@@ -1635,6 +1638,11 @@
     (= (pred-spec #'any?) s) constraint
     (and-spec? s) (and-conj s constraint)
     :else (and- [s constraint])))
+
+(defn add-or-constraint
+  "given a spec s, `or` it with constraint"
+  [s constraint]
+  (or- [s constraint]))
 
 (s/fdef non-contradiction? :args (s/cat :s spect? :constraint spect?) :ret boolean?)
 (defn non-contradiction?

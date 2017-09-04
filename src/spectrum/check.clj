@@ -228,3 +228,8 @@
   ([form specs]
    (->> (analyze-form form specs)
         (check*))))
+
+(defn infer-form [form]
+  (-> (analyze-form form)
+      (flow/infer)
+      ::flow/ret-spec))

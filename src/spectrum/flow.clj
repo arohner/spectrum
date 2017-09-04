@@ -404,6 +404,13 @@
     (assert (::ret-spec b) (format "no ret-spec on %s %s %s %s" (:name b) (keys b) (:op b) (a-loc-str a)))
     (update-in a (conj b-path ::ret-spec) c/add-constraint method-spec)))
 
+(defn infer-or-constraint [a b-path constraint]
+  (let [b (get-in a b-path)]
+    (assert b (format "binding not found: %s %s" (:form a) b-path))
+    (assert b-path)
+    (assert (::ret-spec b) (format "no ret-spec on %s %s %s %s" (:name b) (keys b) (:op b) (a-loc-str a)))
+    (update-in a (conj b-path ::ret-spec) c/add-or-constraint constraint)))
+
 (s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret ::c/spect)
 (defn analysis-args->spec
   "Given the analysis of a fn invoke, return the args for a compatible c/conforms? call"
@@ -634,9 +641,11 @@
             a-c (c/spec->classes a)]
         (if (and (nil? a) (nil? m))
           true
-          (if (and m a (or (c/valid? m a) (when (and m-c (seq a-c))
-                                            (every? (fn [a-c*]
-                                                      (j/castable? m-c a-c*)) a-c)) (c/unknown? a)))
+          (if (and m a (or (c/valid? m a)
+                           (when (and m-c (seq a-c))
+                             (every? (fn [a-c*]
+                                       (j/castable? m-c a-c*)) a-c))
+                           (c/unknown? a)))
             (recur (c/rest* arg-spec) (c/rest* method-spec))
             false)))
       (if (and (nil? (c/first* arg-spec))
@@ -1289,27 +1298,39 @@
     (let [f (get-java-field class field {:static? true})]
       (assoc-in a (conj path ::ret-spec) (resolve-java-class-spec (:type f))))))
 
-(defmethod flow* :instance-field [a path]
-  (let [a (flow-walk a path)
+(defn walk-instance-field [f a path]
+  (let [a (f a path)
         a* (get-in a path)
         {:keys [field class]} a*
         f (get-java-field class field)]
     (assoc-in a (conj path ::ret-spec) (resolve-java-class-spec (:type f)))))
 
+(defmethod flow* :instance-field [a path]
+  (walk-instance-field flow-walk a path))
+
+(defn walk-reify [f a path]
+  (let [a* (get-in a path)
+        a (assoc-in a (conj path ::ret-spec) (c/and- (mapv c/class-spec (:interfaces a*))))]
+    (f a path)))
+
 (defmethod flow* :reify [a path]
-  (let [a (flow-walk a path)
-        a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (c/and- (mapv c/class-spec (:interfaces a*))))))
+  (walk-reify flow-walk a path))
+
+(defn walk-deftype [f a path]
+  (let [a* (get-in a path)
+        a (assoc-in a (conj path ::ret-spec) (c/class-spec (:class-name a*)))]
+    (f a path)))
 
 (defmethod flow* :deftype [a path]
-  (let [a (flow-walk a path)
-        a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (c/class-spec (:class-name a*)))))
+  (walk-deftype flow-walk a path))
 
-(defmethod flow* :host-interop [a path]
-  (let [a (flow-walk a path)
+(defn walk-host-interop [f a path]
+  (let [a (f a path)
         a* (get-in a path)]
     (assoc-in a (conj path ::ret-spec) (c/unknown {:message "reflection, cannot be resolved at compile time"}))))
+
+(defmethod flow* :host-interop [a path]
+  (walk-host-interop flow-walk a path))
 
 (defmethod flow* :letfn [a path]
   (let [a (flow-walk a path)
@@ -1599,7 +1620,7 @@
               (case (:op arg)
                 (:local :binding) (let [b (find-binding a path (:name arg))
                                         b-path (:path b)]
-                                    (assert b-path)
+                                    (assert b-path (format "couldn't find binding %s in %s" (:name arg) (:form a)))
                                     (assert (c/spect? method-spec))
                                     (infer-add-constraint a b-path method-spec))
                 a)) a bind-args)))
@@ -1643,16 +1664,31 @@
         a (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec))]
     a))
 
+(defn find-this
+  "In a reify/deftype/defrecord, walk up the `a` until we find the `this`, and return it"
+  [a path]
+  (let [a* (get-in a path)]
+    (if (contains? #{:reify :deftype} (:op a*))
+      a*
+      (if (seq path)
+        (recur a (pop path))
+        (assert false (format "couldn't find `this` in %s" (:form a)))))))
+
 (defmethod infer* :binding [a path]
   (let [a (infer-walk a path)
         a* (get-in a path)
         a* (cond
              (:init a*) (assoc a* ::ret-spec (::ret-spec (:init a*)))
              (= :catch (:local a*)) (assoc a* ::ret-spec (c/class-spec (:tag a*)))
+             (= :this (:local a*)) (let [this (find-this a path)
+                                         ret-spec (::ret-spec this)]
+                                     (assert (c/spect? ret-spec))
+                                     (assoc a* ::ret-spec ret-spec))
              :else a*)]
     (when-not (::ret-spec a*)
-      (println "binding fail:" (:op a*) a* )
-      (println "infer* :binding fail" (:form a) (a-loc-str a)))
+      (println "binding fail:" (:op a*) a*)
+      (println "infer* :binding fail" (:form a*) (a-loc-str a*))
+      (println "infer* :binding local" (:local a*)))
     (assert (::ret-spec a*))
     (assoc-in a (conj path ::ret-spec) (::ret-spec a*))))
 
@@ -1849,6 +1885,57 @@
         a* (get-in a path)]
     (assert (::ret-spec (:then a*)))
     (assoc-in a (conj path ::ret-spec) (::ret-spec (:then a*)))))
+
+(defmethod infer* :set! [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)
+        a (assoc-in a (conj path ::ret-spec) (::ret-spec (:val a*)))]
+    (case (:op (:target a*))
+      (:binding :local) (let [b (find-binding a path (:name (:target a*)))
+                              b-path (:path b)]
+                          (assert b)
+                          (assert b-path)
+                          (infer-or-constraint a b-path (::ret-spec (:val a*))))
+      a)))
+
+(defmethod infer* :instance-field [a path]
+  (walk-instance-field infer-walk a path))
+
+(defmethod infer* :host-interop [a path]
+  (walk-host-interop infer-walk a path))
+
+(defmethod infer* :reify [a path]
+  (walk-reify infer-walk a path))
+
+(defmethod infer* :method [a path]
+  (walk-method infer-walk a path))
+
+(defn strip-this-arg
+  "Remove the `this` arg from a params vec"
+  [params]
+  (filterv (fn [p]
+             (when (not= :this (:local p))
+               p)) params))
+
+(defmethod infer* :method [a path]
+  ;; deftype method
+  (let [a* (get-in a path)
+        ;;unknown-signature
+        {:keys [interface name params]} a*
+        method name
+        record (-> a* :this :tag)
+        params (strip-this-arg params)
+        spec (defmethod-get-spec record interface method params)
+        params (vec (concat [(:this a*)] params))
+        _ (assert (c/spect? spec))
+        _ (assert (:args spec))
+        params (destructure-fn-params params (:args spec))
+        a (assoc-in a (conj path :params) params)
+        ;;a (flow* a path)
+        a (infer-walk a path)
+        a* (get-in a path)
+        body-ret-spec (strip-control-flow (::ret-spec (:body a*)))]
+    (assoc-in a (conj path ::ret-spec) body-ret-spec)))
 
 (defn print-walk-dispatch [a]
   (:op a))
