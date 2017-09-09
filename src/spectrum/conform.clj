@@ -990,7 +990,7 @@
     (catch Exception e
       nil)))
 
-(defn parse-spec [x]
+(defn parse-spec- [x]
   {:post [%]}
   (try
     (cond
@@ -1004,6 +1004,8 @@
     (catch IllegalArgumentException e
       (println "don't know how to parse:" x)
       (throw e))))
+
+(def parse-spec (memo/memo parse-spec-))
 
 (defmethod parse-spec* :spec [x]
   (parse-spec* (s/form x)))
