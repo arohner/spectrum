@@ -1941,6 +1941,12 @@
         body-ret-spec (strip-control-flow (::ret-spec (:body a*)))]
     (assoc-in a (conj path ::ret-spec) body-ret-spec)))
 
+(defmethod infer* :letfn [a path]
+  (let [a (infer-walk a path)
+        a* (get-in a path)]
+    (println "infer* :letfn:" (:form a*) (-> a* :body ::ret-spec))
+    (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec))))
+
 (defn print-walk-dispatch [a]
   (:op a))
 
