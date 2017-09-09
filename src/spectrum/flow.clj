@@ -1610,20 +1610,30 @@
   (let [a (infer-walk a path [:args])
         a* (get-in a path)
         {:keys [class method args]} a*
-        ms (get-compatible-java-methods class method (analysis-args->spec args))
-        ret-spec (->> ms
-                      (map :return-type)
-                      (map j/resolve-java-class)
-                      (map c/class-spec)
-                      (c/or-))
+        ms (->> (get-java-method class method)
+                     (filter (fn [m]
+                               (= (count (:parameter-types m))
+                                  (count args)))))
+        ret-spec (if (seq ms)
+                   (->> ms
+                        (map :return-type)
+                        (map j/resolve-java-class)
+                        (map c/class-spec)
+                        (c/or-))
+                   (c/invalid {:message (format "no compatible method method: on %s %s accepts %s" class method (print-str (analysis-args->spec args)))}))
         a (assoc-in a (conj path ::ret-spec) ret-spec)
-        method-specs (->> ms
-                          (map :parameter-types)
-                          (map (fn [params]
-                                 (c/cat- (mapv (fn [p]
-                                          (c/class-spec (j/resolve-java-class p))) params))))
-                          (mapv c/or-))
-        bind-args (map vector args method-specs)]
+        method-spec (if (seq ms)
+                       (->> ms
+                            (map :parameter-types)
+                            (map (fn [params]
+                                   (mapv (fn [p]
+                                           (c/class-spec (j/resolve-java-class p))) params)))
+                            (mapv (fn [ps]
+                                    (if (seq ps)
+                                      (c/or- ps)
+                                      ps))))
+                       (c/invalid {:message (format "no compatible method method: on %s %s accepts %s" class method (print-str (analysis-args->spec args)))}))
+        bind-args (map vector args method-spec)]
     (reduce (fn [a [arg method-spec]]
               (case (:op arg)
                 (:local :binding) (let [b (find-binding a path (:name arg))
@@ -1818,7 +1828,9 @@
 (defmethod infer* :set [a path]
   (let [a (infer-walk a path)
         a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (c/coll-of (c/or- (map ::ret-spec (:items a*))) #{}))))
+    (assoc-in a (conj path ::ret-spec) (if (seq (:items a*))
+                                         (c/coll-of (c/or- (map ::ret-spec (:items a*))) #{})
+                                         (c/value #{})))))
 
 (defmethod infer* :throw [a path]
   (let [a (infer-walk a path)

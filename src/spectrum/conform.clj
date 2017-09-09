@@ -1753,6 +1753,8 @@
 
 (s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret spect?)
 (defn or- [ps]
+  {:pre [(seq ps)
+         (s/valid? (s/coll-of ::spect-like) ps)]}
   (let [or-ps (mapcat (fn [p] (when (or-spec? p)
                                 (:ps p))) ps)
         ps (remove or-spec? ps)
@@ -1853,8 +1855,11 @@
          :ps
          (map parse-spec)
          (mapcat (fn [p]
-                (with-return p x)))
-         (or-))))
+                   (with-return p x)))
+         ((fn [ps]
+            (if (seq ps)
+              (or- ps)
+              x))))))
 
 (defn or-some
   "clojure.core/some, called on each pred in the orspec"
