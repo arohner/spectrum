@@ -106,6 +106,7 @@
 (s/fdef clojure.core/instance? :args (s/cat :c class? :x any?) :ret boolean?)
 (s/fdef clojure.core/into :args (s/cat :to (s/nilable coll?) :xform (s/? fn?) :from ::seq-like) :ret coll?)
 (s/fdef clojure.core/keyword :args (s/or :qualified (s/cat :ns (s/nilable string?) :name string?) :unqualified (s/cat :name any?)) :ret (s/or :k keyword? :n nil?))
+(s/fdef clojure.core/list :args (s/* any?) :ret list?)
 (s/fdef clojure.core/map :args (s/cat :x ifn? :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/map-indexed :args (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/mapcat :args (s/cat :x any? :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))

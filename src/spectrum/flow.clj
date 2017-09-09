@@ -573,13 +573,11 @@
                                           (a-loc-str a*))))
         _ (assert test-ret-spec)
         truthyness (c/truthyness test-ret-spec)]
-
     (assoc-in a (conj path ::ret-spec) (condp = truthyness
                                          :truthy then-ret-spec
                                          :falsey else-ret-spec
-                                         :ambiguous (c/or- (->>
-                                                            [then-ret-spec
-                                                             else-ret-spec]))))))
+                                         :ambiguous (c/or- [then-ret-spec
+                                                            else-ret-spec])))))
 (defmethod flow* :if [a path]
   (walk-if flow-walk a path))
 
@@ -1601,15 +1599,12 @@
         ;; can't use c/invoke, because we don't know the args are proper until infer is done
         ret-spec (if (and s (:ret s))
                    (:ret s)
-                   (c/unknown {:message "infer invoke: no ret spec for"
-                               :form (:form a*)
-                               :a-loc (a-loc a*)}))]
-    (assoc-in a (conj path ::ret-spec)
-              (if (and s (:ret s))
-                (:ret s)
-                (c/unknown {:message (format "infer invoke: no ret spec on %s" (:form (:fn a*)))
-                            :form (:form f-a)
-                            :a-loc (a-loc a*)})))))
+                   (do
+                     ;;(assert false)
+                     (c/unknown {:message (format "infer invoke: no ret spec for %s" (-> a* :fn :form))
+                                :form (:form a*)
+                                :a-loc (a-loc a*)})))]
+    (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defmethod infer* :static-call [a path]
   (let [a (infer-walk a path [:args])
