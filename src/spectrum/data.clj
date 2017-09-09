@@ -7,6 +7,10 @@
   ;; var => ana.jvm/analysis cache
   (atom {}))
 
+(defonce var-inferred-specs
+  ;; var => inferred spec
+  (atom {}))
+
 (defonce defmethod-analysis
   ;; [var dispatch-value] => analysis cache
   (atom {}))
@@ -129,3 +133,13 @@
   (some->> (get-var-analysis v)
            :init
            :expr))
+
+(s/fdef store-var-inferred-spec :args (s/cat :v var? :s :spectrum.conform/spect) :ret nil?)
+(defn store-var-inferred-spec [v s]
+  {:pre [(var? v)
+         s]}
+  (swap! var-inferred-specs assoc v s)
+  nil)
+
+(defn get-var-inferred-spec [v]
+  (get @var-inferred-specs v))

@@ -41,6 +41,8 @@
 (defn spect? [x]
   (and (instance? clojure.lang.IRecord x) (satisfies? Spect x)))
 
+(s/def ::spect spect?)
+
 (s/fdef conform* :args (s/cat :s spect? :x any?) :ret (s/nilable spect?))
 
 (defprotocol Compound

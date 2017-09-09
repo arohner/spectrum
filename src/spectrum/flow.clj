@@ -95,14 +95,15 @@
 (s/fdef infer :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis)
 (def infer (memo/memo infer-))
 
+(s/fdef infer-var :args (s/cat :a ::ana.jvm/analysis :v var?) :ret c/spect?)
 (defn infer-var
   "Given the analysis for a def, infer and return the var value"
-  [a]
-  {:post [(c/spect? %)]}
-  (let [a* (infer a)]
-    (if (:init a*)
-      (-> a* :init maybe-strip-meta ::ret-spec (assoc :var (:var a)))
-      (c/value (clojure.lang.Var$Unbound. (:var a*))))))
+  [a v]
+  {:pre [(var? v)]
+   :post [(s/valid? c/spect? %)]}
+  (infer a)
+  (or (data/get-var-inferred-spec v)
+      (c/value nil)))
 
 (defn flow-ns
   "Given the result of analyze-ns, flow all forms"
@@ -200,7 +201,7 @@
         a (assoc-in-a a path (maybe-assoc-var-name a*))
         a (flow-walk a path)
         a* (get-in a path)]
-    (data/store-var-analysis a*)
+    (data/store-var-analysis a)
     (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
 
 (defmethod flow* :the-var [a path]
@@ -209,15 +210,19 @@
         a* (get-in a path)]
     (assoc-in a (conj path ::ret-spec) (c/value (:var a*)))))
 
+(defn get-var-fn-spec [v]
+  (or (c/get-var-fn-spec v)
+      (data/get-var-inferred-spec v)))
+
 (defmethod flow* :var [a path]
   ;; :var => the value the var holds
   (let [a (flow-walk a path)
         a* (get-in a path)
         v (:var a*)
-        ret-spec (if-let [s (c/get-var-fn-spec v)]
+        ret-spec (if-let [s (get-var-fn-spec v)]
                    s
                    (if-let [a (data/get-var-analysis v)]
-                     (infer-var a)
+                     (infer-var a v)
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
@@ -230,7 +235,7 @@
   (let [;;a (flow-walk a path)
         a* (get-in a path)
         v (::var a*)
-        fn-spec (some-> v c/get-var-fn-spec)
+        fn-spec (some-> v get-var-fn-spec)
         a (if fn-spec
             (flow-walk a path)
             (infer* a path))
@@ -463,10 +468,10 @@
   {:post [(or (nil? %) (c/spect? %))]}
   (let [v (-> a :var)]
     (assert (var? v))
-    (if-let [s (c/get-var-fn-spec v)]
+    (if-let [s (get-var-fn-spec v)]
       s
       (if-let [a (data/get-var-analysis v)]
-        (infer-var a)
+        (infer-var a v)
         (c/unknown {:message (format "couldn't find spec or analysis for %s" v)})))))
 
 (defmethod invoke-get-fn-spec :default [a]
@@ -503,7 +508,7 @@
         fn-spec (if fn-spec
                   fn-spec
                   (when f-a
-                    (infer-var a path)))]
+                    (assert false)))]
     (try
       (assert (c/spect? fn-spec))
       (assert (c/spect? args-spec))
@@ -538,7 +543,7 @@
   (let [a* (get-in a path)
         v (-> a* :fn :var)
         spec (when v
-               (c/get-var-fn-spec v))
+               (get-var-fn-spec v))
         a (flow-walk a path)
         a* (get-in a path)
         args-spec (analysis-args->spec (:args a*))]
@@ -1049,7 +1054,7 @@
 (defn flow-method [a path]
   (let [a* (get-in a path)
         v (some-> a (get-in (pop (pop path))) ::var)
-        s (some-> v c/get-var-fn-spec)
+        s (some-> v get-var-fn-spec)
         a (flow-method* a path (:args s))
         ret-spec (::ret-spec a)]
     a))
@@ -1352,7 +1357,7 @@
 (defn invoke-with-var
   "v must already be analyzed"
   [v args]
-  (if-let [s (c/get-var-fn-spec v)]
+  (if-let [s (get-var-fn-spec v)]
     (if (c/valid-invoke? s args)
       (if-let [a (data/get-var-analysis v)]
         (let [a (-> a :init :expr)]
@@ -1499,6 +1504,8 @@
         a (assoc-in-a a path (maybe-assoc-var-name a*))
         a (infer-walk a path)
         a* (get-in a path)]
+    (when-let [s (-> a* :init ::ret-spec)]
+      (data/store-var-inferred-spec (-> a* :var) s))
     (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
 
 (defmethod infer* :var [a path]
@@ -1506,11 +1513,11 @@
   (let [a (flow-walk a path)
         a* (get-in a path)
         v (:var a*)
-        ret-spec (if-let [s (c/get-var-fn-spec v)]
+        ret-spec (if-let [s (get-var-fn-spec v)]
                    s
                    (if-let [v-a (data/get-var-analysis v)]
                      (if (not (recursive? a path))
-                       (infer-var v-a)
+                       (infer-var v-a v)
                        (c/spec-spec (s/spec v)))
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
@@ -1842,7 +1849,7 @@
         a* (get-in a path)
         v (-> a* :fn :var)
         spec (when v
-               (c/get-var-fn-spec v))
+               (get-var-fn-spec v))
         a-args (:args a*)
         s-args (when (and spec (:args spec))
                  ;; (c/all-possible-values-arity-n (:args spec) (count (:args a*)))
@@ -1906,9 +1913,6 @@
 
 (defmethod infer* :reify [a path]
   (walk-reify infer-walk a path))
-
-(defmethod infer* :method [a path]
-  (walk-method infer-walk a path))
 
 (defn strip-this-arg
   "Remove the `this` arg from a params vec"
