@@ -244,3 +244,7 @@
 
     (:args (c/get-var-fn-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] (c/parse-spec (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)))
     (:args (c/get-var-fn-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] []))
+
+(deftest infer-form
+  (are [form expected] (c/equivalent? expected (check/infer-form form))
+    '(fn [x] (if x true false)) (c/fn-spec (c/cat- [(c/class-spec Object)]) (c/or- [(c/value true) (c/value false)]) nil)))

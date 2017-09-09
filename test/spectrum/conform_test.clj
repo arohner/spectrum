@@ -306,6 +306,7 @@
     (c/pred-spec #'boolean?) :ambiguous
     (c/pred-spec #'any?) :ambiguous
     (c/class-spec Boolean) :ambiguous
+    (c/class-spec Object) :ambiguous
 
     (c/pred-spec #'integer?) :truthy
     (c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) :truthy

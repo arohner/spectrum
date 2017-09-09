@@ -1371,6 +1371,7 @@
   (truthyness [this]
     (condp = (:cls this)
       Boolean :ambiguous
+      Object :ambiguous
       nil :falsey
       :truthy))
   Invoke
