@@ -1620,8 +1620,8 @@
         method-specs (->> ms
                           (map :parameter-types)
                           (map (fn [params]
-                                 (mapv (fn [p]
-                                         (c/class-spec (j/resolve-java-class p))) params)))
+                                 (c/cat- (mapv (fn [p]
+                                          (c/class-spec (j/resolve-java-class p))) params))))
                           (mapv c/or-))
         bind-args (map vector args method-specs)]
     (reduce (fn [a [arg method-spec]]
