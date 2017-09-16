@@ -129,10 +129,8 @@
 
 (s/fdef return :args (s/cat :s :with-return/ret) :ret (s/nilable spect?))
 (defn return [s]
-  {:post [(s/valid? (s/nilable spect?) %)]}
+  {:post [(validate! (s/nilable spect?) %)]}
   (let [ret (return- s)]
-    (when-not (s/valid? :with-return/ret ret)
-      (println "invalid return:" s "=>" ret))
     (validate! :with-return/ret ret)
     (if (vector? ret)
       (cat- (mapv return ret))
@@ -140,7 +138,7 @@
 
 (s/fdef with-return :args (s/cat :this (s/nilable spect?) :ret :with-return/ret) :ret (s/nilable spect?))
 (defn with-return [s ret]
-  {:post [(s/valid? :with-return/ret %)]}
+  {:post [(validate! :with-return/ret %)]}
   (with-return- s ret))
 
 (s/def ::will-accept-ret (s/coll-of spect? :kind set?))
@@ -340,8 +338,7 @@
 (predicate-spec invalid?)
 (defn invalid? [x]
   (or (instance? Invalid x)
-      (= ::invalid x)
-      (reject? x)))
+      (= ::invalid x)))
 
 (defrecord Unknown [form file line column])
 
@@ -838,17 +835,20 @@
     [(seq (filter f ps)) ks forms]))
 
 (defn new-regex-alt [ps ks forms]
-  (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(and % (not (reject? %))))]
-    (if ps
-      (let [ret (map->RegexAlt {:ps ps :ks ks :forms forms})]
-        (if (nil? pr)
-          (if k1
-            (if (accept? p1)
-              p1
-              ret)
-            p1)
-          ret))
-      reject)))
+  (let [i (first (filter invalid? ps))]
+    (if (not i)
+      (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(and % (not (reject? %))))]
+        (if ps
+          (let [ret (map->RegexAlt {:ps ps :ks ks :forms forms})]
+            (if (nil? pr)
+              (if k1
+                (if (accept? p1)
+                  p1
+                  ret)
+                p1)
+              ret))
+          reject))
+      i)))
 
 (defrecord RegexAlt [ps ks forms ret])
 
@@ -924,7 +924,8 @@
              :ps
              (map parse-spec)
              (remove accept?)
-             set))
+             (map will-accept)
+             (apply set/union)))
   Truthyness
   (truthyness [this]
     (let [b (distinct (map truthyness (map parse-spec (:ps this))))]
@@ -1637,10 +1638,11 @@
 (defn add-constraint
   "Given a spec s, update it to also conform to spec `constraint`"
   [s constraint]
-  {:pre [(spect? s)]
+  {:pre [(spect? s) (spect? constraint)]
    :post [(spect? %)]}
   (cond
     (= (pred-spec #'any?) s) constraint
+    (= (class-spec Object) s) constraint
     (and-spec? s) (and-conj s constraint)
     :else (and- [s constraint])))
 
@@ -1753,8 +1755,7 @@
 
 (s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret spect?)
 (defn or- [ps]
-  {:pre [(seq ps)
-         (s/valid? (s/coll-of ::spect-like) ps)]}
+  {:pre [(validate! (s/coll-of ::spect-like) ps)]}
   (let [or-ps (mapcat (fn [p] (when (or-spec? p)
                                 (:ps p))) ps)
         ps (remove or-spec? ps)

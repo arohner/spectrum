@@ -96,11 +96,12 @@
      (predicate-spec ~name)))
 
 (defn validate! [s args]
-  (if-not (s/valid? s args)
-    (throw (ex-info (s/explain-str s args)
-                    {:spec s
-                     :args args
-                     :data (s/explain-data s args)}))))
+  (or
+   (s/valid? s args)
+   (throw (ex-info (s/explain-str s args)
+                   {:spec s
+                    :args args
+                    :data (s/explain-data s args)}))))
 
 (defn multimethod-dispatch-values
   "Returns the seq of allowed dispatch values in the multimethod"

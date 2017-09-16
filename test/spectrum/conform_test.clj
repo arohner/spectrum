@@ -441,10 +441,14 @@
 (deftest will-accept-works
   (are [s expected] (= expected (c/will-accept s))
     (c/cat- [(c/pred-spec #'integer?)]) #{(c/pred-spec #'integer?)}
+    (c/parse-spec (s/cat :x integer? :y integer?)) #{(c/pred-spec #'integer?)}
+    (c/parse-spec (s/cat :x integer? :y integer?)) #{(c/pred-spec #'integer?)}
+    (c/derivative (c/parse-spec (s/cat :x integer? :y integer?)) (c/pred-spec #'integer?)) #{(c/pred-spec #'integer?)}
+    (c/derivative (c/parse-spec (s/cat :x (s/? integer?) :y integer?)) (c/pred-spec #'integer?)) #{(c/pred-spec #'integer?)}
     (c/parse-spec (s/cat :x (s/? keyword?) :y integer?)) #{(c/pred-spec #'keyword?) (c/pred-spec #'integer?)}
     (c/parse-spec (s/? keyword?)) #{(c/pred-spec #'keyword?)}
     (c/derivative (c/parse-spec (s/+ keyword?)) (c/pred-spec #'keyword?)) #{(c/pred-spec #'keyword?)}
-    (c/alt- [(c/pred-spec #'simple-symbol?) (c/cat- [(c/pred-spec #'simple-symbol?) (c/pred-spec #'simple-symbol?)])]) #{(c/pred-spec #'simple-symbol?) (c/cat- [(c/pred-spec #'simple-symbol?) (c/pred-spec #'simple-symbol?)])}))
+    (c/alt- [(c/pred-spec #'simple-symbol?) (c/cat- [(c/pred-spec #'simple-symbol?) (c/pred-spec #'simple-symbol?)])]) #{(c/pred-spec #'simple-symbol?)}))
 
 (deftest infinite-works
   (are [in expected] (= expected (c/infinite? (c/parse-spec in)))
@@ -494,12 +498,12 @@
       (c/pred-spec #'keyword?) (c/cat- [(c/pred-spec #'keyword?)]) (c/value true)
       (c/pred-spec #'keyword?) (c/cat- [(c/spec-spec (c/pred-spec #'keyword?))]) (c/value true)
       (c/pred-spec #'keyword?) (c/cat- [(c/cat- [(c/pred-spec #'keyword?)])]) (c/value true)
-      (c/pred-spec #'keyword?) (c/cat- [(c/spec-spec (c/cat- [(c/pred-spec #'keyword?)]))]) (c/value false)
       (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)))
 
   (testing "invalid"
     (are [spec args] (c/invalid? (c/invoke (c/parse-spec spec) args))
       (c/value 1) (c/cat- [(c/value 2)])
+      (c/pred-spec #'keyword?) (c/cat- [(c/spec-spec (c/cat- [(c/pred-spec #'keyword?)]))])
       (s/map-of integer? string?) (c/cat- [])
       (s/map-of integer? string?) (c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?) (c/pred-spec #'integer?)]))))
 

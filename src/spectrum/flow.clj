@@ -1571,7 +1571,7 @@
                                      (c/or- rs)) rets)
             _ (assert (= (count constraints) (count args)))]
         constraints)
-      (c/invalid {:message (format "can't invoke %s with %s" (print-str spec) (print-str args))}))))
+      (take (count args) (repeat (c/invalid {:message (format "can't invoke %s with %s" (print-str spec) (print-str args))}))))))
 
 (defmethod infer* :invoke [a path]
   (let [a-orig a
@@ -1589,11 +1589,11 @@
         args (map vector a-args s-args)
         a (if (and s (:args s))
             (reduce (fn [a [a-arg s-arg]]
-                      (case (:op a)
+                      (case (:op a-arg)
                         (:binding :local) (let [b (find-binding a path (:name a-arg))
                                                 b-path (:path b)]
                                             (assert b-path)
-                                            (infer-add-constraint a b-path s))
+                                            (infer-add-constraint a b-path s-arg))
                         a)) a args)
             a)
         ;; can't use c/invoke, because we don't know the args are proper until infer is done
@@ -1727,13 +1727,19 @@
                           (filter (fn [m]
                                     (and (instance? clojure.reflect.Constructor m)
                                          (= (count (:parameter-types m)) (count (:args a*))))))))
-        constructor-specs (map c/or- (apply map vector (map :parameter-types constructors)))
+        constructor-specs (->> constructors
+                               (map :parameter-types)
+                               (map (fn [constructor-args]
+                                      (mapv (fn [arg]
+                                              (c/class-spec (j/resolve-java-class arg))) constructor-args)))
+                               (apply map vector)
+                               (map c/or-))
         a (reduce (fn [a [arg spec]]
                     (case (:op arg)
                       (:binding :local) (let [b (find-binding a path (:name arg))
                                               b-path (:path b)]
                                           (assert b-path)
-                                          (assert spec)
+                                          (assert (c/spect? spec))
                                           (infer-add-constraint a b-path spec))
                       a)) a (map vector (:args a*) constructor-specs))]
     (assoc-in a (conj path ::ret-spec) (c/class-spec (-> a* :class :val)))))
