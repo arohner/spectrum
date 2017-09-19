@@ -35,6 +35,8 @@
 (s/def ::analysis? (s/nilable ::analysis))
 
 (s/def ::analyses (s/coll-of ::analysis))
+(s/def ::path-elem (s/or :k keyword? :i nat-int?))
+(s/def ::path (s/coll-of ::path-elem :type vector?))
 
 (s/fdef a-loc :args (s/cat :a ::ana.jvm/analysis))
 (defn a-loc [a]
@@ -456,7 +458,7 @@
       :invoke (recur a (conj path :fn))
       (println "don't know how to find analysis for" fn-op))))
 
-(s/fdef invoke-get-fn-spec :args (s/cat :a ::analysis) :ret (s/nilable ::c/spect))
+(s/fdef invoke-get-fn-spec :args (s/cat :a ::analysis :p ::path) :ret (s/nilable ::c/spect))
 
 (defn invoke-get-fn-spec-dispatch [a path]
   (-> (get-in a path) :op))

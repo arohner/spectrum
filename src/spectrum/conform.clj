@@ -538,6 +538,7 @@
       ret)
     #{}))
 
+(s/fdef recursive-dependent-specs :args (s/cat :s (s/nilable spect?)) :ret ::dependent-specs)
 (defn recursive-dependent-specs
   "Recursively resolve dependent-specs"
   [s]
@@ -1327,20 +1328,17 @@
       (and child parent (isa? (j/maybe-box child) (j/maybe-box parent)))))
 
 (s/def ::spec->classes (s/or :s class? :or-s (s/coll-of class? :kind set?)))
-(s/fdef spec-class :args (s/cat :s spect?) :ret ::spec->classes)
+(s/fdef spec->classes :args (s/cat :s spect?) :ret ::spec->classes)
 (defn spec->classes
   "Given a spec, return the set of concrete classes this spec could be.
 
    Because specs are more precise than class checks, casting to a class can destroy information. Using this anywhere other than java interop is a code smell."
   [spec]
-  {:post [(do
-            (when-not (s/valid? ::spec->classes %)
-              (s/explain ::spec->classes %))
-            true) (s/valid? ::spec->classes %)]}
+  {:post [(s/valid? ::spec->classes %)]}
   (cond
-    (spec-spec? spec) (spec->classes (:s spec))
+    (spec-spec? spec) (spec->classes (parse-spec (:s spec)))
     (class-spec? spec) (set [(:cls spec)])
-    (or-spec? spec) (apply set/union (map spec->classes (:ps spec)))
+    (or-spec? spec) (apply set/union (map spec->classes (map parse-spec (:ps spec))))
     (and (pred-spec? spec) (data/get-type-transformer (:pred spec))) (set (apply-map maybe-class (data/get-type-transformer (:pred spec))))
     :else (->>
            (recursive-dependent-specs spec)
@@ -1577,8 +1575,9 @@
 (defn and-spec? [x]
   (instance? AndSpec x))
 
+(s/fdef and-classes-compatible? :args (s/cat :ps (s/coll-of ::spect-like)) :ret boolean?)
 (defn and-classes-compatible?
-  "True if the and pred java classes are incompatible (concrete classes that aren't ancestors)"
+  "True if the `and` pred java classes are incompatible (concrete classes that aren't ancestors)"
   [ps]
   (let [compatible? (fn [a b]
                       {:pre [(class? a) (class? b)]}
