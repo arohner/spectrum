@@ -12,7 +12,8 @@
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.check :as check]
-            [spectrum.flow :as flow])
+            [spectrum.flow :as flow]
+            [spectrum.util :as util])
   (:import (spectrum.conform Unknown
                              PredSpec
                              ClassSpec
@@ -20,7 +21,7 @@
                              OrSpec)
            [clojure.lang BigInt PersistentHashMap Ratio Seqable]))
 
-(clojure.spec.test.alpha/instrument)
+(util/instrument-in-CI)
 
 (check/ensure-analysis 'spectrum.analyzer-spec)
 

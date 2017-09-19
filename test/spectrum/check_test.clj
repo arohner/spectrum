@@ -6,9 +6,10 @@
             [clojure.spec.test.alpha :as spec-test]
             [spectrum.conform :as c]
             [spectrum.check :as st]
-            [spectrum.flow :as flow]))
+            [spectrum.flow :as flow]
+            [spectrum.util :as util]))
 
-(spec-test/instrument)
+(util/instrument-in-CI)
 
 (defn example-namespaces []
   (find/find-namespaces-in-dir (io/file "test/spectrum/examples")))

@@ -1,7 +1,9 @@
 (ns spectrum.util
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
-            [clojure.spec.alpha :as s])
-  (:import clojure.lang.Var))
+            [clojure.spec.alpha :as s]
+            [clojure.spec.test.alpha])
+  (:import clojure.lang.Var
+           java.lang.System))
 
 (defn literal? [x]
   (let [a (ana.jvm/analyze x)]
@@ -108,3 +110,7 @@
   [^clojure.lang.MultiFn ms]
   (->> (.getMethodTable ms)
        (keys)))
+
+(defn instrument-in-CI []
+  (when (System/getenv "CI")
+    (clojure.spec.test.alpha/instrument)))

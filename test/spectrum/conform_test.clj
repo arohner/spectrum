@@ -1,12 +1,12 @@
 (ns spectrum.conform-test
   (:require [clojure.spec.alpha :as s]
-            [clojure.spec.test.alpha]
             [clojure.test :refer :all]
             [clojure.tools.analyzer.jvm :as ana.jvm]
-            [spectrum.conform :as c])
+            [spectrum.conform :as c]
+            [spectrum.util :as util])
   (:import clojure.lang.Keyword))
 
-(clojure.spec.test.alpha/instrument)
+(util/instrument-in-CI)
 
 (s/def ::integer integer?)
 (s/def ::string string?)
