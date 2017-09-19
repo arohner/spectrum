@@ -1640,8 +1640,12 @@
   {:pre [(spect? s) (spect? constraint)]
    :post [(spect? %)]}
   (cond
+    (= (pred-spec #'any?) constraint) s
+    (= (class-spec Object) constraint) s
+
     (= (pred-spec #'any?) s) constraint
     (= (class-spec Object) s) constraint
+
     (and-spec? s) (and-conj s constraint)
     :else (and- [s constraint])))
 
