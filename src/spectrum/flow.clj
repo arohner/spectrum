@@ -1625,15 +1625,13 @@
                    (c/invalid {:message (format "no compatible method method: on %s %s accepts %s" class method (print-str (analysis-args->spec args)))}))
         a (assoc-in a (conj path ::ret-spec) ret-spec)
         method-spec (if (seq ms)
-                       (->> ms
-                            (map :parameter-types)
-                            (map (fn [params]
-                                   (mapv (fn [p]
-                                           (c/class-spec (j/resolve-java-class p))) params)))
-                            (mapv (fn [ps]
-                                    (if (seq ps)
-                                      (c/or- ps)
-                                      ps))))
+                      (->> ms
+                           (map :parameter-types)
+                           (map (fn [params]
+                                  (mapv (fn [p]
+                                          (c/class-spec (j/resolve-java-class p))) params)))
+                           (apply map vector)
+                           (map c/or-))
                        (c/invalid {:message (format "no compatible method method: on %s %s accepts %s" class method (print-str (analysis-args->spec args)))}))
         bind-args (map vector args method-spec)]
     (reduce (fn [a [arg method-spec]]

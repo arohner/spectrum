@@ -248,4 +248,5 @@
 (deftest infer-form
   (are [form expected] (c/equivalent? expected (check/infer-form form))
     '(fn [x] (if x true false)) (c/fn-spec (c/cat- [(c/class-spec Object)]) (c/or- [(c/value true) (c/value false)]) nil)
+    '(fn [x] (inc x)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
     '(fn [x] (not (even? x))) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'boolean?) nil)))
