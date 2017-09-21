@@ -1661,6 +1661,7 @@
             ;; FIXME this local could be self-recursive, need complete spec here, but don't have it yet. Maybe re-flow after first infer pass?
             (assoc-in a (concat path [:local ::ret-spec]) (c/pred-spec #'fn?))
             a)
+        a (assoc-in a (concat path [::ret-spec]) (c/pred-spec #'fn?))
         a (infer-walk a path)
         a* (get-in a path)
         args (map (fn [m]
