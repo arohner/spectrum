@@ -198,12 +198,20 @@
 (defmethod flow* :binding [a path]
   a)
 
+(defn get-var-spec [v]
+  (or (c/get-var-spec v)
+      (data/get-var-inferred-spec v)))
+
 (defmethod flow* :def [a path]
   (let [a* (get-in a path)
         a (assoc-in-a a path (maybe-assoc-var-name a*))
         a (flow-walk a path)
-        a* (get-in a path)]
+        a* (get-in a path)
+        v (:var a*)]
+    (assert (var? v))
     (data/store-var-analysis a)
+    (when-not (get-var-spec v)
+      (infer a))
     (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
 
 (defmethod flow* :the-var [a path]
@@ -211,10 +219,6 @@
   (let [a (flow-walk a path)
         a* (get-in a path)]
     (assoc-in a (conj path ::ret-spec) (c/value (:var a*)))))
-
-(defn get-var-fn-spec [v]
-  (or (c/get-var-fn-spec v)
-      (data/get-var-inferred-spec v)))
 
 (defmethod flow* :var [a path]
   ;; :var => the value the var holds
@@ -224,7 +228,7 @@
         ret-spec (if-let [s (get-var-fn-spec v)]
                    s
                    (if-let [a (data/get-var-analysis v)]
-                     (infer-var a v)
+                     (c/spec-spec (s/spec v))
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
@@ -474,7 +478,7 @@
     (if-let [s (get-var-fn-spec v)]
       s
       (if-let [v-a (data/get-var-analysis v)]
-        (infer-var v-a v)
+        (c/spec-spec (s/spec v))
         (c/unknown {:message (format "couldn't find spec or analysis for %s" v)})))))
 
 (defmethod invoke-get-fn-spec :local [a path]
@@ -1523,9 +1527,7 @@
         ret-spec (if-let [s (get-var-fn-spec v)]
                    s
                    (if-let [v-a (data/get-var-analysis v)]
-                     (if (not (recursive? a path))
-                       (infer-var v-a v)
-                       (c/spec-spec (s/spec v)))
+                     (c/spec-spec (s/spec v))
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 

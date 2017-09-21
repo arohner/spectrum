@@ -2479,8 +2479,8 @@
                 :ret ret
                 :fn fn}))
 
-(s/fdef get-var-fn-spec :args (s/cat :v var?) :ret (s/nilable fn-spec?))
-(defn get-var-fn-spec [v]
+(s/fdef get-var-spec :args (s/cat :v var?) :ret (s/nilable spect?))
+(defn get-var-spec [v]
   (when-let [s (s/get-spec v)]
     (assoc (parse-spec s) :var v)))
 
