@@ -1138,39 +1138,46 @@
   "true if s is a value with a truthy value"
   (and (value? s) (boolean (:v s))))
 
-(defrecord SpecSpec [s]
-  ;; 'container' spec, for when the user does e.g. (s/cat :x (s/spec (s/* integer?)))
-  ;; necessary because it changes the behavior of `first`
+  ;; 'container' spec, for when the user does e.g. (s/cat :x (s/spec
+  ;; (s/* integer?)))  necessary because it changes the behavior of
+  ;; `first`. Also useful as a `delay` for forward-declared specs
+
+(defrecord SpecSpec [s])
+
+(extend-type SpecSpec
   Spect
   (conform* [this x]
-    (conform* (parse-spec s) x))
+    (conform* (parse-spec (:s this)) x))
   WillAccept
   (will-accept- [this]
-    #{(parse-spec s)})
+    #{(parse-spec (:s this))})
   Regex
   (derivative [this x]
-    (derivative (parse-spec s) x))
+    (derivative (parse-spec (:s this)) x))
   (empty-regex [this]
-    (empty-regex (parse-spec s)))
+    (empty-regex (parse-spec (:s this))))
   (accept-nil? [this]
-    (accept-nil? (parse-spec s)))
+    (accept-nil? (parse-spec (:s this))))
   (return- [this]
     this)
   (with-return- [this ret]
-    (with-return- s ret))
+    (with-return- (:s this) ret))
   (regex? [this]
     false)
   FirstRest
   (first* [this]
-    (-> s parse-spec first*))
+    (-> this :s parse-spec first*))
   (rest* [this]
-    (-> s parse-spec rest*))
+    (-> this :s parse-spec rest*))
   Truthyness
   (truthyness [this]
-    (-> s parse-spec truthyness))
+    (-> this :s parse-spec truthyness))
+  Invoke
+  (invoke [this args]
+    (-> this :s parse-spec (invoke args)))
   DependentSpecs
   (dependent-specs- [this]
-    (-> s parse-spec dependent-specs)))
+    (-> this :s parse-spec dependent-specs)))
 
 (defn spec-spec? [x]
   (instance? SpecSpec x))
