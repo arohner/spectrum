@@ -121,7 +121,7 @@
   (let [f (unwrap-a method-a)
         v (::flow/var f)]
     (when v
-      (let [ret-spec (:ret (c/get-var-fn-spec v))
+      (let [ret-spec (:ret (c/get-var-spec v))
             body (-> method-a :body)
             last-expr (if (map? body)
                         body

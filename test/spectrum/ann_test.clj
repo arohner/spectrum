@@ -26,7 +26,7 @@
 (check/ensure-analysis 'spectrum.analyzer-spec)
 
 (deftest instance?-transformer
-  (are [c x expected] (= expected (c/invoke (c/get-var-fn-spec #'instance?) (c/cat- [c x])))
+  (are [c x expected] (= expected (c/invoke (c/get-var-spec #'instance?) (c/cat- [c x])))
     (c/class-spec String) (c/pred-spec #'string?) (c/value true)
     (c/class-spec String) (c/class-spec String) (c/value true)
     (c/class-spec String) (c/pred-spec #'integer?) (c/value false)
@@ -70,17 +70,17 @@
 (deftest map-coll-arity)
 (deftest map-tests
   (testing "successful"
-    (are [args expected] (= expected (c/invoke (c/get-var-fn-spec #'map) args))
-      (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
-      (c/cat- [(c/get-var-fn-spec #'identity) (c/pred-spec #'nil?)]) (c/value [])
-      (c/cat- [(c/get-var-fn-spec #'identity) (c/coll-of (c/pred-spec #'keyword?))]) (c/coll-of (c/pred-spec #'keyword?))
+    (are [args expected] (= expected (c/invoke (c/get-var-spec #'map) args))
+      (c/cat- [(c/get-var-spec #'identity) (c/value nil)]) (c/value [])
+      (c/cat- [(c/get-var-spec #'identity) (c/pred-spec #'nil?)]) (c/value [])
+      (c/cat- [(c/get-var-spec #'identity) (c/coll-of (c/pred-spec #'keyword?))]) (c/coll-of (c/pred-spec #'keyword?))
 
-      (c/cat- [(c/get-var-fn-spec #'vector) (c/value [(c/value 1) (c/value :foo)])]) (c/coll-of (c/pred-spec #'vector?))))
+      (c/cat- [(c/get-var-spec #'vector) (c/value [(c/value 1) (c/value :foo)])]) (c/coll-of (c/pred-spec #'vector?))))
 
   (testing "fail"
-    (are [args] (c/invalid? (c/invoke (c/get-var-fn-spec #'map) args))
-      (c/cat- [(c/get-var-fn-spec #'inc) (c/value [(c/value :foo)])])
-      (c/cat- [(c/get-var-fn-spec #'inc) (c/coll-of (c/pred-spec #'keyword?))]))))
+    (are [args] (c/invalid? (c/invoke (c/get-var-spec #'map) args))
+      (c/cat- [(c/get-var-spec #'inc) (c/value [(c/value :foo)])])
+      (c/cat- [(c/get-var-spec #'inc) (c/coll-of (c/pred-spec #'keyword?))]))))
 
 (deftest nil?-works
   (testing "true"
@@ -190,8 +190,8 @@
 ;; (deftest filter-tests
 ;;   (testing "equals"
 ;;     (are [args expected] (= expected (:ret (c/maybe-transform #'filter args)))
-;;       (c/cat- [(c/get-var-fn-spec #'identity) (c/value nil)]) (c/value [])
-;;       (c/cat- [(c/get-var-fn-spec #'even?) (c/coll-of (c/pred-spec #'integer?))]) (c/coll-of (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)] )))))
+;;       (c/cat- [(c/get-var-spec #'identity) (c/value nil)]) (c/value [])
+;;       (c/cat- [(c/get-var-spec #'even?) (c/coll-of (c/pred-spec #'integer?))]) (c/coll-of (c/and-spec [(c/pred-spec #'integer?) (c/pred-spec #'even?)] )))))
 
 ;; (deftest filter-invoke
 ;;   ;; Checks that filter accepts or rejects arguments

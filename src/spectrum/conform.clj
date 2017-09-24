@@ -117,7 +117,7 @@
   (empty-regex [this]
     "The empty pattern for this regex")
   (accept-nil? [this]
-    "True if it is valid for this pattern to match no data")
+    "True if this pattern successfully matches")
   (return- [this]
     "Given a completed regex parse, return the conform matching value")
   (with-return- [this ret]
@@ -125,11 +125,33 @@
   (regex? [this]
     "True if this spec is actually a regex, and not just a normal spec implementing the protocol"))
 
+(defn singular? [x]
+  (not (regex? x)))
+
 (s/def :with-return/ret (s/or :s (s/nilable spect?) :coll (s/coll-of (s/or :s spect? :ret :with-return/ret) :kind vector?)))
+
+(defrecord Accept [ret])
+
+(defrecord Reject [])
+
+(s/fdef accept :args (s/cat :x (s/or :s spect? :wr :with-return/ret)) :ret spect?)
+(defn accept [x]
+  (map->Accept {:ret x}))
+
+(def reject (map->Reject {}))
+
+(defn accept? [x]
+  (instance? Accept x))
+
+(defn reject? [x]
+  (instance? Reject x))
+
+(defrecord Invalid [a-loc form message])
 
 (s/fdef return :args (s/cat :s :with-return/ret) :ret (s/nilable spect?))
 (defn return [s]
   {:post [(validate! (s/nilable spect?) %)]}
+  (validate! (s/or :accept accept? :accept-nil accept-nil? :not-re singular?) s)
   (let [ret (return- s)]
     (validate! :with-return/ret ret)
     (if (vector? ret)
@@ -184,9 +206,21 @@
 (defn keyword-invoke? [s]
   (satisfies? KeywordInvoke s))
 
-(s/def ::spect (s/with-gen (s/and spect? map?)
-                 (fn []
-                   spect-generator)))
+(predicate-spec invalid?)
+(defn invalid? [x]
+  (or (instance? Invalid x)
+      (= ::invalid x)))
+
+(s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
+(defn conformy?
+  "True if the conform result returns anything other than invalid or reject"
+  [x]
+  (boolean (and x
+                (not (invalid? x))
+                (not (reject? x)))))
+
+(s/def ::spect (s/and spect? map?))
+(s/def ::valid-spect (s/and spect? conformy?))
 
 (predicate-spec form?)
 (defn form? [x]
@@ -200,25 +234,9 @@
 ;; a thing that parse-spec will return a valid ::spect on
 (s/def ::spect-like (s/or :spec s/spec? :spec-re spec-regex? :spect ::spect :key keyword? :sym symbol? :var var? :form form? :set set?))
 
+(s/def ::valid-spect-like (s/or :spec s/spec? :spec-re spec-regex? :spect ::valid-spect :key keyword? :sym symbol? :var var? :form form? :set set?))
+
 (s/fdef conform* :args (s/cat :spec spect? :x any?))
-
-(defrecord Accept [ret])
-
-(defrecord Reject [])
-
-(s/fdef accept :args (s/cat :x (s/or :s spect? :wr :with-return/ret)) :ret spect?)
-(defn accept [x]
-  (map->Accept {:ret x}))
-
-(def reject (map->Reject {}))
-
-(defn accept? [x]
-  (instance? Accept x))
-
-(defn reject? [x]
-  (instance? Reject x))
-
-(defrecord Invalid [a-loc form message])
 
 (s/def :invalid/message string?)
 (s/def :invalid/form any?)
@@ -335,11 +353,6 @@
 
 (first-rest-singular Reject)
 
-(predicate-spec invalid?)
-(defn invalid? [x]
-  (or (instance? Invalid x)
-      (= ::invalid x)))
-
 (defrecord Unknown [form file line column])
 
 (defn unknown? [x]
@@ -385,14 +398,6 @@
 
 (defn known? [x]
   (not (unknown? x)))
-
-(s/fdef conformy? :args (s/cat :x any?) :ret boolean?)
-(defn conformy?
-  "True if the conform result returns anything other than invalid or reject"
-  [x]
-  (boolean (and x
-                (not (invalid? x))
-                (not (reject? x)))))
 
 (extend-type nil
   Regex
@@ -445,6 +450,8 @@
   (return- [this]
     this)
   (regex? [this]
+    false)
+  (accept-nil? [this]
     false))
 
 (def spect-regex-impl
@@ -887,7 +894,7 @@
               (return p0))]
       r))
   (with-return- [this r]
-    (let [ret (return this)]
+    (let [ret (return- this)]
       (if (= ret nil)
         r
         (conj r ret))))
@@ -1163,7 +1170,7 @@
   (with-return- [this ret]
     (with-return- (:s this) ret))
   (regex? [this]
-    false)
+    (-> this :s parse-spec regex?))
   FirstRest
   (first* [this]
     (-> this :s parse-spec first*))
@@ -1847,9 +1854,16 @@
          (map parse-spec)
          (some regex?)))
   (derivative [this x]
-    (if (valid? this x)
-      (accept x)
-      reject))
+    (->> this
+         :ps
+         (map parse-spec)
+         (map (fn [p]
+                (derivative p x)))
+         (filter conformy?)
+         ((fn [ps]
+            (if (seq ps)
+              (or- ps)
+              reject)))))
   (accept-nil? [this]
     (->> this
          :ps
@@ -1859,6 +1873,7 @@
     (->> this
          :ps
          (map parse-spec)
+         (filter accept-nil?)
          (map return)
          (or-)))
   (with-return- [this x]
@@ -2473,8 +2488,17 @@
 (defn fn-spec? [x]
   (instance? FnSpec x))
 
-(s/fdef fn-spec :args (s/cat :args (s/nilable ::spect-like) :ret (s/nilable ::spect-like) :fn (s/nilable ::spect-like)))
+(s/def :fn-spec/args (s/nilable ::valid-spect-like))
+(s/def :fn-spec/ret (s/nilable ::valid-spect-like))
+(s/def :fn-spec/fn (s/nilable ::valid-spect-like))
+
+(s/fdef fn-spec :args (s/cat :args :fn-spec/args :ret :fn-spec/ret :fn :fn-spec/fn))
+(s/fdef map->FnSpec :args (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn]) :ret ::valid-spect)
+
 (defn fn-spec [args ret fn]
+  {:pre [(validate! :fn-spec/args args)
+         (validate! :fn-spec/ret ret)
+         (validate! :fn-spec/fn fn)]}
   (map->FnSpec {:args args
                 :ret ret
                 :fn fn}))
@@ -2492,7 +2516,7 @@
 (s/fdef var-predicate? :args (s/cat :v var?) :ret boolean?)
 (defn var-predicate?-
   [v]
-  (let [s (get-var-fn-spec v)]
+  (let [s (get-var-spec v)]
     (if s
       (and (-> s :args cat-spec?)
            (-> s :args :ps count (= 1))
@@ -2687,7 +2711,7 @@
 (defn multispec-dispatch-invoke [ms v]
   (assert (fn? (:retag ms)))
   (assert (var? (:retag ms)))
-  (if-let [s (get-var-fn-spec (:retag ms))]
+  (if-let [s (get-var-spec (:retag ms))]
     (if-let [t (data/get-invoke-transformer v)]
       (let [fn-spec* (t s v)]
         (:ret fn-spec*))
@@ -2805,7 +2829,9 @@
               (if-let [dp (derivative spec x)]
                 (if (conformy? dp)
                   (if (infinite? (rest* data))
-                    (return dp)
+                    (do
+                      (assert (or (accept? dp) (accept-nil? dp)))
+                      (return dp))
                     (recur dp (rest* data) (inc iter)))
                   (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
                 (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))
@@ -2873,7 +2899,7 @@
 
 (defmethod value-invoke :var [spec args]
   (let [v (:v spec)]
-    (if-let [s (get-var-fn-spec v)]
+    (if-let [s (get-var-spec v)]
       (invoke s args)
       (unknown {:message (format "value-invoke: no spec for %s" v)}))))
 

@@ -225,7 +225,7 @@
   (let [a (flow-walk a path)
         a* (get-in a path)
         v (:var a*)
-        ret-spec (if-let [s (get-var-fn-spec v)]
+        ret-spec (if-let [s (get-var-spec v)]
                    s
                    (if-let [a (data/get-var-analysis v)]
                      (c/spec-spec (s/spec v))
@@ -241,7 +241,7 @@
   (let [;;a (flow-walk a path)
         a* (get-in a path)
         v (:var a*)
-        fn-spec (when v get-var-fn-spec)
+        fn-spec (when v get-var-spec)
         a (if fn-spec
             (flow-walk a path)
             (infer* a path))
@@ -412,7 +412,7 @@
   (let [b (get-in a b-path)]
     (assert b (format "binding not found: %s %s" (:form a) b-path))
     (assert b-path)
-    (assert (::ret-spec b) (format "no ret-spec on %s %s %s %s" (:name b) (keys b) (:op b) (a-loc-str a)))
+    (assert (::ret-spec b) (format "no ret-spec on %s %s %s" (:op b) (:form b) (a-loc-str a)))
     (update-in a (conj b-path ::ret-spec) c/add-constraint method-spec)))
 
 (defn infer-or-constraint [a b-path constraint]
@@ -475,7 +475,7 @@
   (let [a* (get-in a path)
         v (-> a* :var)]
     (assert (var? v))
-    (if-let [s (get-var-fn-spec v)]
+    (if-let [s (get-var-spec v)]
       s
       (if-let [v-a (data/get-var-analysis v)]
         (c/spec-spec (s/spec v))
@@ -556,7 +556,7 @@
   (let [a* (get-in a path)
         v (-> a* :fn :var)
         spec (when v
-               (get-var-fn-spec v))
+               (get-var-spec v))
         a (flow-walk a path)
         a* (get-in a path)
         args-spec (analysis-args->spec (:args a*))]
@@ -1065,7 +1065,7 @@
 (defn flow-method [a path]
   (let [a* (get-in a path)
         v (some-> a (get-in (pop (pop path))) ::var)
-        s (some-> v get-var-fn-spec)
+        s (some-> v get-var-spec)
         a (flow-method* a path (:args s))
         ret-spec (::ret-spec a)]
     a))
@@ -1368,7 +1368,7 @@
 (defn invoke-with-var
   "v must already be analyzed"
   [v args]
-  (if-let [s (get-var-fn-spec v)]
+  (if-let [s (get-var-spec v)]
     (if (c/valid-invoke? s args)
       (if-let [a (data/get-var-analysis v)]
         (let [a (-> a :init :expr)]
@@ -1524,7 +1524,7 @@
   (let [a (flow-walk a path)
         a* (get-in a path)
         v (:var a*)
-        ret-spec (if-let [s (get-var-fn-spec v)]
+        ret-spec (if-let [s (get-var-spec v)]
                    s
                    (if-let [v-a (data/get-var-analysis v)]
                      (c/spec-spec (s/spec v))
@@ -1563,7 +1563,12 @@
             (infer-invoke-constraint- qr))))
       nil)))
 
+(s/fdef infer-invoke-constraints :args (s/cat :s c/spect? :args (s/coll-of c/spect?) :ret c/spect?))
 (defn infer-invoke-constraints
+  "Given a spec (which could accept multiple type or arities), and a
+  set of partially constrained argument specs, return a spec
+  representing all possible variations of spec that args could conform
+  to"
   [spec args]
   (let [rets (infer-invoke-constraint- (queue [{:spec spec
                                                 :args args
@@ -1676,7 +1681,7 @@
         params (mapv (fn [p]
                        (let [ret-spec (cond
                                         (:variadic? p) (c/and- [(c/seq-of (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)])
-                                        (:tag p) (c/class-spec (:tag p))
+                                        (and (:tag p) (not= Object)) (c/class-spec (:tag p))
                                         :else (c/pred-spec #'any?))]
                          (assoc p ::ret-spec ret-spec))) (:params a*))
         a (assoc-in a (conj path :params) params)
@@ -1871,7 +1876,7 @@
         a* (get-in a path)
         v (-> a* :fn :var)
         spec (when v
-               (get-var-fn-spec v))
+               (get-var-spec v))
         a-args (:args a*)
         s-args (when (and spec (:args spec))
                  ;; (c/all-possible-values-arity-n (:args spec) (count (:args a*)))

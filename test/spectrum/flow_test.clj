@@ -239,14 +239,26 @@
 (deftest infer-invoke
   (are [spec args expected] (c/equivalent? expected (flow/infer-invoke-constraints spec args))
 
-    (:args (c/get-var-fn-spec #'inc)) [(c/pred-spec #'any?)] (c/pred-spec #'number?)
-    (:args (c/get-var-fn-spec #'keyword)) [(c/pred-spec #'any?)] (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?) (c/pred-spec #'any?)])
+    (:args (c/get-var-spec #'inc)) [(c/pred-spec #'any?)] (c/pred-spec #'number?)
+    (:args (c/get-var-spec #'keyword)) [(c/pred-spec #'any?)] (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?) (c/pred-spec #'any?)])
 
-    (:args (c/get-var-fn-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] (c/parse-spec (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)))
-    (:args (c/get-var-fn-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] []))
+    (:args (c/get-var-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] (c/parse-spec (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)))
+    (:args (c/get-var-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] []))
 
 (deftest infer-form
-  (are [form expected] (c/equivalent? expected (check/infer-form form))
-    '(fn [x] (if x true false)) (c/fn-spec (c/cat- [(c/class-spec Object)]) (c/or- [(c/value true) (c/value false)]) nil)
-    '(fn [x] (inc x)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-    '(fn [x] (not (even? x))) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'boolean?) nil)))
+  (testing "truthy"
+    (are [form expected] (c/equivalent? expected (check/infer-form form))
+      '(fn [x] (if x true false)) (c/fn-spec (c/cat- [(c/class-spec Object)]) (c/or- [(c/value true) (c/value false)]) nil)
+      '(fn [x] (keyword x)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
+      '(fn [x] (keyword "foo" x)) (c/fn-spec (c/cat- [(c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
+      '(fn [x] (inc x)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
+      '(fn [x] (inc x) (keyword x) x) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
+      '(fn [x] (not (even? x))) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'boolean?) nil)
+
+      '(fn [x] (+)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
+      '(fn [x] (+ x 1)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
+
+      ))
+  (testing "invalid"
+    (are [form] (c/invalid? (check/infer-form form))
+      '(fn [x] (inc (str x))))))

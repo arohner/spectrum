@@ -125,7 +125,7 @@
       (c/and- [(c/class-spec Long) (c/not- (c/pred-spec #'keyword?))]) (c/class-spec Long)
 
       (c/pred-spec #'fn?) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)
-      (c/pred-spec #'fn?) (c/get-var-fn-spec #'inc)))
+      (c/pred-spec #'fn?) (c/get-var-spec #'inc)))
 
   (testing "should pass"
     (are [spec val expected] (= expected (c/conform (c/parse-spec spec) val))
@@ -437,6 +437,12 @@
 (deftest multispecs
   ;; (is (c/equivalent? (c/or- [(c/parse-spec (s/spec ::ana.jvm/analysis)) (c/value nil)]) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
   (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second))))
+
+(deftest derivative
+  (testing "truthy"
+    (are [s v] (c/conformy? (c/derivative s v))
+      (c/or- [(c/cat- [(c/pred-spec #'string?)]) (c/cat- [(c/pred-spec #'string?) (c/pred-spec #'string?)])]) (c/pred-spec #'string?)))
+  (testing "invalid"))
 
 (deftest will-accept-works
   (are [s expected] (= expected (c/will-accept s))
