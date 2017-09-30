@@ -436,7 +436,8 @@
 
 (deftest multispecs
   ;; (is (c/equivalent? (c/or- [(c/parse-spec (s/spec ::ana.jvm/analysis)) (c/value nil)]) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
-  (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second))))
+  (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second)))
+  (is (c/valid? (c/pred-spec #'associative?) (c/parse-spec ::ana.jvm/analysis))))
 
 (deftest derivative
   (testing "truthy"

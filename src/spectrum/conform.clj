@@ -1795,8 +1795,7 @@
     (->>
      (:ps this)
      (map parse-spec)
-     (mapv vector (or (:ks this) (repeat nil)))
-     (some (fn [[k p]]
+     (some (fn [p]
              (when (valid? p x)
                x)))))
   DependentSpecs
@@ -2681,7 +2680,6 @@
   (instance? MultiSpec x))
 
 (s/fdef multispec-dispatch-ret-value :args (s/cat :ms multispec? :val any?) :ret spect?)
-
 (defn multispec-assoc-retag
   "Given a concrete instance of a multispec, update it to include the dispatch value"
   [ms spec dispatch-value]
@@ -2693,15 +2691,18 @@
     (when-not existing-key-spec
       (println "Multispec assoc retag:" ms spec key-type retag))
     (assert existing-key-spec)
-    (assert (valid? (parse-spec existing-key-spec) (value dispatch-value)))
-    (assoc-in spec [key-type retag] (value dispatch-value))))
+    (assert (valid? (parse-spec existing-key-spec) dispatch-value))
+    (assoc-in spec [key-type retag] dispatch-value)))
 
+(s/fdef multispec-dispatch-ret-value :args (s/cat :ms multispec? :val spect?) :ret spect?)
 (defn multispec-dispatch-ret-value
   "Given a dispatch value, return the spec"
   [ms dispatch-value]
+  {:pre [(spect? dispatch-value)]}
   (let [v (:multimethod ms)
         retag (:retag ms)
         s (v {retag dispatch-value})
+        _ (assert s)
         s (parse-spec s)
         s (multispec-assoc-retag ms s dispatch-value)]
     (if s
@@ -2709,8 +2710,9 @@
       (unknown {:form [v dispatch-value]}))))
 
 (defn multispec-dispatch-invoke [ms v]
-  (assert (fn? (:retag ms)))
-  (assert (var? (:retag ms)))
+  {:pre [(var? (:retag ms))
+         (fn? (:retag ms))
+         (spect? v)]}
   (if-let [s (get-var-spec (:retag ms))]
     (if-let [t (data/get-invoke-transformer v)]
       (let [fn-spec* (t s v)]
@@ -2734,8 +2736,13 @@
 (defn multispec-default-spec
   "When we can't determine the correct multispec dispatch value, get the lowest common denominator spec, Or'ing all of the possible values together"
   [ms]
-  (or- (map (fn [v]
-              (multispec-dispatch-ret-value ms v)) (multimethod-dispatch-values @(:multimethod ms)))))
+  (->>
+   @(:multimethod ms)
+   (multimethod-dispatch-values )
+   (map parse-spec)
+   (map (fn [v]
+          (multispec-dispatch-ret-value ms v)))
+   (or- )))
 
 (defn multispec-resolve-spec
   "Given a multispec and a dispatch value, attempt to return the spec for that defmethod call. Returns specific spec, or multispec-default-spec"
@@ -2747,22 +2754,36 @@
 
 (extend-type MultiSpec
   Spect
-   (conform* [this x]
-             (let [dispatch-type (cond
-                                   (keyword? (:retag this)) :keyword
-                                   (fn? (:retag this)) :fn
-                                   :else (assert false "unknown dispatch type"))]
-               (condp = dispatch-type
-                 :keyword (when (valid? (pred-spec #'map?) x)
-                            (let [s (multispec-resolve-spec this x)
-                                  x (if (multispec? x)
-                                      (multispec-resolve-spec ))]
-                              (conform s x)))
-                 :fn (when (valid-invoke? (:retag this) x)
-                       (conform (multispec-resolve-spec this x) x)))))
-   KeywordInvoke
-   (keyword-invoke [this k]
-                   (keyword-invoke (multispec-default-spec this) k)))
+  (conform* [this x]
+    (let [dispatch-type (cond
+                          (keyword? (:retag this)) :keyword
+                          (fn? (:retag this)) :fn
+                          :else (assert false "unknown dispatch type"))]
+      (cond
+        (and (multispec? x) (= (:multimethod this) (:multimethod x))) x
+        (= :keyword dispatch-type) (when (valid? (pred-spec #'map?) x)
+                                     (let [s (multispec-resolve-spec this x)]
+                                       (conform s x)))
+        (= :fn dispatch-type) (when (valid-invoke? (:retag this) x)
+                                (conform (multispec-resolve-spec this x) x)))))
+  DependentSpecs
+  (dependent-specs- [this]
+    (dependent-specs- (multispec-default-spec this)))
+  KeywordInvoke
+  (keyword-invoke [this k]
+    (keyword-invoke (multispec-default-spec this) k))
+  WillAccept
+  (will-accept- [this]
+    (->>
+     @(:multimethod this)
+     (multimethod-dispatch-values)
+     (map parse-spec)
+     (map (fn [v]
+            (multispec-dispatch-ret-value this v)))
+     (set)))
+  Truthyness
+  (truthyness [this]
+    (truthyness (multispec-default-spec this))))
 
 (extend-regex MultiSpec)
 
@@ -2788,7 +2809,7 @@
                 (symbol? retag) (resolve retag))
         method (resolve (nth x 1))]
     (assert retag)
-    (multispec-default-spec (multispec method retag))))
+    (multispec method retag)))
 
 (defmethod parse-spec* `s/multi-spec-impl [x]
   (let [[form mmvar-form retag] (rest x)
@@ -2976,8 +2997,6 @@
 (def ^:dynamic *conform-in-progress* #{})
 
 (defn conform-bfs [spec args]
-  ;; {:pre [(do (println "conform-bfs pre" spec args) true)]
-  ;;  :post [(do (println "conform-bfs" spec args "->" %) true)]}
   (let [args-orig args]
     (if (contains? *conform-in-progress* [spec args])
       (invalid {:message (format "%s does not conform to %s" (print-str args-orig) (print-str spec))})
