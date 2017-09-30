@@ -109,6 +109,24 @@
   (will-accept- [spec]
     "Return the set of all spects that will make (derivative spec x) return truthy (not reject/invalid)"))
 
+(defprotocol SpecToClasses
+  (spec->classes- [this]))
+
+(defn default-spec->classes [spec]
+  (->>
+   (recursive-dependent-specs spec)
+   (filter (fn [s]
+             (or (class-spec? s)
+                 (and (or-spec? s)
+                      (every? (fn [p]
+                                (class-spec? p)) (:ps s))))))
+   (most-specific-spec)
+   (apply-map maybe-class)
+   (set)))
+
+(defn spec->classes? [x]
+  (satisfies? SpecToClasses x))
+
 (defprotocol Regex
   (derivative
     [spec x]
@@ -1184,7 +1202,10 @@
     (-> this :s parse-spec (invoke args)))
   DependentSpecs
   (dependent-specs- [this]
-    (-> this :s parse-spec dependent-specs)))
+    (-> this :s parse-spec dependent-specs))
+  SpecToClasses
+  (spec->classes- [this]
+    (-> this :s parse-spec spec->classes-)))
 
 (defn spec-spec? [x]
   (instance? SpecSpec x))
@@ -1304,7 +1325,12 @@
             (recur (conj ret spec-arg) spec-arg)
             (if-let [tt (data/get-type-transformer (:pred this))]
               (conj ret tt)
-              ret)))))))
+              ret))))))
+  SpecToClasses
+  (spec->classes- [this]
+    (if (data/get-type-transformer (:pred this))
+      (set (apply-map maybe-class (data/get-type-transformer (:pred this))))
+      (default-spec->classes this))))
 
 ;; Spec representing a java class. Probably won't need to use this
 ;; directly. Used in java interop, and other places where we don't
@@ -1349,21 +1375,9 @@
    Because specs are more precise than class checks, casting to a class can destroy information. Using this anywhere other than java interop is a code smell."
   [spec]
   {:post [(s/valid? ::spec->classes %)]}
-  (cond
-    (spec-spec? spec) (spec->classes (parse-spec (:s spec)))
-    (class-spec? spec) (set [(:cls spec)])
-    (or-spec? spec) (apply set/union (map spec->classes (map parse-spec (:ps spec))))
-    (and (pred-spec? spec) (data/get-type-transformer (:pred spec))) (set (apply-map maybe-class (data/get-type-transformer (:pred spec))))
-    :else (->>
-           (recursive-dependent-specs spec)
-           (filter (fn [s]
-                     (or (class-spec? s)
-                         (and (or-spec? s)
-                              (every? (fn [p]
-                                        (class-spec? p)) (:ps s))))))
-           (most-specific-spec)
-           (apply-map maybe-class)
-           (set))))
+  (if (spec->classes? spec)
+    (spec->classes- spec)
+    (default-spec->classes spec)))
 
 (extend-type ClassSpec
   Spect
@@ -1395,7 +1409,10 @@
     (let [{:keys [cls]} this]
       (if (= clojure.lang.MapEquivalence cls)
         #{(class-spec clojure.lang.APersistentMap)}
-        #{}))))
+        #{})))
+  SpecToClasses
+  (spec->classes- [this]
+    (set [(:cls this)])))
 
 (extend-regex ClassSpec)
 (first-rest-singular ClassSpec)
@@ -1654,6 +1671,8 @@
   {:pre [(spect? s) (spect? constraint)]
    :post [(spect? %)]}
   (cond
+    (value? s) s ;; can't make values more specific
+
     (= (pred-spec #'any?) constraint) s
     (= (class-spec Object) constraint) s
 
@@ -1884,7 +1903,14 @@
          ((fn [ps]
             (if (seq ps)
               (or- ps)
-              x))))))
+              x)))))
+  SpecToClasses
+  (spec->classes- [this]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map spec->classes)
+         (apply set/union))))
 
 (defn or-some
   "clojure.core/some, called on each pred in the orspec"

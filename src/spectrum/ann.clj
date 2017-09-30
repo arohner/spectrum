@@ -472,11 +472,18 @@
                           (add-transform-singular a b))))]
     (assoc spect :ret ret)))
 
-(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long) (c/class-spec Object)]) add-transformer)
-(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Long)]) add-transformer)
-(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Double/TYPE) (c/class-spec Object)]) add-transformer)
-(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Double/TYPE)]) add-transformer)
-(ann-method clojure.lang.Numbers 'add (c/cat- [(c/class-spec Object) (c/class-spec Object)]) add-transformer)
+(def add-params [[(c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]
+                 [(c/class-spec Double/TYPE) (c/class-spec Object)]
+                 [(c/class-spec Object) (c/class-spec Double/TYPE)]
+                 [(c/class-spec Object) (c/class-spec Object)]
+                 [(c/class-spec Long/TYPE) (c/class-spec Long/TYPE)]
+                 [(c/class-spec Object) (c/class-spec Long/TYPE)]
+                 [(c/class-spec Double/TYPE) (c/class-spec Double/TYPE)]
+                 [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)]
+                 [(c/class-spec Long/TYPE) (c/class-spec Object)]])
+
+(doseq [p add-params]
+  (ann-method clojure.lang.Numbers 'add (c/cat- p) add-transformer))
 
 (defn ann-apply [spect args]
   (let [f (c/first* args)

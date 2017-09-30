@@ -669,7 +669,7 @@
         true
         false))))
 
-(s/fdef compatible-java-method? :args (s/cat :v ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
+(s/fdef compatible-java-method? :args (s/cat :v ::c/spect :method-types (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?
   "True if args conforming to spec arg-spec can be passed to a method that takes method-types. Returns falsey for unknown args"
   [arg-spec method-types]
