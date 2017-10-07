@@ -1205,7 +1205,7 @@
     (-> this :s parse-spec dependent-specs))
   SpecToClasses
   (spec->classes- [this]
-    (-> this :s parse-spec spec->classes-)))
+    (-> this :s parse-spec spec->classes)))
 
 (defn spec-spec? [x]
   (instance? SpecSpec x))
@@ -1262,6 +1262,28 @@
   [spec x]
   (let [ret (invoke spec (cat- [(spec-spec x)]))]
     (= :truthy (truthyness ret))))
+
+(defn maybe-class [x]
+  (cond
+    (class-spec? x) (:cls x)
+    (class? x) x
+    (and (value? x) (class? (:v x))) (:v x)
+    :else nil))
+
+(defn default-spec->classes [spec]
+  (->>
+   (recursive-dependent-specs spec)
+   (filter (fn [s]
+             (or (class-spec? s)
+                 (and (or-spec? s)
+                      (every? (fn [p]
+                                (class-spec? p)) (:ps s))))))
+   (most-specific-spec)
+   (apply-map maybe-class)
+   (set)))
+
+(defn standard-spec->classes [s]
+  (extend s SpecToClasses {:spec->classes- default-spec->classes}))
 
 (extend-type PredSpec
   Spect
@@ -1355,13 +1377,6 @@
 (predicate-spec class-spec?)
 (defn class-spec? [x]
   (instance? ClassSpec x))
-
-(defn maybe-class [x]
-  (cond
-    (class-spec? x) (:cls x)
-    (class? x) x
-    (and (value? x) (class? (:v x))) (:v x)
-    :else nil))
 
 (defn isa-boxed? [child parent]
   (or (isa? child parent)
@@ -2295,7 +2310,10 @@
     (coll-of-invoke this args))
   DependentSpecs
   (dependent-specs- [this]
-    #{(pred-spec #'seqable?) (class-spec (or (class (:s this)) clojure.lang.PersistentList))}))
+    #{(pred-spec #'seqable?) (class-spec (or (class (:s this)) clojure.lang.PersistentList))})
+  SpecToClasses
+  (spec->classes- [this]
+    #{clojure.lang.IPersistentCollection clojure.lang.ISeq clojure.lang.Seqable}))
 
 (def kind->coll
   {'clojure.core/vector? []

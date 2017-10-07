@@ -547,7 +547,8 @@
   (are [s expected] (= expected (c/spec->classes s))
     (c/pred-spec #'string?) #{String}
     (c/pred-spec #'string?) #{String}
-    (c/or- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) #{String Keyword}))
+    (c/or- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) #{String Keyword}
+    (c/coll-of (c/pred-spec #'any?)) #{clojure.lang.IPersistentCollection clojure.lang.ISeq clojure.lang.Seqable}))
 
 (deftest contradictions
   (are [s] (not (c/conformy? s))
