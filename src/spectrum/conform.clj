@@ -1686,7 +1686,9 @@
   {:pre [(spect? s) (spect? constraint)]
    :post [(spect? %)]}
   (cond
-    (value? s) s ;; can't make values more specific
+    (value? s) (if (valid? constraint s)
+                 s ;; can't make values more specific
+                 (invalid {:message (format "can't add constraint %s to %s" constraint s)}))
 
     (= (pred-spec #'any?) constraint) s
     (= (class-spec Object) constraint) s

@@ -436,7 +436,7 @@
 
 (deftest multispecs
   ;; (is (c/equivalent? (c/or- [(c/parse-spec (s/spec ::ana.jvm/analysis)) (c/value nil)]) (check/type-of '(-> a :fn) {:a (c/parse-spec ::ana.jvm/analysis)})))
-  (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (-> (c/parse-spec ::ana.jvm/analysis) :ps second)))
+  (is (c/valid? (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::ana.jvm/analysis)))
   (is (c/valid? (c/pred-spec #'associative?) (c/parse-spec ::ana.jvm/analysis))))
 
 (deftest derivative
@@ -563,7 +563,8 @@
 (deftest non-contradiction?
   (testing "truthy"
     (are [s constraint] (c/non-contradiction? s constraint)
-      (c/pred-spec #'string?) (c/value "foo")))
+      (c/pred-spec #'string?) (c/value "foo")
+      (c/value [:file :line :column]) (c/coll-of (c/pred-spec #'any?)) ))
 
   (testing "falsey"
     (are [s contraint] (false? (c/non-contradiction? s contraint))
