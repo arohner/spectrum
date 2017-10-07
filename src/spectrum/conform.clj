@@ -112,20 +112,7 @@
 (defprotocol SpecToClasses
   (spec->classes- [this]))
 
-(defn default-spec->classes [spec]
-  (->>
-   (recursive-dependent-specs spec)
-   (filter (fn [s]
-             (or (class-spec? s)
-                 (and (or-spec? s)
-                      (every? (fn [p]
-                                (class-spec? p)) (:ps s))))))
-   (most-specific-spec)
-   (apply-map maybe-class)
-   (set)))
-
-(defn spec->classes? [x]
-  (satisfies? SpecToClasses x))
+(declare spec->classes)
 
 (defprotocol Regex
   (derivative
@@ -1381,6 +1368,10 @@
 (defn isa-boxed? [child parent]
   (or (isa? child parent)
       (and child parent (isa? (j/maybe-box child) (j/maybe-box parent)))))
+
+(predicate-spec spec->classes?)
+(defn spec->classes? [x]
+  (satisfies? SpecToClasses x))
 
 (s/def ::spec->classes (s/or :s class? :or-s (s/coll-of class? :kind set?)))
 (s/fdef spec->classes :args (s/cat :s spect?) :ret ::spec->classes)
