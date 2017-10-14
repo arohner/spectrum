@@ -38,7 +38,7 @@
 (s/def ::path-elem (s/or :k keyword? :i nat-int?))
 (s/def ::path (s/coll-of ::path-elem :type vector?))
 
-(s/fdef a-loc :args (s/cat :a ::ana.jvm/analysis))
+(s/fdef a-loc :args (s/cat :a ::ana.jvm/analysis) :ret (s/keys :opt-un [:ana.jvm.env/file :ana.jvm.env/line :ana.jvm.env/column]))
 (defn a-loc [a]
   (select-keys a [:file :line :column]))
 
@@ -458,7 +458,7 @@
       :the-var (some-> a* :fn :var data/get-var-analysis get-var-fn-analysis)
       :fn  (-> a* :fn)
       :local (-> a (find-binding path (-> a* :fn :name)) :init)
-      :const nil
+      :const (-> a* :fn :val)
       :invoke (recur a (conj path :fn))
       (println "don't know how to find analysis for" fn-op))))
 
@@ -478,8 +478,11 @@
     (if-let [s (get-var-spec v)]
       s
       (if-let [v-a (data/get-var-analysis v)]
-        (c/spec-spec (s/spec v))
-        (c/unknown {:message (format "couldn't find spec or analysis for %s" v)})))))
+        (c/spec-spec v)
+        (do
+          (println "invoke-get-fn-spec:" (:form a*) v)
+          (assert false (format "couldn't find spec or analysis for %s" v))
+          (c/unknown {:message (format "couldn't find spec or analysis for %s" v)}))))))
 
 (defmethod invoke-get-fn-spec :local [a path]
   (let [a* (get-in a path)]
@@ -647,13 +650,13 @@
   [arg-spec method-types]
   (loop [arg-spec arg-spec
          method-spec (c/cat- (mapv resolve-java-class-spec method-types))]
-    (if (and (c/first* arg-spec)
-             (c/first* method-spec))
-      (let [m (c/first* method-spec)
+    (if (and (c/first- arg-spec)
+             (c/first- method-spec))
+      (let [m (c/first- method-spec)
             m-c (c/spec->classes m)
             _ (assert (= 1 (count m-c)))
             m-c (first m-c)
-            a (c/first* arg-spec)
+            a (c/first- arg-spec)
             a-c (c/spec->classes a)]
         (if (and (nil? a) (nil? m))
           true
@@ -662,10 +665,10 @@
                              (every? (fn [a-c*]
                                        (j/castable? m-c a-c*)) a-c))
                            (c/unknown? a)))
-            (recur (c/rest* arg-spec) (c/rest* method-spec))
+            (recur (c/rest- arg-spec) (c/rest- method-spec))
             false)))
-      (if (and (nil? (c/first* arg-spec))
-               (nil? (c/first* method-spec)))
+      (if (and (nil? (c/first- arg-spec))
+               (nil? (c/first- method-spec)))
         true
         false))))
 
@@ -705,7 +708,7 @@
 (defn requires-narrowing?
   "Given an arg spec and java method args, return true if any argument requires narrowing"
   [spec arg-vec]
-  (let [s (c/first* spec)
+  (let [s (c/first- spec)
         arg (first arg-vec)]
     (if (and s arg)
       (if (c/known? s)
@@ -714,7 +717,7 @@
           (if (and cs arg (some (fn [c*]
                                  (j/narrowing? c* arg)) cs))
             true
-            (recur (c/rest* spec) (rest arg-vec))))
+            (recur (c/rest- spec) (rest arg-vec))))
         false)
       false)))
 
@@ -970,9 +973,9 @@
           (if (c/accept-nil? args)
             true
             false)
-          (if (and (first params) (c/first* args))
+          (if (and (first params) (c/first- args))
             (let [params* (rest params)
-                  args* (c/rest* args)]
+                  args* (c/rest- args)]
               (if (and params* args*)
                 (recur params* args*)
                 (if (and (nil? (seq params*)) (nil? args*))
@@ -992,7 +995,7 @@
         (if (c/accept-nil? spec)
           true
           false)
-        (let [spec* (c/rest* spec)
+        (let [spec* (c/rest- spec)
               args* (seq (rest args))]
           (if (and spec* args*)
             (recur spec* args*)
@@ -1029,7 +1032,7 @@
              (assert (c/spect? s))
              (if (:variadic? param)
                (conj ret (assoc param ::ret-spec spec))
-               (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest* spec))))
+               (recur (conj ret (assoc param ::ret-spec s)) (rest params) (c/rest- spec))))
            ret))
        (mapv (fn [p]
                (assoc p ::ret-spec (c/invalid {:form (:name p) :message "destructure failed"}))) params-original))))
@@ -1516,6 +1519,7 @@
         a (infer-walk a path)
         a* (get-in a path)]
     (when-let [s (-> a* :init ::ret-spec)]
+      (println "infer :def storing" (-> a* :var) "=>" s)
       (data/store-var-inferred-spec (-> a* :var) s))
     (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
 
@@ -1589,31 +1593,38 @@
         a* (get-in a path)
         f-a (invoke-get-fn-analysis a path)
         invoke-var? (boolean (get-in a (concat path [:fn :var])))
-        s (if (and invoke-var? (recursive? a (conj path :fn)))
-            (c/unknown {:message "TODO self-recursion"})
-            (invoke-get-fn-spec a (conj path :fn)))
-        a-args (:args a*)
-        s-args (when (and s (:args s))
-                 (infer-invoke-constraints (:args s) (map ::ret-spec a-args)))
-        args (map vector a-args s-args)
-        a (if (and s (:args s))
-            (reduce (fn [a [a-arg s-arg]]
-                      (case (:op a-arg)
-                        (:binding :local) (let [b (find-binding a path (:name a-arg))
-                                                b-path (:path b)]
-                                            (assert b-path)
-                                            (infer-add-constraint a b-path s-arg))
-                        a)) a args)
-            a)
-        ;; can't use c/invoke, because we don't know the args are proper until infer is done
-        ret-spec (if (and s (:ret s))
-                   (:ret s)
-                   (do
-                     ;;(assert false)
-                     (c/unknown {:message (format "infer invoke: no ret spec for %s" (-> a* :fn :form))
-                                :form (:form a*)
-                                :a-loc (a-loc a*)})))]
-    (assoc-in a (conj path ::ret-spec) ret-spec)))
+        recursive (and invoke-var? (recursive? a (conj path :fn)))
+        s (when-not recursive
+            (invoke-get-fn-spec a (conj path :fn)))]
+    (if s
+      (if (c/invoke? s)
+        (let [a-args (:args a*)
+              s-args (c/invoke-accept s)
+              s-args (infer-invoke-constraints s-args (map ::ret-spec a-args))
+              args (map vector a-args s-args)
+              a (if s-args
+                  (reduce (fn [a [a-arg s-arg]]
+                            (case (:op a-arg)
+                              (:binding :local) (let [b (find-binding a path (:name a-arg))
+                                                      b-path (:path b)]
+                                                  (assert b-path)
+                                                  (infer-add-constraint a b-path s-arg))
+                              a)) a args)
+                  a)
+              a-args-s (c/cat- (map ::ret-spec a-args))
+
+              ;; if the inferred args are more specific than what the spec takes, the return type could be useful
+              invoke-args (if (c/valid? (c/cat- s-args) a-args-s )
+                            a-args-s
+                            (c/invoke-accept s))
+              _ (println "infer invoke" s "w/" invoke-args)
+              ret-spec (c/invoke s invoke-args)]
+          (assoc-in a (conj path ::ret-spec) ret-spec))
+        (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s" (print-str s))})))
+      (do
+        (if recursive
+          (assoc-in a (conj path ::ret-spec) (c/unknown {:message "TODO self-recursion"}))
+          (assert false "no spec found while inferring"))))))
 
 (defmethod infer* :static-call [a path]
   (let [a (infer-walk a path [:args])
@@ -1669,11 +1680,17 @@
         a (assoc-in a (concat path [::ret-spec]) (c/pred-spec #'fn?))
         a (infer-walk a path)
         a* (get-in a path)
-        args (map (fn [m]
-                    (c/cat- (mapv ::ret-spec (:params m)))) (:methods a*))
-        rets (map (fn [m]
-                    (::ret-spec (:body m))) (:methods a*))
-        spec (c/fn-spec (c/or- args) (c/or- rets) nil)]
+        args (->>
+              (:methods a*)
+              (map (fn [m]
+                     (c/cat- (mapv ::ret-spec (:params m)))))
+              (c/or-))
+        rets (->>
+              (:methods a*)
+              (map (fn [m]
+                     (::ret-spec (:body m))))
+              (c/or-))
+        spec (c/fn-spec args rets nil)]
     (assoc-in a (conj path ::ret-spec) spec)))
 
 (defmethod infer* :fn-method [a path]

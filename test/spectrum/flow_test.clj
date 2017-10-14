@@ -257,8 +257,8 @@
 
       '(fn [x] (+)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
       '(fn [x] (+ x 1)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-
-      ))
+      '(fn [x] (-> x :foo)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?) nil)))
   (testing "invalid"
     (are [form] (c/invalid? (check/infer-form form))
-      '(fn [x] (inc (str x))))))
+      '(fn [x] (inc (str x)))
+      '(fn [x] (inc x) (x :foo)))))

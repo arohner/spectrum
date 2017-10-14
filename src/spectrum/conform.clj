@@ -26,6 +26,7 @@
 (declare conform-pred-args?)
 
 (declare value-invoke)
+(declare value-invoke-accept)
 
 (declare re-conform)
 (declare re-explain)
@@ -182,8 +183,8 @@
     (value nil)))
 
 (defprotocol FirstRest
-  (first* [this])
-  (rest* [this]
+  (first- [this])
+  (rest- [this]
     "Return a spect or nil.
 
     Returns nil if it's legal to call rest on this, but there are no
@@ -196,12 +197,10 @@
 
 (s/fdef invoke :args (s/cat :s spect? :args spect?) :ret spect?)
 (defprotocol Invoke
-  (invoke [s args]
-    "if code calls (s args), return the expected return type"))
-
-(predicate-spec invoke?)
-(defn invoke? [x]
-  (satisfies? Invoke x))
+  (invoke- [s args]
+    "if code calls (s args), return the expected return type")
+  (invoke-accept- [s]
+    "Return the most general spec this spec can be invoked with"))
 
 (s/fdef keyword-invoke :args (s/cat :s spect? :args spect?) :ret spect?)
 (defprotocol KeywordInvoke
@@ -266,10 +265,26 @@
     :ambiguous)
   WillAccept
   (will-accept- [this]
-    #{reject})
-  Invoke
-  (invoke [spec args]
-    (invalid {:message "invoke on invalid"})))
+    #{reject}))
+
+(predicate-spec invoke?)
+(defn invoke? [x]
+  (satisfies? Invoke x))
+
+(defn invoke [s args]
+  {:pre [(validate! spect? s)
+         (validate! spect? args)]
+   :post [(validate! spect? %)]}
+  (if (invoke? s)
+    (invoke- s args)
+    (invalid {:message (format "can't invoke %s" (print-str s))})))
+
+(defn invoke-accept [s]
+  {:pre [(validate! spect? s)]
+   :post [(validate! spect? %)]}
+  (if (invoke? s)
+    (invoke-accept- s)
+    (invalid {:message (format "can't invoke %s" (print-str s))})))
 
 (s/fdef first-rest? :args (s/cat :x any?) :ret boolean?)
 (defn first-rest? [x]
@@ -277,27 +292,27 @@
 
 (defn maybe-first* [ps]
   (if (first-rest? ps)
-    (first* ps)
+    (first- ps)
     (first ps)))
 
 (defn maybe-rest* [ps]
   (if (first-rest? ps)
-    (rest* ps)
+    (rest- ps)
     (rest ps)))
 
 (defn second* [ps]
-  (first* (rest* ps)))
+  (first- (rest- ps)))
 
 (defn nth* [ps i]
   (if (and (seq ps) (not (neg-int? i)))
     (if (= 0 i)
-      (first* ps)
-      (recur (rest* ps) (dec i)))
+      (first- ps)
+      (recur (rest- ps) (dec i)))
     nil))
 
 (def first-rest-singular-impl
-  {:first* (fn [this] reject)
-   :rest* (fn [this] reject)})
+  {:first- (fn [this] reject)
+   :rest- (fn [this] reject)})
 
 (defn first-rest-singular
   "FirstRest implementation for a type that is singular"
@@ -376,7 +391,7 @@
     (map->Unknown {:form form :a-loc a-loc :message message})))
 
 (defn unknown-invoke [spec args]
-  (unknown {:message (format "don't know how to invoke %s with %s" (print-str spec) (print-str args))}))
+  (unknown {:message (format "unknown-invoke: don't know how to invoke %s with %s" (print-str spec) (print-str args))}))
 
 (extend-type Unknown
   Spect
@@ -390,12 +405,14 @@
   (will-accept- [this]
     #{this})
   Invoke
-  (invoke [spec args]
+  (invoke- [spec args]
     (unknown-invoke spec args))
+  (invoke-accept- [spec]
+    (unknown {:message "invoke on unknown"}))
   FirstRest
-  (first* [this]
+  (first- [this]
     (unknown {:message "first on unknown"}))
-  (rest* [this]
+  (rest- [this]
     (unknown {:message "rest on unknown"}))
   KeysGet
   (keys-get- [this k]
@@ -422,9 +439,9 @@
   (truthyness [this]
     :falsey)
   FirstRest
-  (first* [this]
+  (first- [this]
     nil)
-  (rest* [this]
+  (rest- [this]
     nil))
 
 (extend-type Invalid
@@ -716,12 +733,12 @@
           wa))
       #{}))
   FirstRest
-  (first* [this]
+  (first- [this]
     (let [p (some-> this :ps first parse-spec)]
       (if (and (first-rest? p) (regex? p))
-        (first* p)
+        (first- p)
         p)))
-  (rest* [this]
+  (rest- [this]
     (let [xs (will-accept this)]
       (if (seq xs)
         (let [dx (derivative this (first xs))]
@@ -812,9 +829,9 @@
   (regex? [this]
     true)
   FirstRest
-  (first* [this]
+  (first- [this]
     (some-> this :ps first parse-spec))
-  (rest* [this]
+  (rest- [this]
     (let [xs (will-accept this)]
       (if (seq xs)
         (let [ret (derivative this (first xs))]
@@ -923,9 +940,9 @@
   (regex? [this]
     true)
   FirstRest
-  (first* [this]
+  (first- [this]
     (some-> this :ps first parse-spec))
-  (rest* [this]
+  (rest- [this]
     (let [xs (will-accept this)
           x (first xs)]
       (if (seq xs)
@@ -1085,13 +1102,16 @@
       :truthy
       :falsey))
   Invoke
-  (invoke [this args]
+  (invoke- [this args]
+    (println "value invoke" this args)
     (value-invoke this args))
+  (invoke-accept- [this]
+    (value-invoke-accept this))
   KeywordInvoke
   (keyword-invoke [this args]
-    (let [key (first* args)
+    (let [key (first- args)
           else (second* args)
-          rest (rest* (rest* args))]
+          rest (rest- (rest- args))]
       (cond
         (nil? key) (invalid {:message "not enough args"})
         rest (invalid {:message "value keyword invoke: too many args"})
@@ -1099,14 +1119,14 @@
         (and (value? key) (nil? else)) (value (get (:v this) (:v key)))
         :else (unknown {:message "don't know how to keyword-invoke"}))))
   FirstRest
-  (first* [{:keys [v] :as this}]
+  (first- [{:keys [v] :as this}]
     (if (and v (or (seq? v) (seqable? v)))
       (if (seq v)
         (value (first v))
         nil)
       (invalid {:message (format "value %s does not support first" v)
                 :form `(first ~v)})))
-  (rest* [{:keys [v] :as this}]
+  (rest- [{:keys [v] :as this}]
     (if (or (seq? v) (seqable? v))
       (if (seq (rest v))
         (value (rest v))
@@ -1177,16 +1197,22 @@
   (regex? [this]
     (-> this :s parse-spec regex?))
   FirstRest
-  (first* [this]
-    (-> this :s parse-spec first*))
-  (rest* [this]
-    (-> this :s parse-spec rest*))
+  (first- [this]
+    (-> this :s parse-spec first-))
+  (rest- [this]
+    (-> this :s parse-spec rest-))
   Truthyness
   (truthyness [this]
     (-> this :s parse-spec truthyness))
   Invoke
-  (invoke [this args]
+  (invoke- [this args]
     (-> this :s parse-spec (invoke args)))
+  (invoke-accept- [this]
+    (println "specspec invoke accept" (or
+                                       (when (-> this :s s/spec?)
+                                         (-> this :s s/form))
+                                       (:s this)))
+    (-> this :s parse-spec invoke-accept))
   DependentSpecs
   (dependent-specs- [this]
     (-> this :s parse-spec dependent-specs))
@@ -1310,15 +1336,17 @@
       #'any? :ambiguous
       :truthy))
   Invoke
-  (invoke [this args]
-    (let [arg (first* args)
-          rest (rest* args)
+  (invoke- [this args]
+    (let [arg (first- args)
+          rest (rest- args)
           pred-fn-spec (resolve-pred-spec this)]
       (cond
         rest (invalid {:message (format "predspec invoke: too many args: %s %s" (print-str this) (print-str args))})
         (not arg) (invalid {:message "not enough args"})
         pred-fn-spec (invoke pred-fn-spec args)
         :else (unknown {:message (format "couldn't resolve pred-spec %s" this)}))))
+  (invoke-accept- [this]
+    (cat- [(pred-spec #'any?)]))
   DependentSpecs
   (dependent-specs- [this]
     (let [s (when (var? (:pred this))
@@ -1329,7 +1357,7 @@
       (loop [ret ret
              spec this]
         (let [spec-fn (resolve-pred-spec spec)
-              spec-arg (some-> spec-fn :args (first*))]
+              spec-arg (some-> spec-fn :args (first-))]
           (if (and spec-fn spec-arg (not (any-spec? spec-arg)))
             (recur (conj ret spec-arg) spec-arg)
             (if-let [tt (data/get-type-transformer (:pred this))]
@@ -1407,9 +1435,6 @@
       Object :ambiguous
       nil :falsey
       :truthy))
-  Invoke
-  (invoke [this args]
-    (unknown-invoke this args))
   DependentSpecs
   (dependent-specs- [this]
     (let [{:keys [cls]} this]
@@ -1726,28 +1751,25 @@
       (if (= 1 (count b))
         (first b)
         :ambiguous)))
-  Invoke
-  (invoke [this args]
-    (unknown-invoke this args))
   FirstRest
-  (first* [this]
+  (first- [this]
     (->> this
          :ps
          (map parse-spec)
          (filter first-rest?)
-         (map first*)
+         (map first-)
          (filter identity)
          (remove (fn [s]
                    (or (unknown? s)
                        (reject? s)
                        (invalid? s))))
          first))
-  (rest* [this]
+  (rest- [this]
     (->> this
          :ps
          (map parse-spec)
          (filter first-rest?)
-         (map rest*)
+         (map rest-)
          (filter identity)
          (remove (fn [s]
                    (or (unknown? s)
@@ -1797,15 +1819,21 @@
 
 (s/fdef map->OrSpec :args (s/cat :m (s/keys :req-un [:or/ps])) :ret or-spec?)
 
-(s/fdef or- :args (s/cat :ps (s/coll-of ::spect-like)) :ret spect?)
+(s/def ::or-args (s/coll-of (s/nilable ::spect-like)))
+(s/def ::or-ret (s/nilable spect?))
+(s/fdef or- :args (s/cat :ps ::or-args) :ret ::or-ret)
 (defn or- [ps]
-  {:pre [(validate! (s/coll-of ::spect-like) ps)]}
+  {:pre [(validate! ::or-args ps)]
+   :post [(validate! ::or-ret %)]}
   (let [or-ps (mapcat (fn [p] (when (or-spec? p)
                                 (:ps p))) ps)
         ps (remove or-spec? ps)
         ps (concat ps or-ps)
         ps (set ps)]
     (cond
+      (some invalid? ps) (invalid {:message "or invalid"
+                                   :causes (filter invalid? ps)})
+      (some reject? ps) reject
       (>= (count ps) 2) (map->OrSpec {:ps ps})
       (= 1 (count ps)) (first ps)
       :else (invalid {:message "or spect requires at least one arg"}))))
@@ -1840,6 +1868,19 @@
       (if (= 1 (count b))
         (first b)
         :ambiguous)))
+  FirstRest
+  (first- [this]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map first-)
+         (or-)))
+  (rest- [this]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map rest-)
+         (or-)))
   Compound
   (map- [this f]
     (let [kps (->> (mapv vector (or (:ks this) (repeat nil)) (:ps this))
@@ -1853,6 +1894,20 @@
          (filter f)))
   (new- [this ps]
     (or- ps))
+  Invoke
+  (invoke- [this args]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map (fn [p]
+                (invoke p args)))
+         (or-)))
+  (invoke-accept- [this]
+    (->> this
+         :ps
+         (map parse-spec)
+         (map invoke-accept)
+         (or-)))
   KeywordInvoke
   (keyword-invoke [this args]
     (->> (:ps this)
@@ -1862,9 +1917,6 @@
                 (keyword-invoke p args)))
          (distinct)
          (or-)))
-  Invoke
-  (invoke [this args]
-    (unknown-invoke this args))
   KeysGet
   (keys-get- [this k]
     (->> this
@@ -1978,18 +2030,18 @@
       (loop [ps (:ps spec)
              xs xs]
         (let [p (first ps)
-              x (first* xs)]
+              x (first- xs)]
           (cond
             (and p x) (when (valid? (parse-spec p) (parse-spec x))
-                        (recur (rest ps) (rest* xs)))
+                        (recur (rest ps) (rest- xs)))
             (and (not p) (not x)) xs-orig)))))
   Regex
   (accept-nil? [this]
     (not (seq (:ps this))))
   FirstRest
-  (first* [this]
+  (first- [this]
     (some-> this :ps first parse-spec))
-  (rest* [this]
+  (rest- [this]
     (when-let [r (-> this :ps rest seq)]
       (tuple-spec r))))
 
@@ -2108,17 +2160,14 @@
     :truthy)
   KeywordInvoke
   (keyword-invoke [this args]
-    (let [k (first* args)
+    (let [k (first- args)
           else (second* args)
-          rest (rest* (rest* args))]
+          rest (rest- (rest- args))]
       (cond
         rest (invalid {:message (format "keysspec keywordw invoke: too many args:" (print-str this) (print-str args))})
         else (keyspec-get-key this k else)
         k (keyspec-get-key this k)
         :else (invalid {:message "not enough args"}))))
-  Invoke
-  (invoke [this args]
-    (unknown-invoke this args))
   KeysGet
   (keys-get- [this k]
     (assert (keyword? k))
@@ -2181,14 +2230,16 @@
 (defn coll-items
   "The set of all items in a regex/coll spec"
   [s]
+  {:post [(validate! (s/coll-of spect? :kind set?) %)]}
   (loop [ret #{}
          s s]
-    (let [v (first* s)]
+    (let [v (first- s)]
       (if (conformy? v)
         (let [ret (conj ret v)]
-          (if (and (not (infinite? s)) (rest* s))
-            (recur ret (rest* s))
-            ret))))))
+          (if (and (not (infinite? s)) (rest- s))
+            (recur ret (rest- s))
+            ret))
+        ret))))
 
 (defn will-accept-concrete
   "will-accept, but recursively evaluate regex specs, so we get spects representing clojure values"
@@ -2267,10 +2318,10 @@
   (unknown {:message (format "don't know how to invoke %s" (print-str s))}))
 
 (defmethod coll-of-invoke :map [s args]
-  (let [key (first* args)
+  (let [key (first- args)
         else (or (second* args) (value nil))
-        rest (rest* (rest* args))
-        map-key-spec (-> s :s parse-spec first*)
+        rest (rest- (rest- args))
+        map-key-spec (-> s :s parse-spec first-)
         map-val-spec (-> s :s parse-spec second*)]
     (cond
       rest (invalid {:message (format "too many args to invoke, got %s" (print-str args))})
@@ -2291,15 +2342,15 @@
                                  x)
       (value? x) (conform-collof-value this x)))
   FirstRest
-  (first* [this]
+  (first- [this]
     (parse-spec (:s this)))
-  (rest* [this]
+  (rest- [this]
     this)
   Truthyness
   (truthyness [this]
     :truthy)
   Invoke
-  (invoke [this args]
+  (invoke- [this args]
     (coll-of-invoke this args))
   DependentSpecs
   (dependent-specs- [this]
@@ -2454,10 +2505,10 @@
   (truthyness [this]
     :truthy)
   Invoke
-  (invoke [{:keys [ks vs] :as this} args]
+  (invoke- [{:keys [ks vs] :as this} args]
     (assert (cat-spec? args))
     (let [arg-count (count (:ps args))
-          k (first* args)
+          k (first- args)
           else (or (second* args) (value nil))]
       (if (contains? #{1 2} arg-count)
         (if (apply-some (fn [k s]
@@ -2660,8 +2711,12 @@
   (dependent-specs- [this]
     #{(pred-spec #'fn?) (pred-spec #'ifn?)})
   Invoke
-  (invoke [this args]
+  (invoke- [this args]
     (invoke-fn-spec this args))
+  (invoke-accept- [this]
+    (if (:args this)
+      (:args this)
+      (unknown {:message (format "no :args spec on %s" this)})))
   Truthyness
   (truthyness [this]
     :truthy))
@@ -2704,7 +2759,7 @@
   (cond
     (unknown? spec) spec
     (fn-spec? spec) (valid? (:args spec) args)
-    :else (invalid {:message (format "can't invoke %s" spec)})))
+    :else (invalid {:message (format "can't invoke %s" (print-str spec))})))
 
 (s/fdef conform-pred-args? :args (s/cat :p pred-spec? :x spect?) :ret boolean?)
 (defn conform-pred-args?
@@ -2883,7 +2938,7 @@
             (assert false)
             (invalid {:message "infinite"}))
         (if (first-rest? data)
-          (let [x (first* data)]
+          (let [x (first- data)]
             (if (nil? x)
               (if (accept-nil? spec)
                 (let [r (return spec)]
@@ -2893,11 +2948,9 @@
                 (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
               (if-let [dp (derivative spec x)]
                 (if (conformy? dp)
-                  (if (infinite? (rest* data))
-                    (do
-                      (assert (or (accept? dp) (accept-nil? dp)))
-                      (return dp))
-                    (recur dp (rest* data) (inc iter)))
+                  (if (and (infinite? dp) (accept-nil? dp) (infinite? (rest- data)))
+                    (return dp)
+                    (recur dp (rest- data) (inc iter)))
                   (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
                 (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))
           reject)))))
@@ -2918,9 +2971,9 @@
 (defn value-invoke-dispatch [f args]
   (assert (first-rest? args))
   (let [val f
-        obj (first* args)
+        obj (first- args)
         else (second* args)
-        rest (rest* (rest* args))]
+        rest (rest- (rest- args))]
     (assert (value? val))
     (cond
       (var? (:v f)) :var
@@ -2937,15 +2990,15 @@
 
 (defmethod value-invoke :value-value [spec args]
   (let [f (:v spec)
-        arg (first* args)
+        arg (first- args)
         arg (:v arg)]
     (if (ifn? f)
       (value (get f arg))
-      (invalid {:message (format "can't invoke %s" f)}))))
+      (invalid {:message (format "can't invoke %s" (print-str f))}))))
 
 (defmethod value-invoke :value-value-else [spec args]
   (let [key (:v spec)
-        obj (first* args)
+        obj (first- args)
         obj (:v obj)
         [key obj] (cond
                     (and (keyword? key) (coll? obj)) [key obj]
@@ -2973,16 +3026,31 @@
 
 (defmethod value-invoke :invalid [f args]
   (let [val f
-        obj (first* args)
+        obj (first- args)
         else (second* args)
-        rest (rest* (rest* args))]
+        rest (rest- (rest- args))]
     (cond
       (not obj) (invalid {:message "not enough args to invoke"})
       rest (invalid {:message (format "too many args to invoke %s, got %s" (print-str val) (print-str args))})
       :else (assert false))))
 
 (defmethod value-invoke :unknown [spec args]
-  (unknown {:message (format "don't know how to invoke %s %s" (print-str spec) args)}))
+  (unknown {:message (format "value-invoke unknown: don't know how to invoke %s %s" (print-str spec) args)}))
+
+(defmulti value-invoke "" #'value-invoke-dispatch)
+
+(defn value-invoke-accept [v]
+  (let [v* v
+        v (:v v)]
+    (cond
+      (vector? v) (cat- [v (pred-spec #'nat-int?)])
+      (set? v) (cat- [v (pred-spec #'any?)])
+      (map? v) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
+      (keyword? v) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
+      (nil? v) (invalid {:message "can't invoke nil"})
+      :else (do
+              (println "unknown value-invoke:" v*)
+              (assert false)))))
 
 (def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
 
