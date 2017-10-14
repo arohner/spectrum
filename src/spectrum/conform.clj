@@ -2531,13 +2531,20 @@
 (s/fdef fn-spec :args (s/cat :args :fn-spec/args :ret :fn-spec/ret :fn :fn-spec/fn))
 (s/fdef map->FnSpec :args (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn]) :ret ::valid-spect)
 
-(defn fn-spec [args ret fn]
-  {:pre [(validate! :fn-spec/args args)
-         (validate! :fn-spec/ret ret)
-         (validate! :fn-spec/fn fn)]}
-  (map->FnSpec {:args args
-                :ret ret
-                :fn fn}))
+(defn fn-spec [args ret f]
+  {:pre []}
+  (let [invalid-args (->>
+                      {:args args :ret ret :fn f}
+                      (remove (fn [[k v]]
+                                (when v
+                                  (conformy? v))))
+                      (filter (fn [[k v]]
+                                (identity v))))]
+    (if (seq invalid-args)
+      (invalid {:message (format "invalid fn: %s" (print-str (into {} invalid-args)))})
+      (map->FnSpec {:args args
+                    :ret ret
+                    :fn f}))))
 
 (s/fdef get-var-spec :args (s/cat :v var?) :ret (s/nilable spect?))
 (defn get-var-spec [v]
