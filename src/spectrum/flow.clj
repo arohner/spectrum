@@ -480,8 +480,7 @@
       (if-let [v-a (data/get-var-analysis v)]
         (c/spec-spec v)
         (do
-          (println "invoke-get-fn-spec:" (:form a*) v)
-          (assert false (format "couldn't find spec or analysis for %s" v))
+          (println "warning: couldn't find spec or analysis for" v)
           (c/unknown {:message (format "couldn't find spec or analysis for %s" v)}))))))
 
 (defmethod invoke-get-fn-spec :local [a path]
