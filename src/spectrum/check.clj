@@ -200,7 +200,8 @@
 ;; check recur values conform to bindings
 
 (defn flow-ns [ns]
-  (mapv flow/flow (ana.jvm/analyze-ns ns)))
+  (let [env (ana.jvm/empty-env)]
+    (mapv flow/flow (ana.jvm/analyze-ns ns env {:eval? false}))))
 
 (defn ensure-analysis [ns]
   (when-not (data/analyzed-ns? ns)

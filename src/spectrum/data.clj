@@ -46,18 +46,38 @@
   pred->protocol-
   (atom {}))
 
-(s/fdef register-protocol->pred :args (s/cat :p var? :protocol protocol?))
+(defonce
+  ^{:doc "map of preds to protocols"}
+  pred->instance-
+  (atom {}))
+
+(s/fdef register-pred->instance :args (s/cat :p var? :class class?) :ret nil?)
+(defn register-pred->instance
+  "Register pred as checking for (instance? class x). Use on predicates that are exactly equivalent to (instance? c x)"
+  [pred class]
+  (swap! pred->instance- assoc pred class)
+  nil)
+
+(s/fdef register-pred->protocol :args (s/cat :p var? :protocol protocol?) :ret nil?)
 (defn register-pred->protocol
   "Register pred as checking for protocol p. Use this for predicatess that are exactly equivalent to (satisfies? p x)"
   [pred protocol]
   (swap! pred->protocol- assoc pred protocol)
   nil)
 
-(s/fdef pred->protocol :args (s/cat :p any?) :ret (s/nilable protocol?))
+(s/fdef pred->instance :args (s/cat :p var?) :ret (s/nilable class?))
+(defn pred->instance [v]
+  (get @pred->instance- v))
+
+(s/fdef pred->instance? :args (s/cat :p var?) :ret boolean?)
+(defn pred->instance? [x]
+  (boolean (pred->instance x)))
+
+(s/fdef pred->protocol :args (s/cat :p var?) :ret (s/nilable protocol?))
 (defn pred->protocol [v]
   (get @pred->protocol- v))
 
-(s/fdef pred->protocol :args (s/cat :p any?) :ret boolean?)
+(s/fdef pred->protocol :args (s/cat :p var?) :ret boolean?)
 (defn pred->protocol? [x]
   (boolean (pred->protocol x)))
 

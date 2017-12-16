@@ -1547,9 +1547,11 @@
         [a & ar] args]
     (if q
       (if (and a spec (c/conformy? spec))
-        (let [wa (c/will-accept spec)
-              was (filter (fn [wa]
-                            (c/non-contradiction? a wa)) wa)]
+        (let [was (->>
+                   spec
+                   (c/will-accept-concrete)
+                   (filter (fn [wa]
+                             (c/non-contradiction? a wa))))]
           (if (seq was)
             (lazy-cat (infer-invoke-constraint- (concat qr (->> was
                                                                     (map (fn [wa]

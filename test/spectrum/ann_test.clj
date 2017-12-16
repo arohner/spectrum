@@ -116,6 +116,8 @@
       (c/pred-spec #'int?) (c/class-spec Long)
       (c/pred-spec #'number?) (c/pred-spec #'integer?)
       (c/pred-spec #'map?) (c/keys-spec {} {} {} {})
+      (c/pred-spec #'associative?) (c/pred-spec #'map?)
+      (c/pred-spec #'string?) (c/class-spec String)
       (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::flow/analysis)
       (c/parse-spec ::ana.jvm/analysis) (c/parse-spec ::ana.jvm/analysis)
       (c/coll-of ::ana.jvm/analysis) (c/coll-of ::flow/analysis)

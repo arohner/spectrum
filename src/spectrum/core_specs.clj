@@ -69,6 +69,8 @@
                       #'var?
                       #'vector?])
 
+(s/def ::xf fn?) ;;transducer
+
 (defmacro def-core-predicates []
   (let [calls (map (fn [p]
                      `(predicate-spec ~p)) core-predicates)]
@@ -90,7 +92,7 @@
 (s/fdef clojure.core/doall :args (s/cat :x ::seq-like) :ret seq)
 (s/fdef clojure.core/dorun :args (s/cat :x ::seq-like) :ret nil?)
 (s/fdef clojure.core/even? :args (s/cat :n integer?) :ret boolean?)
-(s/fdef clojure.core/filter :args (s/cat :f any? :coll (s/? ::seq-like)) :ret (s/or :seq seq? :xf fn?))
+(s/fdef clojure.core/filter :args (s/cat :f any? :coll (s/? ::seq-like)) :ret (s/or :seq seq? :xf ::xf))
 (s/fdef clojure.core/first :args (s/cat :coll ::seq-like) :ret any?)
 (s/fdef clojure.core/format :args (s/cat :fmt string? :args (s/* any?)) :ret string?)
 (s/def ::gettable (s/or :l ilookup? :m map? :s set? :a array? :n nil?))
@@ -107,8 +109,8 @@
 (s/fdef clojure.core/into :args (s/cat :to (s/nilable coll?) :xform (s/? fn?) :from ::seq-like) :ret coll?)
 (s/fdef clojure.core/keyword :args (s/or :qualified (s/cat :ns (s/nilable string?) :name string?) :unqualified (s/cat :name any?)) :ret (s/or :k keyword? :n nil?))
 (s/fdef clojure.core/list :args (s/* any?) :ret list?)
-(s/fdef clojure.core/map :args (s/cat :x ifn? :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
-(s/fdef clojure.core/map-indexed :args (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
+(s/fdef clojure.core/map :args (s/cat :x ifn? :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf ::xf))
+(s/fdef clojure.core/map-indexed :args (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf ::xf))
 (s/fdef clojure.core/mapcat :args (s/cat :x any? :coll (s/* ::seq-like)) :ret (s/or :seq seq? :xf fn?))
 (s/fdef clojure.core/mapv :args (s/cat :x any? :coll (s/* ::seq-like)) :ret vector?)
 (s/fdef clojure.core/merge :args (s/cat :ms (s/* (s/nilable map?))) :ret map?)
@@ -143,6 +145,7 @@
 (s/fdef clojure.core/select-keys :args (s/cat :m (s/or :m map? :a associative? :_ nil?) :ks (s/coll-of any?)) :ret map?)
 (s/fdef clojure.core/seq :args (s/cat :coll ::seq-like) :ret (s/nilable seq?))
 (s/fdef clojure.core/seqable? :args (s/cat :x any?) :ret boolean?)
+(s/fdef clojure.core/sequence :args (s/or :coll (s/cat :c ::seq-like) :xf-coll (s/cat :x ::xf :c ::seq-like) :xf-colls (s/cat :x ::xf :c (s/+ ::seq-like))))
 (s/fdef clojure.core/str :args (s/* any?) :ret string?)
 (s/fdef clojure.core/vector :args (s/* any?) :ret vector?)
 (s/fdef clojure.core/with-meta :args (s/cat :x imeta? :m (s/nilable map?)) :ret imeta?)

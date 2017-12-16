@@ -67,3 +67,18 @@
   (testing "bad"
     (are [form] (seq (st/check-form form))
       '(first 1))))
+
+(deftest infer-works
+  (testing "truthy"
+    (are [form expected] (c/equivalent? expected (st/infer-form form))
+      '(fn [x] (inc x)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Double/TYPE)
+                                                    (c/class-spec Long/TYPE)
+                                                    (c/class-spec Object)])])
+                                   (c/or- [(c/class-spec Double/TYPE)
+                                           (c/class-spec Number)
+                                           (c/class-spec Long/TYPE)])
+                                   nil)
+      '(fn [x] (let [y (x)] (y 1))) (c/fn-spec (c/cat- [(c/pred-spec #'fn?)]) (c/pred-spec #'any?) nil)
+      '(fn [x] (deref x))))
+
+  (testing "falsey"))

@@ -108,7 +108,7 @@
 
 (defprotocol WillAccept
   (will-accept- [spec]
-    "Return the set of all spects that will make (derivative spec x) return truthy (not reject/invalid)"))
+    "Return the spect that will make (derivative spec x) return truthy (not reject/invalid). Return nil when the spect is a regex, but complete. Return reject/invalid when it isn't legal to call derivative on spect"))
 
 (defprotocol SpecToClasses
   (spec->classes- [this]))
@@ -169,8 +169,8 @@
   {:post [(validate! :with-return/ret %)]}
   (with-return- s ret))
 
-(s/def ::will-accept-ret (s/coll-of spect? :kind set?))
-(s/fdef will-accept :args (s/cat :s spect?) :ret ::will-accept-ret)
+(s/def ::will-accept-ret (s/nilable spect?))
+(s/fdef will-accept :args (s/cat :s spect?) :ret spect?)
 (defn will-accept [s]
   {:post [(do (when-not (s/valid? ::will-accept-ret %) (println "invalid will-accept:" s "=>" %)) true) (s/valid? ::will-accept-ret %)]}
   (will-accept- s))
@@ -265,7 +265,7 @@
     :ambiguous)
   WillAccept
   (will-accept- [this]
-    #{reject}))
+    reject))
 
 (predicate-spec invoke?)
 (defn invoke? [x]
@@ -343,7 +343,7 @@
     false)
   WillAccept
   (will-accept- [this]
-    #{reject}))
+    reject))
 
 (first-rest-singular Accept)
 
@@ -366,7 +366,7 @@
     false)
   WillAccept
   (will-accept- [this]
-    #{reject})
+    reject)
   Truthyness
   (truthyness [this]
     :falsey))
@@ -403,7 +403,7 @@
     :ambiguous)
   WillAccept
   (will-accept- [this]
-    #{this})
+    this)
   Invoke
   (invoke- [spec args]
     (unknown-invoke spec args))
@@ -428,7 +428,7 @@
   (empty-regex [spec]
     reject)
   (accept-nil? [this]
-    false)
+    true)
   (return- [this]
     (value nil))
   (with-return- [this r]
@@ -498,7 +498,7 @@
 (defn will-accept-this
   "extend the spec to WillAccept itself"
   [s]
-  (extend s WillAccept {:will-accept- (fn [this] #{this})}))
+  (extend s WillAccept {:will-accept- (fn [this] this)}))
 
 (extend-regex Unknown)
 
@@ -511,7 +511,7 @@
     :ambiguous)
   WillAccept
   (will-accept- [this]
-    #{}))
+    reject))
 
 (extend-regex RecurForm)
 
@@ -524,7 +524,7 @@
     :ambiguous)
   WillAccept
   (will-accept- [this]
-    #{}))
+    reject))
 
 (extend-regex ThrowForm)
 
@@ -720,18 +720,15 @@
       (let [ps (map parse-spec ps)
             p (first ps)
             wa (if (accept? p)
-                 #{p}
+                 p
                  (will-accept p))
             [p0 & pr] ps
             [k0 & kr] ks
             [f0 & fr] forms]
         (if (and (accept-nil? p) pr)
-          (->
-           wa
-           (set/union (will-accept (new-regex-cat pr kr fr (with-return p0 ret))))
-           (disj (accept (value nil))))
+          (or- [wa (will-accept (new-regex-cat pr kr fr (with-return p0 ret)))])
           wa))
-      #{}))
+      nil))
   FirstRest
   (first- [this]
     (let [p (some-> this :ps first parse-spec)]
@@ -739,9 +736,9 @@
         (first- p)
         p)))
   (rest- [this]
-    (let [xs (will-accept this)]
-      (if (seq xs)
-        (let [dx (derivative this (first xs))]
+    (let [x (will-accept this)]
+      (if (and x (conformy? x))
+        (let [dx (derivative this x)]
           (assert (or (spect? dx) (nil? dx)))
           (if dx
             (let [dx (assoc dx :ret [])]
@@ -832,9 +829,9 @@
   (first- [this]
     (some-> this :ps first parse-spec))
   (rest- [this]
-    (let [xs (will-accept this)]
-      (if (seq xs)
-        (let [ret (derivative this (first xs))]
+    (let [x (will-accept this)]
+      (if (and x (conformy? x))
+        (let [ret (derivative this x)]
           (assert (or (spect? ret) (nil? ret)))
           ret)
         nil)))
@@ -842,8 +839,8 @@
   (will-accept- [this]
     (let [[p1 p2] (map parse-spec (:ps this))]
       (if (accept-nil? p1)
-        #{p1 p2}
-        #{p1})))
+        (or- [p1 p2])
+        p1)))
   Truthyness
   (truthyness [this]
     :truthy)
@@ -887,6 +884,9 @@
 
 (defn alt- [ps]
   (new-regex-alt ps nil nil))
+
+(defn ?- [x]
+  (new-regex-alt [x (accept nil)] nil nil))
 
 (extend-type RegexAlt
   Spect
@@ -943,9 +943,8 @@
   (first- [this]
     (some-> this :ps first parse-spec))
   (rest- [this]
-    (let [xs (will-accept this)
-          x (first xs)]
-      (if (seq xs)
+    (let [x (will-accept this)]
+      (if (and x (conformy? x))
         (derivative this x)
         nil)))
   WillAccept
@@ -954,8 +953,8 @@
              :ps
              (map parse-spec)
              (remove accept?)
-             (map will-accept)
-             (apply set/union)))
+             (mapv will-accept)
+             or-))
   Truthyness
   (truthyness [this]
     (let [b (distinct (map truthyness (map parse-spec (:ps this))))]
@@ -1103,7 +1102,6 @@
       :falsey))
   Invoke
   (invoke- [this args]
-    (println "value invoke" this args)
     (value-invoke this args))
   (invoke-accept- [this]
     (value-invoke-accept this))
@@ -1139,7 +1137,7 @@
       #{(class-spec (class (:v this)))}))
   WillAccept
   (will-accept- [this]
-    #{this})
+    this)
   KeysGet
   (keys-get- [{:keys [v] :as this} k]
     (if (coll? v)
@@ -1182,7 +1180,7 @@
     (conform* (parse-spec (:s this)) x))
   WillAccept
   (will-accept- [this]
-    #{(parse-spec (:s this))})
+    (parse-spec (:s this)))
   Regex
   (derivative [this x]
     (derivative (parse-spec (:s this)) x))
@@ -1269,13 +1267,6 @@
       (-> pred-spec :pred (= any?-form))
       (-> pred-spec :pred (= any?-macroexpanded))))
 
-(s/fdef pred-invoke-truthy? :args (s/cat :spec pred-spec? :x spect?) :ret boolean?)
-(defn pred-invoke-truthy?
-  "True if (invoke)ing the pred w/ x returns unambigously truthy"
-  [spec x]
-  (let [ret (invoke spec (cat- [(spec-spec x)]))]
-    (= :truthy (truthyness ret))))
-
 (defn maybe-class [x]
   (cond
     (class-spec? x) (:cls x)
@@ -1298,6 +1289,9 @@
 (defn standard-spec->classes [s]
   (extend s SpecToClasses {:spec->classes- default-spec->classes}))
 
+(defn pred-keyword-invoke [s args]
+  (pred-spec #'any?))
+
 (extend-type PredSpec
   Spect
   (conform* [spec x]
@@ -1305,17 +1299,19 @@
       (cond
         (any-spec? spec) x
         (and (pred-spec? x) (= pred (:pred x))) x
-        (pred-invoke-truthy? spec x) x
         (and (= #'class? pred) (class-spec? x)) x
+
+        (data/pred->instance? pred) (let [cls (data/pred->instance pred)]
+                                      (conform* (class-spec cls) x))
+        (data/pred->protocol? pred) (let [proto (data/pred->protocol pred)]
+                                      (when (satisfies? proto x)
+                                        x))
 
         (class-spec? x) (if-let [c (data/get-type-transformer spec)]
                           (do
                             (println "predspec conform" spec x "=>" c x)
                             (when (valid? c x)
                               x)))
-        (data/pred->protocol? pred) (let [proto (data/pred->protocol pred)]
-                                      (when (satisfies? proto x)
-                                        x))
         ;; calling the pred should always be last resort
         ;; TODO remove this, or restrict to only using w/ pure functions. Not technically 'static' analysis.
         (and (conform-pred-args? spec (cat- [x])) (valuey? x)) (do
@@ -1326,7 +1322,7 @@
       [{:path path :pred (:form spec) :val x :via via :in in}]))
   WillAccept
   (will-accept- [this]
-    #{this})
+    this)
   Truthyness
   (truthyness [this]
     (condp = (:pred this)
@@ -1337,16 +1333,17 @@
       :truthy))
   Invoke
   (invoke- [this args]
-    (let [arg (first- args)
-          rest (rest- args)
-          pred-fn-spec (resolve-pred-spec this)]
+    (let [pred (:pred this)]
       (cond
-        rest (invalid {:message (format "predspec invoke: too many args: %s %s" (print-str this) (print-str args))})
-        (not arg) (invalid {:message "not enough args"})
-        pred-fn-spec (invoke pred-fn-spec args)
-        :else (unknown {:message (format "couldn't resolve pred-spec %s" this)}))))
+        (or (= #'keyword? pred) (= #'symbol? pred)) (pred-keyword-invoke this args)
+        (= #'ifn? pred) (pred-spec #'any?)
+        :else (invalid {:message (format "can't invoke %s" (print-str this))}))))
   (invoke-accept- [this]
-    (cat- [(pred-spec #'any?)]))
+    (let [pred (:pred this)]
+      (cond
+        (or (= #'keyword? pred) (= #'symbol? pred)) (cat- [(pred-spec #'any?) (?- (pred-spec #'any?))])
+        (= #'ifn? pred) (pred-spec #'any?)
+        :else (invalid {:message (format "can't invoke %s" (print-str this))}))))
   DependentSpecs
   (dependent-specs- [this]
     (let [s (when (var? (:pred this))
@@ -1422,12 +1419,10 @@
        (when (= Object cls)
          v)
        (when (and (seq v-classes) (every? (fn [vc] (isa-boxed? vc cls)) v-classes))
-         v)
-       (when (= v (pred-spec #'any?))
          v))))
   WillAccept
   (will-accept- [this]
-    #{this})
+    this)
   Truthyness
   (truthyness [this]
     (condp = (:cls this)
@@ -1571,7 +1566,7 @@
                     :ps (:forms x)})))
 
 (defmethod parse-spec* `s/? [x]
-  (map->RegexAlt {:ps [(second x) (accept (value nil))]}))
+  (map->RegexAlt {:ps [(second x) (accept nil)]}))
 
 (defmethod parse-spec* `s/alt [x]
   (let [pairs (partition 2 (rest x))
@@ -1590,7 +1585,7 @@
 (defmethod parse-spec* `s/maybe-impl [x]
   (let [[pred form] (rest x)
         form (unquote-form form)]
-    (map->RegexAlt {:ps [form (accept (value nil))]})))
+    (map->RegexAlt {:ps [form (accept nil)]})))
 
 (defmethod parse-spec* :clojure.spec.alpha/amp [x]
   (unknown {:message (format "TODO don't know how to handle %s" x)}))
@@ -1610,12 +1605,13 @@
 (extend-type NotSpec
   Spect
   (conform* [this x]
-    (if (conformy? (conform* (:s this) x))
-      (invalid {:message (format "%s does not conform to %s" (print-str x) (print-str this))})
-      x))
+    (if (and (not (conformy? (conform* (:s this) x)))
+             (not (conformy? (conform* x (:s this)))))
+      x
+      (invalid {:message (format "%s does not conform to %s" (print-str x) (print-str this))})))
   WillAccept
   (will-accept- [this]
-    #{reject})
+    this)
   Truthyness
   (truthyness [this]
     (let [t (truthyness (:s this))]
@@ -1695,6 +1691,10 @@
   [s x]
   (and- (conj (:ps s) x)))
 
+(defn equivalent? [s1 s2]
+  (and (valid? s1 s2)
+       (valid? s2 s1)))
+
 (s/fdef add-constraint :args (s/cat :a spect? :b spect?) :ret spect?)
 (defn add-constraint
   "Given a spec s, update it to also conform to spec `constraint`"
@@ -1704,17 +1704,18 @@
   (cond
     (value? s) (if (valid? constraint s)
                  s ;; can't make values more specific
-                 (invalid {:message (format "can't add constraint %s to %s" constraint s)}))
+                 (invalid {:message (format "can't add constraint %s to %s" (print-str constraint) (print-str s))}))
 
-    (= (pred-spec #'any?) constraint) s
-    (= (class-spec Object) constraint) s
+    (equivalent? (pred-spec #'any?) constraint) s
+    (equivalent? (class-spec Object) constraint) s
 
-    (= (pred-spec #'any?) s) constraint
-    (= (class-spec Object) s) constraint
+    (equivalent? (pred-spec #'any?) s) constraint
+    (equivalent? (class-spec Object) s) constraint
 
     (and-spec? s) (and-conj s constraint)
     :else (and- [s constraint])))
 
+(s/fdef add-or-constraint :args (s/cat :s spect? :constraint spect?) :ret spect?)
 (defn add-or-constraint
   "given a spec s, `or` it with constraint"
   [s constraint]
@@ -1724,7 +1725,6 @@
 (defn non-contradiction?
   "True if adding constraint to s won't result in contradiction"
   [s constraint]
-  {:pre [(do (when-not (spect? s) (println "non-contradiction:" s)) true) (spect? s) (spect? constraint)]}
   (conformy? (add-constraint s constraint)))
 
 (extend-type AndSpec
@@ -1743,8 +1743,7 @@
     (->> this
          :ps
          (map parse-spec)
-         (and-)
-         (conj #{})))
+         (and-)))
   Truthyness
   (truthyness [this]
     (let [b (distinct (->> this :ps (map parse-spec) (map truthyness)))]
@@ -1836,7 +1835,9 @@
       (some reject? ps) reject
       (>= (count ps) 2) (map->OrSpec {:ps ps})
       (= 1 (count ps)) (first ps)
-      :else (invalid {:message "or spect requires at least one arg"}))))
+      :else (do
+              (assert false)
+              (invalid {:message "or spect requires at least one arg"})))))
 
 (s/fdef or-conj :args (s/cat :s spect? :x spect?) :ret spect?)
 (defn or-conj [s x]
@@ -1861,7 +1862,7 @@
          (apply set/intersection)))
   WillAccept
   (will-accept- [this]
-    (->> this :ps (map parse-spec) (map will-accept) (apply set/union)))
+    (->> this :ps (map parse-spec) (mapv will-accept) (or-)))
   Truthyness
   (truthyness [this]
     (let [b (->> this :ps (map parse-spec) (map truthyness) distinct)]
@@ -1932,28 +1933,33 @@
          (map parse-spec)
          (some regex?)))
   (derivative [this x]
-    (->> this
-         :ps
-         (map parse-spec)
-         (map (fn [p]
-                (derivative p x)))
-         (filter conformy?)
-         ((fn [ps]
-            (if (seq ps)
-              (or- ps)
-              reject)))))
+    (let [resp (conform this x)]
+      (if (conformy? resp)
+        (accept resp)
+        (->> this
+             :ps
+             (map parse-spec)
+             (map (fn [p]
+                    (derivative p x)))
+             (filter conformy?)
+             ((fn [ps]
+                (if (seq ps)
+                  (or- ps)
+                  reject)))))))
   (accept-nil? [this]
     (->> this
          :ps
          (map parse-spec)
          (some accept-nil?)))
   (return- [this]
-    (->> this
-         :ps
-         (map parse-spec)
-         (filter accept-nil?)
-         (map return)
-         (or-)))
+    this
+    ;; (->> this
+    ;;      :ps
+    ;;      (map parse-spec)
+    ;;      (filter accept-nil?)
+    ;;      (map return)
+    ;;      (or-))
+    )
   (with-return- [this x]
     (->> this
          :ps
@@ -1976,10 +1982,6 @@
   "clojure.core/some, called on each pred in the orspec"
   [f or-spec]
   (some f (->> or-spec :ps (map parse-spec))))
-
-(defn equivalent? [s1 s2]
-  (and (valid? s1 s2)
-       (valid? s2 s1)))
 
 (declare maybe-or-disj)
 
@@ -2151,7 +2153,7 @@
 (extend-type KeysSpec
   WillAccept
   (will-accept- [this]
-    #{this})
+    this)
   DependentSpecs
   (dependent-specs- [this]
     #{(class-spec clojure.lang.PersistentHashMap) (pred-spec #'map?) (pred-spec #'coll?)})
@@ -2241,17 +2243,16 @@
             ret))
         ret))))
 
+(s/fdef will-accept-concrete :args (s/cat :s spect?) :ret (s/* spect?))
 (defn will-accept-concrete
-  "will-accept, but recursively evaluate regex specs, so we get spects representing clojure values"
+  "will-accept, but recursively resolve or/alt specs, returns a seq of spects"
   [s]
   (->> s
        (will-accept)
-       (mapcat (fn [p]
-                 (if (or (alt? p)
-                         (or-spec? p))
-                   (will-accept-concrete p)
-                   [p])))
-       (distinct)))
+       ((fn [x]
+          (cond
+            (or (or-spec? x) (alt? x)) (->> x :ps (map parse-spec) (mapcat will-accept-concrete))
+            :else [x])))))
 
 (s/fdef all-possible-values* :args (s/cat :q (s/and queue? (s/coll-of spect?)) :seen (s/coll-of spect? :kind set?)) :ret (s/coll-of spect?))
 (defn all-possible-values* [[s & sr] seen]
@@ -2580,7 +2581,7 @@
 (s/def :fn-spec/fn (s/nilable ::valid-spect-like))
 
 (s/fdef fn-spec :args (s/cat :args :fn-spec/args :ret :fn-spec/ret :fn :fn-spec/fn))
-(s/fdef map->FnSpec :args (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn]) :ret ::valid-spect)
+(s/fdef map->FnSpec :args (s/cat :m (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn])) :ret ::valid-spect)
 
 (defn fn-spec [args ret f]
   {:pre []}
@@ -2676,33 +2677,33 @@
   Spect
   (conform* [this x]
     (when (and (instance? FnSpec x)
-          (or
-           (and (:var this)
-                (:var x)
-                (= (:var this)
-                   (:var x)))
-           (and
-            (if (:args this)
-              (if (:args x)
-                (if (valid? (:args this) (:args x))
-                  x
-                  false)
-                false)
-              x)
-            (if (:ret this)
-              (if (:ret x)
-                (if (valid? (:ret this) (:ret x))
-                  x
-                  false)
-                false)
-              x)
-            (if (:fn this)
-              (if (:fn x)
-                (if (valid? (:fn this) (:fn x))
-                  x
-                  false)
-                false)
-              x))))
+               (or
+                (and (:var this)
+                     (:var x)
+                     (= (:var this)
+                        (:var x)))
+                (and
+                 (if (:args this)
+                   (if (:args x)
+                     (if (valid? (:args this) (:args x))
+                       x
+                       false)
+                     false)
+                   x)
+                 (if (:ret this)
+                   (if (:ret x)
+                     (if (valid? (:ret this) (:ret x))
+                       x
+                       false)
+                     false)
+                   x)
+                 (if (:fn this)
+                   (if (:fn x)
+                     (if (valid? (:fn this) (:fn x))
+                       x
+                       false)
+                     false)
+                   x))))
       x))
   (explain* [spec path via in x]
     (when-not (valid? spec x)
@@ -2877,9 +2878,9 @@
      @(:multimethod this)
      (multimethod-dispatch-values)
      (map parse-spec)
-     (map (fn [v]
+     (mapv (fn [v]
             (multispec-dispatch-ret-value this v)))
-     (set)))
+     or-))
   Truthyness
   (truthyness [this]
     (truthyness (multispec-default-spec this))))
@@ -3050,7 +3051,7 @@
       (nil? v) (invalid {:message "can't invoke nil"})
       :else (do
               (println "unknown value-invoke:" v*)
-              (assert false)))))
+              (assert false (format "unknown value invoke: %s" v))))))
 
 (def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
 
@@ -3118,7 +3119,8 @@
                seen #{}]
           (let [val (conform-compound spec args)]
             (cond
-              (and val (or (not (reject? val)) (invalid? val))) val
+              (and val (conformy? val)) args-orig
+              (invalid? val) val
               (or (reject? val) (nil? val)) (let [ds (dependent-specs args)
                                                   _ (assert (set? seen))
                                                   ds (set/difference ds seen)

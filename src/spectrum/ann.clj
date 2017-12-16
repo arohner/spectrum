@@ -138,6 +138,7 @@
  "
   [v cls]
   (ann v (instance-or [cls]))
+  (data/register-pred->instance v cls)
   (data/add-type-transformer v (c/class-spec cls)))
 
 (doseq [[v cls] pred->class]
@@ -152,6 +153,7 @@
   (ann v (protocol-transformer proto)))
 
 
+(s/fdef ann-instance-or :args (s/cat :v var? :classes (s/coll-of class?)))
 (defn ann-instance-or [v classes]
   (ann v (instance-or classes))
   (data/add-type-transformer v (c/or- (mapv c/class-spec classes))))
