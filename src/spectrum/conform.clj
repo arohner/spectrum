@@ -202,10 +202,17 @@
   (invoke-accept- [s]
     "Return the most general spec this spec can be invoked with"))
 
-(s/fdef keyword-invoke :args (s/cat :s spect? :args spect?) :ret spect?)
+(s/fdef keyword-invoke- :args (s/cat :s spect? :args spect?) :ret spect?)
 (defprotocol KeywordInvoke
-  (keyword-invoke [s args]
+  (keyword-invoke- [s args]
     "If code calls (:foo spec), return the expected type"))
+
+(s/fdef keyword-invoke :args (s/cat :s spect? :args spect?) :ret spect?)
+(defn keyword-invoke [s args]
+  {:post [(spect? %)]}
+  (when-not (spect? (keyword-invoke- s args))
+    (println "keyword-invoke:" s args "=>" (keyword-invoke- s args)))
+  (keyword-invoke- s args))
 
 (defn keyword-invoke? [s]
   (satisfies? KeywordInvoke s))
@@ -1107,7 +1114,7 @@
   (invoke-accept- [this]
     (value-invoke-accept this))
   KeywordInvoke
-  (keyword-invoke [this args]
+  (keyword-invoke- [this args]
     (let [key (first- args)
           else (second* args)
           rest (rest- (rest- args))]
@@ -1207,10 +1214,6 @@
   (invoke- [this args]
     (-> this :s parse-spec (invoke args)))
   (invoke-accept- [this]
-    (println "specspec invoke accept" (or
-                                       (when (-> this :s s/spec?)
-                                         (-> this :s s/form))
-                                       (:s this)))
     (-> this :s parse-spec invoke-accept))
   DependentSpecs
   (dependent-specs- [this]
@@ -1906,14 +1909,17 @@
          (map invoke-accept)
          (or-)))
   KeywordInvoke
-  (keyword-invoke [this args]
+  (keyword-invoke- [this args]
     (->> (:ps this)
          (map parse-spec)
          (filter keyword-invoke?)
          (map (fn [p]
                 (keyword-invoke p args)))
          (distinct)
-         (or-)))
+         ((fn [ps]
+            (if (seq ps)
+              (or- ps)
+              (unknown {:message (format "keyword invoke %s %s" (print-str this) (print-str args))}))))))
   KeysGet
   (keys-get- [this k]
     (->> this
@@ -2157,7 +2163,7 @@
   (truthyness [this]
     :truthy)
   KeywordInvoke
-  (keyword-invoke [this args]
+  (keyword-invoke- [this args]
     (let [k (first- args)
           else (second* args)
           rest (rest- (rest- args))]
@@ -2866,7 +2872,7 @@
   (dependent-specs- [this]
     (dependent-specs- (multispec-default-spec this)))
   KeywordInvoke
-  (keyword-invoke [this k]
+  (keyword-invoke- [this k]
     (keyword-invoke (multispec-default-spec this) k))
   WillAccept
   (will-accept- [this]
@@ -3043,11 +3049,11 @@
       (vector? v) (cat- [v (pred-spec #'nat-int?)])
       (set? v) (cat- [v (pred-spec #'any?)])
       (map? v) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
-      (keyword? v) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
+      (or (keyword? v) (symbol? v)) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
       (nil? v) (invalid {:message "can't invoke nil"})
       :else (do
-              (println "unknown value-invoke:" v*)
-              (assert false (format "unknown value invoke: %s" v))))))
+              (println "unknown value-invoke:" v* (class v))
+              (assert false (format "unknown value invoke: %s" (print-str v*)))))))
 
 (def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
 
@@ -3106,7 +3112,7 @@
 (def ^:dynamic *conform-in-progress* #{})
 
 (defn conform-bfs [spec args]
-  (let [args-orig args]
+   (let [args-orig args]
     (if (contains? *conform-in-progress* [spec args])
       (invalid {:message (format "%s does not conform to %s" (print-str args-orig) (print-str spec))})
       (binding [*conform-in-progress* (conj *conform-in-progress* [spec args])]
