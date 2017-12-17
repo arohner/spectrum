@@ -1529,9 +1529,7 @@
         v (:var a*)
         ret-spec (if-let [s (get-var-spec v)]
                    s
-                   (if-let [v-a (data/get-var-analysis v)]
-                     (c/spec-spec (s/spec v))
-                     (c/value @(:var a*))))]
+                   (c/spec-spec (s/spec v)))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defmethod infer* :the-var [a path]
@@ -1551,28 +1549,31 @@
                    spec
                    (c/will-accept-concrete)
                    (filter (fn [wa]
+                             {:pre [(c/spect? wa)]}
                              (c/non-contradiction? a wa))))]
           (if (seq was)
             (lazy-cat (infer-invoke-constraint- (concat qr (->> was
-                                                                    (map (fn [wa]
-                                                                           (let [s-next (c/derivative spec wa)]
-                                                                             (when (c/conformy? s-next)
-                                                                               {:spec s-next
-                                                                                :args ar
-                                                                                :ret (conj ret wa)}))))
-                                                                    (filter identity)))))
+                                                                (map (fn [wa]
+                                                                       (let [s-next (c/derivative spec wa)]
+                                                                         (when (and (c/conformy? s-next) (seq ar))
+                                                                           {:spec s-next
+                                                                            :args ar
+                                                                            :ret (conj ret wa)}))))
+                                                                (filter identity)))))
             (infer-invoke-constraint- qr)))
-        (if (and (not a) (c/accept-nil? spec))
-          (lazy-cat [ret] (infer-invoke-constraint- qr))
-          (do
-            (infer-invoke-constraint- qr))))
+        (if (seq qr)
+          (lazy-cat (if (and (not a) (c/accept-nil? spec))
+                      [ret]
+                      [])
+                    (infer-invoke-constraint- qr)
+          nil)))
       nil)))
 
 (s/fdef infer-invoke-constraints :args (s/cat :s c/spect? :args (s/coll-of c/spect?) :ret c/spect?))
 (defn infer-invoke-constraints
   "Given a spec (which could accept multiple type or arities), and a
   set of partially constrained argument specs, return a spec
-  representing all possible variations of spec that args could conform
+  representing all possible concrete specs that args could conform
   to"
   [spec args]
   (let [rets (infer-invoke-constraint- (queue [{:spec spec
@@ -1597,10 +1598,15 @@
         recursive (and invoke-var? (recursive? a (conj path :fn)))
         s (when-not recursive
             (invoke-get-fn-spec a (conj path :fn)))]
+    (println "infer invoke:" (:form a*) s)
     (if s
-      (if (c/invoke? s)
+      (if (or (:inferred s)
+              (c/invoke? s))
         (let [a-args (:args a*)
-              s-args (c/invoke-accept s)
+              s-args (if (:inferred s)
+                       (c/cat- (mapv (fn [a-arg]
+                                       (::ret-spec a-arg)) a-args))
+                       (c/invoke-accept s))
               s-args (infer-invoke-constraints s-args (map ::ret-spec a-args))
               args (map vector a-args s-args)
               a (if s-args
@@ -1612,14 +1618,18 @@
                                                   (infer-add-constraint a b-path s-arg))
                               a)) a args)
                   a)
+              a (if (and (:inferred s) (-> a* :fn :op (= :local)))
+                  (let [_ (assert (-> a* :fn :name))
+                        b (find-binding a path (-> a* :fn :name))]
+                    (assert b)
+                    (infer-add-constraint a (:path b) (c/pred-spec #'fn?)))
+                  ;; TODO also add fn-spec args, but we need to support merging fn-specs first.
+                  a)
               a-args-s (c/cat- (map ::ret-spec a-args))
 
-              ;; if the inferred args are more specific than what the spec takes, the return type could be useful
-              invoke-args (if (c/valid? (c/cat- s-args) a-args-s )
-                            a-args-s
-                            (c/invoke-accept s))
-              _ (println "infer invoke" s "w/" invoke-args)
-              ret-spec (c/invoke s invoke-args)]
+              ret-spec (if (:inferred s)
+                         (assoc (c/pred-spec #'any?) :inferred true)
+                         (c/invoke s (c/invoke-accept s)))]
           (assoc-in a (conj path ::ret-spec) ret-spec))
         (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s" (print-str s))})))
       (do
@@ -1698,9 +1708,10 @@
   (let [a* (get-in a path)
         params (mapv (fn [p]
                        (let [ret-spec (cond
-                                        (:variadic? p) (c/and- [(c/seq-of (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)])
+                                        (:variadic? p) (c/and- [(c/seq-of (assoc (c/pred-spec #'any?) :inferred true))
+                                                                (c/class-spec clojure.lang.ISeq)])
                                         (and (:tag p) (not= Object)) (c/class-spec (:tag p))
-                                        :else (c/pred-spec #'any?))]
+                                        :else (assoc (c/pred-spec #'any?) :inferred true))]
                          (assoc p ::ret-spec ret-spec))) (:params a*))
         a (assoc-in a (conj path :params) params)
         a (infer-walk a path)

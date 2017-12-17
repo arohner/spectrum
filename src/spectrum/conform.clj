@@ -962,7 +962,10 @@
              (map parse-spec)
              (remove accept?)
              (mapv will-accept)
-             or-))
+             ((fn [ps]
+                (if (seq ps)
+                  (or- ps)
+                  nil)))))
   Truthyness
   (truthyness [this]
     (let [b (distinct (map truthyness (map parse-spec (:ps this))))]
@@ -2980,7 +2983,7 @@
     (assert (value? val))
     (cond
       (var? (:v f)) :var
-      (fn? (:v f)) :fn
+      (ifn? (:v f)) :fn
       (not obj) :invalid
       rest :invalid
       (and (value? obj) (nil? else)) :value-value
@@ -3196,7 +3199,7 @@
 
 (defn regex-print-method [re-name spec ^Writer w]
   (.write w (str "#" re-name ))
-  (print-method (:ps spec) w))
+  (#'clojure.core/print-sequential "[" print-method " " "]" (:ps spec) w))
 
 (defmethod print-method RegexCat [v ^Writer w]
   (regex-print-method "Cat" v w))
@@ -3224,7 +3227,7 @@
 
 (defmethod print-method AndSpec [v ^Writer w]
   (.write w "#And")
-  (print-method (:ps v) w))
+  (#'clojure.core/print-sequential "[" print-method " " "]" (:ps v) w))
 
 (defmethod print-method OrSpec [v ^Writer w]
   (.write w (format "#Or"))
