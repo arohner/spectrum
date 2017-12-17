@@ -5,7 +5,7 @@
             [clojure.spec.gen.alpha :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
-            [spectrum.util :refer [fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq multimethod-dispatch-values]]
+            [spectrum.util :refer [fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq multimethod-dispatch-values protocol?]]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword)
@@ -57,7 +57,7 @@
 
 (defprotocol DependentSpecs
   (dependent-specs- [spec]
-    "Extra specs that are true of this spec"))
+    "Extra specs that are true of every instance of this type."))
 
 (defprotocol KeysGet
   (keys-get- [this key]))
@@ -555,27 +555,28 @@
 (defn spect-or-control-flow? [x]
   (or (spect? x) (control-flow? x)))
 
-(s/def ::dependent-specs (s/coll-of spect? :into #{}))
+(s/def ::dependent-specs (s/coll-of spect? :kind set?))
+
+(defn dependent-specs* [s]
+  {:post [(validate! ::dependent-specs %)]}
+  (if (dependent-specs? s)
+    (dependent-specs- s)
+    #{}))
 
 (s/fdef dependent-specs :args (s/cat :s (s/nilable spect?)) :ret ::dependent-specs)
 (defn dependent-specs [s]
-  (if (dependent-specs? s)
-    (let [ret (dependent-specs- s)]
-      (when-not (s/valid? ::dependent-specs ret)
-        (println "dependent-specs:" s "=>" ret "does not conform"))
-      (validate! ::dependent-specs ret)
-      ret)
-    #{}))
+  (set/union (dependent-specs* s) (data/get-dependent-specs s)))
 
 (s/fdef recursive-dependent-specs :args (s/cat :s (s/nilable spect?)) :ret ::dependent-specs)
 (defn recursive-dependent-specs
   "Recursively resolve dependent-specs"
   [s]
   (loop [ret #{}
+         seen #{}
          q (queue [s])]
     (if-let [s (first q)]
-      (let [new (dependent-specs s)]
-        (recur (set/union ret new) (conj-seq (pop q) new)))
+      (let [new (set/difference (dependent-specs s) seen)]
+        (recur (set/union ret new) (conj seen s) (conj-seq (pop q) new)))
       ret)))
 
 (s/def ::class-or (s/or :c class-spec? :or or-spec?))
@@ -1301,17 +1302,6 @@
         (and (pred-spec? x) (= pred (:pred x))) x
         (and (= #'class? pred) (class-spec? x)) x
 
-        (data/pred->instance? pred) (let [cls (data/pred->instance pred)]
-                                      (conform* (class-spec cls) x))
-        (data/pred->protocol? pred) (let [proto (data/pred->protocol pred)]
-                                      (when (satisfies? proto x)
-                                        x))
-
-        (class-spec? x) (if-let [c (data/get-type-transformer spec)]
-                          (do
-                            (println "predspec conform" spec x "=>" c x)
-                            (when (valid? c x)
-                              x)))
         ;; calling the pred should always be last resort
         ;; TODO remove this, or restrict to only using w/ pure functions. Not technically 'static' analysis.
         (and (conform-pred-args? spec (cat- [x])) (valuey? x)) (do
@@ -1343,28 +1333,7 @@
       (cond
         (or (= #'keyword? pred) (= #'symbol? pred)) (cat- [(pred-spec #'any?) (?- (pred-spec #'any?))])
         (= #'ifn? pred) (pred-spec #'any?)
-        :else (invalid {:message (format "can't invoke %s" (print-str this))}))))
-  DependentSpecs
-  (dependent-specs- [this]
-    (let [s (when (var? (:pred this))
-              (data/get-type-transformer (:pred this)))
-          ret (if s
-                #{s}
-                #{})]
-      (loop [ret ret
-             spec this]
-        (let [spec-fn (resolve-pred-spec spec)
-              spec-arg (some-> spec-fn :args (first-))]
-          (if (and spec-fn spec-arg (not (any-spec? spec-arg)))
-            (recur (conj ret spec-arg) spec-arg)
-            (if-let [tt (data/get-type-transformer (:pred this))]
-              (conj ret tt)
-              ret))))))
-  SpecToClasses
-  (spec->classes- [this]
-    (if (data/get-type-transformer (:pred this))
-      (set (apply-map maybe-class (data/get-type-transformer (:pred this))))
-      (default-spec->classes this))))
+        :else (invalid {:message (format "can't invoke %s" (print-str this))})))))
 
 ;; Spec representing a java class. Probably won't need to use this
 ;; directly. Used in java interop, and other places where we don't
@@ -1405,7 +1374,7 @@
 
    Because specs are more precise than class checks, casting to a class can destroy information. Using this anywhere other than java interop is a code smell."
   [spec]
-  {:post [(s/valid? ::spec->classes %)]}
+  {:post [(validate! ::spec->classes %)]}
   (if (spec->classes? spec)
     (spec->classes- spec)
     (default-spec->classes spec)))
@@ -1432,16 +1401,43 @@
       :truthy))
   DependentSpecs
   (dependent-specs- [this]
-    (let [{:keys [cls]} this]
-      (if (= clojure.lang.MapEquivalence cls)
-        #{(class-spec clojure.lang.APersistentMap)}
-        #{})))
+    (let [{:keys [cls]} this
+          ret (if (= clojure.lang.MapEquivalence cls)
+                #{(class-spec clojure.lang.APersistentMap)}
+                #{})
+          ret (if (j/primitive? cls)
+                (set/union (dependent-specs (class-spec (j/primitive->class cls))))
+                ret)
+          ret (apply set/union ret (map (comp dependent-specs class-spec) (ancestors cls)))]
+      ret))
   SpecToClasses
   (spec->classes- [this]
     (set [(:cls this)])))
 
 (extend-regex ClassSpec)
 (first-rest-singular ClassSpec)
+
+;;type representing a value satisfying protocol p
+(defrecord ProtocolSpec [p])
+
+(defn protocol-spec? [x]
+  (instance? ProtocolSpec x))
+
+(extend-type ProtocolSpec
+  Spect
+  (conform* [this x]
+    (cond
+      (protocol-spec? x) (when (= (:p x) (:p this))
+                           x)
+      (value? x) (when (satisfies? (:p this) (:v x))
+                   x)))
+  WillAccept
+  (will-accept- [this]
+    this))
+
+(s/fdef protocol- :args (s/cat :p protocol?) :ret spect?)
+(defn protocol- [p]
+  (map->ProtocolSpec {:p p}))
 
 (defmethod parse-spec* :macro [x]
   (let [v (resolve (first x))

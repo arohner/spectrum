@@ -24,13 +24,8 @@
   (atom {}))
 
 (defonce
-  ^{:doc "Map of vars to transformer functions"}
-  type-transformers
-  (atom {}))
-
-(s/fdef add-type-transformer :args (s/cat :v var? :s :spectrum.conform/spect))
-(defn add-type-transformer [v s]
-  (swap! type-transformers assoc v s))
+  ^{:doc "Map of specs to extra specs that are true about the spec"}
+  extra-dependent-specs (atom {}))
 
 ;; current ana.jvm/analysis, if any
 (def ^:dynamic *a* nil)
@@ -38,48 +33,19 @@
 (defn get-invoke-transformer [v]
   (get @invoke-transformers v))
 
-(defn get-type-transformer [v]
-  (get @type-transformers v))
+(s/fdef register-dependent-specs :args (s/cat :s :spectrum.conform/spect :dep :spectrum.conform/spect) :ret nil?)
+(defn register-dependent-spec
+  "Register an extra dependent-spec for spec s.
 
-(defonce
-  ^{:doc "map of preds to protocols"}
-  pred->protocol-
-  (atom {}))
-
-(defonce
-  ^{:doc "map of preds to protocols"}
-  pred->instance-
-  (atom {}))
-
-(s/fdef register-pred->instance :args (s/cat :p var? :class class?) :ret nil?)
-(defn register-pred->instance
-  "Register pred as checking for (instance? class x). Use on predicates that are exactly equivalent to (instance? c x)"
-  [pred class]
-  (swap! pred->instance- assoc pred class)
+This is useful for extra properties of the spec e.g. (pred #'string?) -> (class String)
+"
+  [s dep]
+  (swap! extra-dependent-specs update s (fnil conj #{}) dep)
   nil)
 
-(s/fdef register-pred->protocol :args (s/cat :p var? :protocol protocol?) :ret nil?)
-(defn register-pred->protocol
-  "Register pred as checking for protocol p. Use this for predicatess that are exactly equivalent to (satisfies? p x)"
-  [pred protocol]
-  (swap! pred->protocol- assoc pred protocol)
-  nil)
-
-(s/fdef pred->instance :args (s/cat :p var?) :ret (s/nilable class?))
-(defn pred->instance [v]
-  (get @pred->instance- v))
-
-(s/fdef pred->instance? :args (s/cat :p var?) :ret boolean?)
-(defn pred->instance? [x]
-  (boolean (pred->instance x)))
-
-(s/fdef pred->protocol :args (s/cat :p var?) :ret (s/nilable protocol?))
-(defn pred->protocol [v]
-  (get @pred->protocol- v))
-
-(s/fdef pred->protocol :args (s/cat :p var?) :ret boolean?)
-(defn pred->protocol? [x]
-  (boolean (pred->protocol x)))
+(s/fdef get-dependent-specs :args (s/cat :s :spectrum.conform/spect) :ret (s/nilable (s/coll-of :spectrum.conform/spect :kind set?)))
+(defn get-dependent-specs [s]
+  (get @extra-dependent-specs s))
 
 (defn store-var-analysis
   "Store the ana.jvm/analyze result for a var. Used for future type checking"

@@ -138,8 +138,8 @@
  "
   [v cls]
   (ann v (instance-or [cls]))
-  (data/register-pred->instance v cls)
-  (data/add-type-transformer v (c/class-spec cls)))
+  (data/register-dependent-spec (c/pred-spec v) (c/class-spec cls))
+  (data/register-dependent-spec (c/class-spec cls) (c/pred-spec v)))
 
 (doseq [[v cls] pred->class]
   (ann-instance? v cls))
@@ -150,13 +150,13 @@
    (ann-protocol #'spect? Spect)
  "
   [v proto]
-  (ann v (protocol-transformer proto)))
-
+  (ann v (protocol-transformer proto))
+  (data/register-dependent-spec (c/pred-spec v) (c/protocol- proto)))
 
 (s/fdef ann-instance-or :args (s/cat :v var? :classes (s/coll-of class?)))
 (defn ann-instance-or [v classes]
   (ann v (instance-or classes))
-  (data/add-type-transformer v (c/or- (mapv c/class-spec classes))))
+  (data/register-dependent-spec (c/pred-spec v) (c/or- (mapv c/class-spec classes))))
 
 (ann-instance-or #'float? [Float Double])
 (ann-instance-or #'int? [Long Integer Short Byte])
@@ -493,3 +493,9 @@
     (assoc spect :ret (c/invoke f f-args))))
 
 (ann #'apply ann-apply)
+
+
+;; extra clojure stuff
+
+(data/register-dependent-spec (c/pred-spec #'even?) (c/pred-spec #'integer?))
+(data/register-dependent-spec (c/pred-spec #'odd?) (c/pred-spec #'integer?))

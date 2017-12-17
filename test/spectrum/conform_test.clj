@@ -574,3 +574,7 @@
       (c/class-spec String) (c/class-spec Number)
       (c/value "foo") (c/value "bar")
       (c/value :reload) (c/pred-spec #'simple-symbol?))))
+
+(deftest recursive-dependent-specs
+  (are [s expected] (= expected (c/recursive-dependent-specs s))
+    (c/value "foo") #{(c/pred-spec #'string?) (c/class-spec String)}))
