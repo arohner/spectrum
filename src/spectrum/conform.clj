@@ -1864,7 +1864,12 @@
          (apply set/intersection)))
   WillAccept
   (will-accept- [this]
-    (->> this :ps (map parse-spec) (mapv will-accept) (or-)))
+    (->> this
+         :ps
+         (map parse-spec)
+         (remove accept?)
+         (mapv will-accept)
+         (or-)))
   Truthyness
   (truthyness [this]
     (let [b (->> this :ps (map parse-spec) (map truthyness) distinct)]

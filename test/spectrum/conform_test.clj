@@ -461,6 +461,9 @@
     (c/parse-spec (s/cat :x (s/? keyword?) :y integer?)) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'integer?)])
     (c/parse-spec (s/? keyword?)) (c/pred-spec #'keyword?)
     (c/derivative (c/parse-spec (s/+ keyword?)) (c/pred-spec #'keyword?)) (c/pred-spec #'keyword?)
+
+    (c/derivative (c/parse-spec (s/or :name (s/cat :name any?) :ns-name (s/cat :ns (s/nilable string?) :name string?))) (c/value "foo")) (c/pred-spec #'string?)
+
     (c/alt- [(c/pred-spec #'simple-symbol?) (c/cat- [(c/pred-spec #'simple-symbol?) (c/pred-spec #'simple-symbol?)])]) (c/pred-spec #'simple-symbol?)))
 
 (deftest infinite-works

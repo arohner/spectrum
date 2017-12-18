@@ -245,6 +245,10 @@
     (:args (c/get-var-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] (c/parse-spec (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)))
     (:args (c/get-var-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] []))
 
+(deftest infer-invoke-constraint
+  (are [spec args expected] (= expected (flow/infer-invoke-constraints spec args))
+    (c/parse-spec (s/or :name (s/cat :name any?) :ns-name (s/cat :ns (s/nilable string?) :name string?))) (c/cat- [(c/value "foo") (c/pred-spec #'any?)]) [(c/pred-spec #'string?) (c/pred-spec #'string?)]))
+
 (deftest infer-form
   (testing "truthy"
     (are [form expected] (c/equivalent? expected (check/infer-form form))
