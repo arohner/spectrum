@@ -1441,6 +1441,8 @@
   (will-accept- [this]
     this))
 
+(extend-regex ProtocolSpec)
+
 (s/fdef protocol- :args (s/cat :p protocol?) :ret spect?)
 (defn protocol- [p]
   (map->ProtocolSpec {:p p}))
