@@ -13,7 +13,11 @@
   :profiles
   {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]
                         [arohner/repl-utils "0.1.0"]]
-         :repl-options {:init-ns spectrum.repl}}}
+         :repl-options {:init-ns spectrum.repl
+                        :init (do
+                                (print "hello")
+                                (set! *print-level* 5)
+                                (set! *print-length* 20))}}}
   :deploy-repositories [["releases" {:url "https://clojars.org/repo"
                                      :creds :gpg}]]
   :jvm-opts ["-Xmx1024m"
