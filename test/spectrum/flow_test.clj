@@ -237,13 +237,21 @@
     spectrum.conform.Spect 'conform* true))
 
 (deftest infer-invoke
-  (are [spec args expected] (c/equivalent? expected (flow/infer-invoke-constraints spec args))
+  (let [keyword-args-spec (:args (c/get-var-spec #'keyword))
+        inc-args-spec (:args (c/get-var-spec #'inc))]
+    (are [spec args expected] (c/equivalent? expected (flow/infer-invoke-constraints spec args))
+      inc-args-spec [(c/pred-spec #'any?)] (c/cat- [(c/pred-spec #'number?)])
 
-    (:args (c/get-var-spec #'inc)) [(c/pred-spec #'any?)] (c/pred-spec #'number?)
-    (:args (c/get-var-spec #'keyword)) [(c/pred-spec #'any?)] (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?) (c/pred-spec #'any?)])
+      keyword-args-spec [(c/pred-spec #'any?)] (c/cat- [(c/pred-spec #'any?)])
+      keyword-args-spec [(c/value "foo")] (c/cat- [(c/pred-spec #'any?)])
+      keyword-args-spec [(c/value "foo") (c/pred-spec #'any?)] (c/cat- [(c/pred-spec #'string?) (c/?- (c/pred-spec #'string?))])
+      keyword-args-spec [(c/pred-spec #'any?) (c/pred-spec #'string?)] (c/cat- [(c/pred-spec #'string?) (c/?- (c/pred-spec #'string?))]))
 
-    (:args (c/get-var-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] (c/parse-spec (s/cat :x (s/or :f ifn? :k keyword?) :coll (s/* ::seq-like)))
-    (:args (c/get-var-spec #'map)) [(c/pred-spec #'any?) (c/pred-spec #'any?)] []))
+    (testing "falsey"
+      (are [spec args] (c/invalid? (flow/infer-invoke-constraints spec args))
+        keyword-args-spec [(c/pred-spec #'any?) (c/pred-spec #'number?)]
+
+        ))))
 
 (deftest infer-invoke-constraint
   (are [spec args expected] (= expected (flow/infer-invoke-constraints spec args))

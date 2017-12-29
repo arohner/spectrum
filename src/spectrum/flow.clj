@@ -541,19 +541,6 @@
         (println e "flow :invoke while walking:" (:form a*) (a-loc-str a))
         (throw e)))))
 
-(defn zip-fn-params
-  "Given an fnspec and the untyped args to an invoke, bind specs. Returns nil on failure"
-  [spec args]
-  (let [ss (if (:args spec)
-             (filter (fn [as]
-                       (= (count args) (count as))) (c/all-possible-values (c/cat-sequential (:args spec))))
-             [])
-        spec* (apply map (fn [& args]
-                           (c/or- args)) ss)]
-    (map (fn [a s]
-           (assoc a ::ret-spec s)) args spec*)))
-
-
 (defmethod flow* :protocol-invoke [a path]
   (let [a* (get-in a path)
         v (-> a* :fn :var)

@@ -148,6 +148,7 @@
     (c/class-spec Double/TYPE) #{Double/TYPE}
     (c/class-spec Long) #{Long}
     (c/pred-spec #'string?) #{String}
+    (c/or- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) #{String Keyword}
     (c/class-spec String) #{String}
     (c/pred-spec #'float?) #{Float Double}
     (c/pred-spec #'int?) #{Byte Short Integer Long}))

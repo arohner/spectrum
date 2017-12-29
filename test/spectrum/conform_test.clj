@@ -70,7 +70,7 @@
   (testing "set"
     (let [s (c/parse-spec #{:foo 3 "bar"})]
       (is (c/spect? s))
-      (is (c/or-spec? s))
+      (is (c/or? s))
       (is (every? c/value? (:ps s))))))
 
 (deftest any-spec-works
@@ -354,7 +354,7 @@
   (is (= (c/parse-spec (s/keys :req [::a ::b])) (c/parse-spec (s/merge (s/keys :req [::a]) (s/keys :req [::b]))))))
 
 (deftest keyword-invoke-works
-  (are [result spec args] (c/valid? (c/keyword-invoke spec args) result )
+  (are [result spec args] (c/valid? (c/keyword-invoke spec args) result)
     (c/value nil) (c/value 3) (c/cat- [(c/value ::a)])
     (c/value ::b) (c/value 3) (c/cat- [(c/value ::a) (c/value ::b)])
 
@@ -477,24 +477,30 @@
     (c/rest- (c/parse-spec (s/cat :x integer? :y (s/* string?)))) true
     (c/rest- (c/rest- (c/parse-spec (s/cat :x integer? :y (s/+ string?))))) true))
 
-(deftest all-possible-values
-  (is (= [(c/cat- [(c/pred-spec #'integer?)])] (c/all-possible-values (c/parse-spec (s/cat :x integer?)))))
-  (is (= [(c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?)])] (c/all-possible-values (c/parse-spec (s/cat :x integer? :y integer?)))))
-  (is (= 2 (count (c/all-possible-values (c/parse-spec (s/cat :x (s/? integer?) :y integer?))))))
-  (is (> (count (c/all-possible-values (c/seq-of (c/pred-spec #'int?)))) 1))
+(deftest disentangle
+  (are [spec expected] (= (set expected) (set (c/disentangle spec)))
+    (c/pred-spec #'keyword?) [(c/pred-spec #'keyword?)]
+    (c/parse-spec (s/cat :ns (s/nilable string?) :name string?)) #{(c/cat- [(c/pred-spec #'string?) (c/pred-spec #'string?)])
+                                                                   (c/cat- [(c/pred-spec #'nil?) (c/pred-spec #'string?)])}))
 
-  (let [vs (set (take 5 (c/all-possible-values (c/parse-spec (s/cat :a (s/* keyword?) :b (s/* string?) :c integer?)))))]
+(deftest disentangle
+  (is (= [(c/cat- [(c/pred-spec #'integer?)])] (c/disentangle (c/parse-spec (s/cat :x integer?)))))
+  (is (= [(c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?)])] (c/disentangle (c/parse-spec (s/cat :x integer? :y integer?)))))
+  (is (= 2 (count (c/disentangle (c/parse-spec (s/cat :x (s/? integer?) :y integer?)))))))
+
+(deftest all-possible-values
+  (is (= 3 (count (c/all-possible-values (c/seq-of (c/pred-spec #'int?)) 2))))
+
+  (let [vs (set (c/all-possible-values (c/parse-spec (s/cat :a (s/* keyword?) :b (s/* string?) :c integer?)) 3))]
     (are [v] (contains? vs v)
       (c/cat- [(c/pred-spec #'integer?)])
-      (c/cat- [(c/cat- [(c/pred-spec #'keyword?)]) (c/pred-spec #'integer?)])
-      (c/cat- [(c/cat- [(c/pred-spec #'string?)]) (c/pred-spec #'integer?)])
-      (c/cat- [(c/cat- [(c/pred-spec #'keyword?)]) (c/cat- [(c/pred-spec #'string?)]) (c/pred-spec #'integer?)])))
+      (c/cat- [(c/pred-spec #'keyword?) (c/pred-spec #'integer?)])
+      (c/cat- [(c/pred-spec #'string?) (c/pred-spec #'integer?)])
+      (c/cat- [(c/pred-spec #'keyword?) (c/pred-spec #'string?) (c/pred-spec #'integer?)])))
 
-  ;; (testing "no infinite hang"
-  ;;   (c/all-possible-values-arity-n (:args (c/get-var-fn-spec #'refer)) 1)
-  ;;   (c/all-possible-values-arity-n (:args (c/get-var-fn-spec #'require)) 14)
-  ;;   (is (seq (c/all-possible-values-arity-n (:args (c/get-var-fn-spec #'require)) 14))))
-  )
+  (testing "no infinite hang"
+    (is (c/all-possible-values (:args (c/get-var-spec #'refer)) 1))
+    (is (c/all-possible-values (:args (c/get-var-spec #'require)) 14))))
 
 (deftest invoke
   (testing "truthy"
@@ -506,6 +512,9 @@
       (s/map-of integer? string?) (c/cat- [(c/and-[(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
       (s/map-of integer? string?) (c/cat- [(c/and-[(c/pred-spec #'integer?) (c/pred-spec #'even?)])]) (c/or- [(c/pred-spec #'string?) (c/value nil)])
       (s/map-of integer? string?) (c/cat- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/pred-spec #'keyword?)
+
+      (s/keys :req [::foo]) (c/cat- [(c/value ::foo)]) (c/pred-spec #'string?)
+      (s/keys :req [::foo]) (c/cat- [(c/value ::bar)]) (c/value nil))
 
       (c/value #'string?) (c/cat- [(c/value "foo")]) (c/value true)
 
@@ -550,9 +559,6 @@
 
 (deftest spec->classes
   (are [s expected] (= expected (c/spec->classes s))
-    (c/pred-spec #'string?) #{String}
-    (c/pred-spec #'string?) #{String}
-    (c/or- [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) #{String Keyword}
     (c/coll-of (c/pred-spec #'any?)) #{clojure.lang.IPersistentCollection clojure.lang.ISeq clojure.lang.Seqable}))
 
 (deftest contradictions
