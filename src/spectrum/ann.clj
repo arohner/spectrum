@@ -318,7 +318,7 @@
   (let [f (c/first- args-spect)
         colls (c/rest- args-spect)]
     (let [invoke-args (map-coll-arity colls)]
-      (if (every? (fn [colls*] (every? (fn [c] (not (empty-seq? c))) (c/coll-items colls*))) (c/all-possible-values colls))
+      (if (every? (fn [colls*] (every? (fn [c] (not (empty-seq? c))) (c/coll-items colls*))) (c/all-possible-values colls 3))
         (if (c/valid? (:args f) invoke-args)
           (assoc spect :ret (c/coll-of (c/invoke f invoke-args)))
           (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str colls))}))
