@@ -1704,12 +1704,22 @@
       (not (apply = (map :v values)))
       false)))
 
+(s/fdef and-consolidate :args (s/cat :ps (s/coll-of spect?)) :ret (s/coll-of spect?))
+(defn and-consolidate
+  "Given the :ps for an `and`, simplify and consolidate forms"
+  [ps]
+  {:post [(validate! (s/coll-of spect?) %)]}
+  (let [ps-orig ps
+        ps (distinct ps)
+        {ands true not-ands false} (group-by and-spec? ps)
+        ps (concat (seq not-ands) (distinct (mapcat (fn [a] (:ps a)) ands)))
+        {ors true not-ors false} (group-by or? ps)
+        ps (concat (seq not-ors) [(or- (mapcat (fn [o] (:ps o)) ors))])]
+    ps))
+
 (s/fdef and- :args (s/cat :forms (s/coll-of ::spect-like)) :ret spect?)
 (defn and- [ps]
-  (let [ps (mapcat (fn [p] (if (and-spec? p)
-                             (:ps p)
-                             [p])) ps)
-        ps (distinct ps)]
+  (let [ps (and-consolidate ps)]
     (cond
       (not (and-classes-compatible? ps)) (invalid {:message "and contains incompatible java classes"})
       (and-not-contradiction? ps) (invalid {:message "and- contains contradictions"})
