@@ -95,6 +95,7 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 (defn analyze-cache-ns
   "analyze and store in var cache, but don't flow or check. Useful for clojure.core and other hard to check nses. "
   [ns]
+  (println "analyzing" ns)
   (let [as (ana.jvm/analyze-ns ns)]
     (doseq [a as]
       (when (= :def (:op a))

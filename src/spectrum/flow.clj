@@ -87,6 +87,9 @@
     (= :def (:op a)) (println (-> a :var) "=>" (-> a :init maybe-strip-meta ::ret-spec))
     :else (println (:form a) "=>" (::ret-spec a))))
 
+(def ^:dynamic *inferring* "Set of vars we're currently inferring. Used to break loops"
+  [])
+
 (defn infer-
   "Given an un-spec'd analysis, return our best guess for the spec"
   [a]
@@ -96,16 +99,6 @@
 
 (s/fdef infer :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis)
 (def infer (memo/memo infer-))
-
-(s/fdef infer-var :args (s/cat :a ::ana.jvm/analysis :v var?) :ret c/spect?)
-(defn infer-var
-  "Given the analysis for a def, infer and return the var value"
-  [a v]
-  {:pre [(var? v)]
-   :post [(s/valid? c/spect? %)]}
-  (infer a)
-  (or (data/get-var-inferred-spec v)
-      (c/value nil)))
 
 (defn flow-ns
   "Given the result of analyze-ns, flow all forms"
@@ -228,7 +221,7 @@
         ret-spec (if-let [s (get-var-spec v)]
                    s
                    (if-let [a (data/get-var-analysis v)]
-                     (c/spec-spec (s/spec v))
+                     (infer a)
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
@@ -1497,7 +1490,12 @@
         v (:var a*)
         ret-spec (if-let [s (get-var-spec v)]
                    s
-                   (c/spec-spec (s/spec v)))]
+                   (if-let [a (data/get-var-analysis v)]
+                     (if-not (some #(= v %) *inferring*)
+                       (binding [*inferring* (conj *inferring* v)]
+                         (infer a))
+                       (c/delay-spec (c/get-var-spec v)))
+                     (c/unknown {:message (format "no spec or analysis for %s" v)})))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defmethod infer* :the-var [a path]
@@ -1536,7 +1534,6 @@
         recursive (and invoke-var? (recursive? a (conj path :fn)))
         s (when-not recursive
             (invoke-get-fn-spec a (conj path :fn)))]
-    (println "infer invoke:" (:form a*) s)
     (if (and s (not (c/unknown? s)) (not (c/invalid? s)) (c/invoke? s))
       (let [a-args (:args a*)
             s-args (if (:inferred s)
@@ -1549,7 +1546,6 @@
           (let [args (map vector a-args (c/elements s-args))
                 a (if s-args
                     (reduce (fn [a [a-arg s-arg]]
-                              (println "infer invoke:" (:op a-arg))
                               (case (:op a-arg)
                                 (:binding :local) (let [b (find-binding a path (:name a-arg))
                                                         b-path (:path b)]

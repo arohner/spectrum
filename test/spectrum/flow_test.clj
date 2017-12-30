@@ -252,7 +252,9 @@
       '(fn [x] (keyword x)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
       '(fn [x] (keyword "foo" x)) (c/fn-spec (c/cat- [(c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
       '(fn [x] (inc x)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-      '(fn [x] (inc x) (keyword x) x) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
+      ;; this returns [class Object] rather than [class Number], because (inc)'s input only requires [class Object].
+      '(fn [x] (inc x) x) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
+      '(fn [x] (inc x) (keyword x) x) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
       '(fn [x] (not (even? x))) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'boolean?) nil)
 
       '(fn [x] (+)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)

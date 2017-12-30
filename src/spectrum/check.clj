@@ -63,10 +63,12 @@
    (analyze-form '(string? x) {:x (c/pred-spec #'string?)})
 "
   ([form]
+   (maybe-load-clojure-builtins)
    (let [a (ana.jvm/analyze form)]
      (binding [*a* a]
        (flow/flow a))))
   ([form specs]
+   (maybe-load-clojure-builtins)
    (let [locals (into {} (map (fn [[binding spec]]
                                 (let [binding (symbol (name binding))]
                                   [binding {:op :binding
@@ -230,7 +232,11 @@
    (->> (analyze-form form specs)
         (check*))))
 
-(defn infer-form [form]
-  (-> (analyze-form form)
+(defn infer-analysis [analysis]
+  (-> analysis
       (flow/infer)
       ::flow/ret-spec))
+
+(defn infer-form [form]
+  (-> (analyze-form form)
+      (infer-analysis)))

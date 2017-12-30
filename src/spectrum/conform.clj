@@ -335,6 +335,8 @@
     reject)
   (regex? [this]
     false)
+  (elements [this]
+    [this])
   WillAccept
   (will-accept- [this]
     reject)
@@ -428,7 +430,9 @@
   (with-return- [this r]
     r)
   (regex? [this]
-    false))
+    false)
+  (elements [this]
+    [this]))
 
 (first-rest-singular Invalid)
 
@@ -459,7 +463,9 @@
                    {:pre [(s/valid? (s/nilable sequential?) ret)]}
                   ret)
    :regex? (fn [this]
-             false)})
+             false)
+   :elements (fn [this]
+               [this])})
 
 (defn extend-regex
   "extends the Regex protocol to a non-regex Spect"
@@ -1190,6 +1196,56 @@
   (if (not (spec-spec? s))
     (map->SpecSpec {:s s})
     s))
+
+(defrecord DelaySpec [s])
+
+(extend-type SpecSpec
+  Spect
+  (conform* [this x]
+    (-> this :s deref (conform* x)))
+  WillAccept
+  (will-accept- [this]
+    (-> this :s deref will-accept-))
+  Regex
+  (derivative [this x]
+    (-> this :s deref (derivative x)))
+  (empty-regex [this]
+    (-> this :s deref empty-regex))
+  (accept-nil? [this]
+    (-> this :s deref accept-nil?))
+  (return- [this]
+    this)
+  (with-return- [this ret]
+    (-> this :s deref (with-return- ret)))
+  (regex? [this]
+    (-> this :s deref regex?))
+  (elements [this]
+    (-> this :s deref elements))
+  FirstRest
+  (first- [this]
+    (-> this :s deref first-))
+  (rest- [this]
+    (-> this :s deref rest-))
+  Truthyness
+  (truthyness [this]
+    (-> this :s deref truthyness))
+  Invoke
+  (invoke- [this args]
+    (-> this :s deref (invoke args)))
+  (invoke-accept- [this]
+    (-> this :s deref invoke-accept))
+  DependentSpecs
+  (dependent-specs- [this]
+    (-> this :s deref dependent-specs))
+  SpecToClasses
+  (spec->classes- [this]
+    (-> this :s deref spec->classes)))
+
+(defn delay-spec? [x]
+  (instance? DelaySpec x))
+
+(defmacro delay-spec [s]
+  `(map->SpecSpec {:s (delay ~s)}))
 
 (defrecord PredSpec [pred form])
 
