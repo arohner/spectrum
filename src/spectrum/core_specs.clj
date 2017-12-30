@@ -83,6 +83,7 @@
 (s/fdef clojure.core/apply :args (s/cat :f ifn? :args (s/* any?) :ret any?))
 (s/fdef clojure.core/assoc-in :args (s/cat :m (s/nilable associative?) :ks (s/coll-of any?) :v any?) :ret associative?)
 (s/fdef clojure.core/bigdec :args (s/cat :x number?) :ret bigdec?)
+(s/fdef clojure.core/cast :args (s/cat :c class? :x any?) :ret any?)
 (s/fdef clojure.core/concat :args (s/* ::seq-like) :ret seq?)
 (s/fdef clojure.core/commute :args (s/cat :r ref? :f fn? :args (s/* any?)) :ret any?)
 (s/fdef clojure.core/conj :args (s/cat :c (s/? (s/nilable coll?)) :x (s/* any?)) :ret coll?)

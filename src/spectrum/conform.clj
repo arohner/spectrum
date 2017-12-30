@@ -1428,6 +1428,7 @@
   (truthyness [this]
     (condp = (:cls this)
       Boolean :ambiguous
+      Boolean/TYPE :ambiguous
       Object :ambiguous
       nil :falsey
       :truthy))

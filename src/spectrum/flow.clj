@@ -476,17 +476,18 @@
     (c/unknown {:message (format "don't know how to get spec or analysis for %s %s" (:op a*) (:form a*))})))
 
 (defn contains-control-flow? [s]
-  (if (c/regex? s)
-    (some c/control-flow? (c/elements s))
-    (c/control-flow? s)))
+  (some c/control-flow? (c/elements s)))
 
 (s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
 (defn strip-control-flow
   "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
   [s]
-  (if (contains-control-flow? s)
-    (assert false "TODO")
-    s))
+  (cond
+    (not (contains-control-flow? s)) s
+    (c/control-flow? s) (c/invalid {:message "No non-control-flow return"})
+    (c/or? s) (c/or- (remove c/control-flow? (c/elements s)))
+    :else (assert false (format "Don't know how to strip control flow from %s" (print-str s)))))
+
 
 (defmethod flow* :invoke [a path]
   (let [a (flow-walk a path)
@@ -914,7 +915,8 @@
                                :params)
                 a (update-in a (conj loop-path bindings-key) (fn [bindings]
                                                                (mapv (fn [b s]
-                                                                       (assoc b ::ret-spec s)) bindings loop-specs*)))]
+                                                                       (update-in b [::ret-spec] (fn [existing]
+                                                                                                   (c/or- [existing s])))) bindings loop-specs*)))]
             (walk-fn (assoc-in a (conj path ::walked?) true) loop-path))))
       (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "recur bad arity, loop takes %s args, got %s" loop-arg-count recur-arg-count)})))))
 
@@ -1411,18 +1413,12 @@
 
 (defn infer-wrap [a path]
   (let [a* (get-in a path)]
-    (when-not a*
-      (println "infer-wrap fail:" path (:form (get-in a (pop (pop (pop path))))) (a-loc-str a)))
     (assert a*)
     (binding [*a* a*]
       (let [a-post (infer* a path)
             a*-post (get-in a-post path)
-            _ (when-not (s/valid? ::analysis a-post)
-                (println "infer-wrap invalid:" (:op (get-in a path)) ))
-            a-post (if (::ret-spec (get-in a-post path))
-                     a-post
-                     (assert false (format "no ::ret-spec on %s %s" (:op (get-in a-post path)) (:form (get-in a-post path)))))]
-        (assert (::ret-spec (get-in a-post path)))
+            ret-spec (::ret-spec (get-in a-post path))]
+        (assert ret-spec)
         a-post))))
 
 (defn infer-walk
@@ -1536,10 +1532,15 @@
             (invoke-get-fn-spec a (conj path :fn)))]
     (if (and s (not (c/unknown? s)) (not (c/invalid? s)) (c/invoke? s))
       (let [a-args (:args a*)
+            invoke-args (c/cat- (mapv (fn [a-arg] (::ret-spec a-arg)) a-args))
             s-args (if (:inferred s)
-                     (c/cat- (mapv (fn [a-arg]
-                                     (::ret-spec a-arg)) a-args))
-                     (c/invoke-accept s))
+                     invoke-args
+                     (if (c/valid? (c/invoke-accept s) invoke-args)
+                       (let [spec* (c/maybe-transform s invoke-args)]
+                         (if (:args spec*)
+                           (:args spec*)
+                           (c/invoke-accept s)))
+                       (c/invoke-accept s)))
             s-args (infer-invoke-constraints s-args (map ::ret-spec a-args))]
 
         (if (c/conformy? s-args)
@@ -1563,7 +1564,9 @@
                 a-args-s (c/cat- (map ::ret-spec a-args))
                 ret-spec (if (:inferred s)
                            (assoc (c/pred-spec #'any?) :inferred true)
-                           (c/invoke s (c/invoke-accept s)))]
+                           (c/invoke s (if (c/valid? (c/invoke-accept s) a-args-s)
+                                         a-args-s
+                                         (c/invoke-accept s))))]
             (assoc-in a (conj path ::ret-spec) ret-spec))
           (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s" (print-str s))}))))
       (do
@@ -1634,7 +1637,8 @@
         rets (->>
               (:methods a*)
               (map (fn [m]
-                     (::ret-spec (:body m))))
+                     {:post [%]}
+                     (::ret-spec m)))
               (c/or-))
         spec (c/fn-spec args rets nil)]
     (assoc-in a (conj path ::ret-spec) spec)))
@@ -1651,7 +1655,7 @@
         a (assoc-in a (conj path :params) params)
         a (infer-walk a path)
         a* (get-in a path)
-        a (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec))]
+        a (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec strip-control-flow))]
     a))
 
 (defn find-this

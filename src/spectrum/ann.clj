@@ -496,6 +496,32 @@
 (ann #'apply ann-apply)
 
 
+;;
+;; TODO fix ann-method to provide the concrete class
+;; consider (.cast Number x)
+;; spec currently doesn't tell us cls is Number, so no way to update
+;;
+
+;; (ann-method java.lang.Class 'cast (c/cat- [(c/class-spec Object)]) (fn [s args]
+;;                                                                      (println "ann-method cast" s args)
+;;                                                                      (let [cls (c/first- args)
+;;                                                                            x (c/second* args)]
+;;                                                                        x)))
+
+(defn cast-transformer [spec args]
+  {:post [(do (println "cast" spec args "=>" %) true)]}
+  (let [cls-s (c/first- args)
+        x (c/second* args)]
+    (if (and (c/value? cls-s) (class? (:v cls-s)))
+      (let [cls (:v cls-s)]
+        (-> spec
+            (assoc :args (c/cat- [cls-s (c/class-spec cls)]))
+            (assoc :ret (c/class-spec cls))))
+
+      spec)))
+
+(ann #'cast cast-transformer)
+
 ;; extra clojure stuff
 
 (data/register-dependent-spec (c/pred-spec #'even?) (c/pred-spec #'integer?))

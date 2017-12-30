@@ -259,7 +259,16 @@
 
       '(fn [x] (+)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
       '(fn [x] (+ x 1)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-      '(fn [x] (-> x :foo)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?) nil)))
+      '(fn [x] (-> x :foo)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?) nil)
+
+      '(fn [x] (cast Number x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Number) nil)
+
+      '(fn foo ([x] (foo x 1)) ([x y] (+ x y))) (c/fn-spec (c/or- (c/cat- [(c/class-spec Number)]) (c/cat- [(c/class-spec Number) (c/class-spec Number)])) (c/class-spec Number) nil)
+
+      '(fn foo [x] (if (> x 1) (foo (/ x 1.0)))) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
+      '(fn foo [x] (if (> x 1) (recur (/ x 1.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
+
+      ))
   (testing "invalid"
     (are [form] (c/invalid? (check/infer-form form))
       '(fn [x] (inc (str x)))
