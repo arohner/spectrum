@@ -1232,6 +1232,9 @@
       (-> pred-spec :pred (= any?-form))
       (-> pred-spec :pred (= any?-macroexpanded))))
 
+(defn object-spec? [x]
+  (and (class-spec? x) (= Object (:cls x))))
+
 (defn maybe-class [x]
   (cond
     (class-spec? x) (:cls x)
@@ -1677,11 +1680,11 @@
                  s ;; can't make values more specific
                  (invalid {:message (format "can't add constraint %s to %s" (print-str constraint) (print-str s))}))
 
-    (equivalent? (pred-spec #'any?) constraint) s
-    (equivalent? (class-spec Object) constraint) s
+    (any-spec? constraint) s
+    (object-spec? constraint) s
 
-    (equivalent? (pred-spec #'any?) s) constraint
-    (equivalent? (class-spec Object) s) constraint
+    (any-spec? s) constraint
+    (object-spec? s) constraint
 
     (and-spec? s) (and-conj s constraint)
     :else (and- [s constraint])))
@@ -1772,7 +1775,7 @@
 (defn or? [x]
   (instance? OrSpec x))
 
-(s/def :or/ps (s/coll-of ::spect-like :kind set?))
+(s/def :or/ps (s/coll-of ::spect-like))
 
 (s/fdef map->OrSpec :args (s/cat :m (s/keys :req-un [:or/ps])) :ret or?)
 
@@ -2279,7 +2282,7 @@
             (or (or? x) (alt? x)) (->> x :ps (map parse-spec) (mapcat will-accept-concrete))
             :else [x])))))
 
-(s/fdef all-possible-values-length-n :args (s/cat :r regex? :n nat-int?) :ret (s/coll-of spect?))
+(s/fdef all-possible-values :args (s/cat :r spect? :n nat-int?) :ret (s/coll-of spect?))
 (defn all-possible-values
   "Given a regex, disentangle and fix length, returning all concrete specs up to length n"
   [spec n]
@@ -2289,8 +2292,21 @@
                  (fix-length s n)))
        (filter (fn [s]
                  {:pre [(spect? s)]}
-                 (<= (count (elements s)) n)))
+                 (if (regex? s)
+                   (<= (count (elements s)) n)
+                   [s])))
        (distinct)))
+
+(defn all-possible-values-length-n
+  "all-possible-values with length == n, but return a single spec `or`ing together each position"
+  [spec n]
+  (->> (all-possible-values spec n)
+       (filter (fn [s]
+                 (= n (count (elements s)))))
+       (map elements)
+       (apply mapv (fn [& es]
+                     (or- es)))
+       (cat- )))
 
 (s/fdef conform-collof-value :args (s/cat :collof ::spect :x (s/nilable value?)))
 (defn conform-collof-value [collof x]

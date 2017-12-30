@@ -172,12 +172,6 @@
     (c/or- []) (c/or- [])
     (c/or- [(c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/recur-form (c/cat- [(c/pred-spec #'int?)]) )]) (c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)])))
 
-(deftest maybe-disj-works
-  (are [spec pred expected] (= expected (flow/maybe-disj-pred spec pred))
-    (c/pred-spec #'integer?) (c/pred-spec #'nil?) (c/pred-spec #'integer?)
-    (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'seq?) (c/pred-spec #'nil?)
-    (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'integer?) (c/or- [(c/pred-spec #'seq?) (c/pred-spec #'nil?)])))
-
 (deftest invoke-pred?
   (is (flow/invoke-predicate? (ana.jvm/analyze '(string? "foo"))))
   (is (not (flow/invoke-predicate? (ana.jvm/analyze '(str 3))))))
@@ -244,18 +238,12 @@
 
       keyword-args-spec [(c/pred-spec #'any?)] (c/cat- [(c/pred-spec #'any?)])
       keyword-args-spec [(c/value "foo")] (c/cat- [(c/pred-spec #'any?)])
-      keyword-args-spec [(c/value "foo") (c/pred-spec #'any?)] (c/cat- [(c/pred-spec #'string?) (c/?- (c/pred-spec #'string?))])
-      keyword-args-spec [(c/pred-spec #'any?) (c/pred-spec #'string?)] (c/cat- [(c/pred-spec #'string?) (c/?- (c/pred-spec #'string?))]))
+      keyword-args-spec [(c/value "foo") (c/pred-spec #'any?)] (c/cat- [(c/pred-spec #'string?) (c/pred-spec #'string?)])
+      keyword-args-spec [(c/pred-spec #'any?) (c/pred-spec #'string?)] (c/or- [(c/cat- [(c/pred-spec #'string?) (c/?- (c/pred-spec #'string?))]) (c/cat- [(c/pred-spec #'nil?) (c/?- (c/pred-spec #'string?))])]))
 
     (testing "falsey"
       (are [spec args] (c/invalid? (flow/infer-invoke-constraints spec args))
-        keyword-args-spec [(c/pred-spec #'any?) (c/pred-spec #'number?)]
-
-        ))))
-
-(deftest infer-invoke-constraint
-  (are [spec args expected] (= expected (flow/infer-invoke-constraints spec args))
-    (c/parse-spec (s/or :name (s/cat :name any?) :ns-name (s/cat :ns (s/nilable string?) :name string?))) (c/cat- [(c/value "foo") (c/pred-spec #'any?)]) [(c/pred-spec #'string?) (c/pred-spec #'string?)]))
+        keyword-args-spec [(c/pred-spec #'any?) (c/pred-spec #'number?)]))))
 
 (deftest infer-form
   (testing "truthy"

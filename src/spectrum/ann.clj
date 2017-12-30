@@ -281,7 +281,7 @@
     (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/all-possible-values coll)))
       (assoc spect :ret (c/coll-of (c/and- [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
       (c/invalid {:message (format "filter f does not conform: %s w/ %s" (print-str f) (print-str (first (filter (fn [arg]
-                                                                                                                   (c/invalid? (c/invoke f (c/cat- [arg])))) (c/all-possible-values coll)))))
+                                                                                                                   (c/invalid? (c/invoke f (c/cat- [arg])))) (c/all-possible-values coll 3)))))
                   :form `(filter ~f ~coll)}))))
 
 (defn ann-filter [spect args-spect]
@@ -301,13 +301,14 @@
   "Given the seq of collections passed to map, return the spec that will be passed to f"
   [colls]
   (->> colls
-       (c/all-possible-values)
+       (#(c/all-possible-values % 3))
        (mapv (fn [colls*]
                (->> colls*
-                    (c/map* (fn [c]
-                              (if-let [items (seq (c/coll-items c))]
-                                (c/or- items)
-                                (c/value nil))))
+                    (c/elements)
+                    (map (fn [c]
+                           (if-let [items (seq (c/coll-items c))]
+                             (c/or- items)
+                             (c/value nil))))
                     (c/cat- ))))
        (distinct)
        (c/or- )))

@@ -520,8 +520,7 @@
 
       (c/pred-spec #'keyword?) (c/cat- [(c/pred-spec #'map?)]) (c/pred-spec #'any?)
 
-      (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)))
-
+      (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?))
   (testing "invalid"
     (are [spec args] (c/invalid? (c/invoke (c/parse-spec spec) args))
       (c/value 1) (c/cat- [(c/value 2)])
@@ -587,3 +586,18 @@
 (deftest recursive-dependent-specs
   (are [s expected] (= expected (c/recursive-dependent-specs s))
     (c/value "foo") #{(c/pred-spec #'string?) (c/class-spec String)}))
+
+(deftest maybe-or-disj-works
+  (are [spec pred expected] (= expected (c/maybe-or-disj spec pred))
+    (c/pred-spec #'integer?) (c/pred-spec #'nil?) (c/pred-spec #'integer?)
+    (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'seq?) (c/pred-spec #'nil?)
+    (c/or- ['clojure.core/seq? (c/pred-spec #'nil?)]) (c/pred-spec #'integer?) (c/or- [(c/pred-spec #'seq?) (c/pred-spec #'nil?)])))
+
+(deftest add-constraint
+  (are [spec constraint expected] (= expected (c/add-constraint spec constraint))
+    (c/pred-spec #'any?) (c/pred-spec #'keyword?) (c/pred-spec #'keyword?)
+    (c/pred-spec #'keyword?) (c/pred-spec #'any?) (c/pred-spec #'keyword?)
+    (c/value :foo) (c/pred-spec #'keyword?) (c/value :foo)
+    (c/pred-spec #'any?) (c/or- [(c/class-spec Long) (c/class-spec Double) (c/class-spec Object)]) (c/or- [(c/class-spec Long) (c/class-spec Double) (c/class-spec Object)])
+
+    (c/class-spec Object) (c/class-spec Long) (c/class-spec Long)))
