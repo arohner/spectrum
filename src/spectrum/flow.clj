@@ -478,6 +478,41 @@
           (println "warning: couldn't find spec or analysis for" v)
           (c/unknown {:message (format "couldn't find spec or analysis for %s" v)}))))))
 
+(s/fdef method-arity-conform :args (s/cat :params (s/coll-of ::ana.jvm/binding) :args c/spect?))
+(defn method-arity-conform?
+  "Given the :fn-method params and invoke spec args, return true if this call conforms"
+  [params args]
+  (loop [params params
+         args args]
+    (if (and params args)
+      (if (:variadic? (first params))
+        true
+        (if (empty? params)
+          (if (c/accept-nil? args)
+            true
+            false)
+          (if (and (first params) (c/first- args))
+            (let [params* (rest params)
+                  args* (c/rest- args)]
+              (if (and params* args*)
+                (recur params* args*)
+                (if (and (nil? (seq params*)) (nil? args*))
+                  true
+                  false)))
+            false)))
+      false)))
+
+(s/fdef get-fn-method-invoke :args (s/cat :a ::ana.jvm/fn :args c/spect?))
+(defn get-fn-method-invoke
+  "given an :fn analysis and spect args, return the :fn-method that would be invoked"
+  [a args]
+  (assert (= :fn (:op a)))
+  (let [methods (:methods a)]
+    (->> methods
+         (filter (fn [m]
+                   (method-arity-conform? (:params m) args)))
+         first)))
+
 (defmethod invoke-get-fn-spec :local [a path args]
   (let [a* (get-in a path)]
     (assert (:name a*))
@@ -938,30 +973,6 @@
 (defmethod flow* :recur [a path]
   (walk-recur flow-walk a path))
 
-(s/fdef method-arity-conform :args (s/cat :params (s/coll-of ::ana.jvm/binding) :args c/spect?))
-(defn method-arity-conform?
-  "Given the :fn-method params and invoke spec args, return true if this call conforms"
-  [params args]
-  (loop [params params
-         args args]
-    (if (and params args)
-      (if (:variadic? (first params))
-        true
-        (if (empty? params)
-          (if (c/accept-nil? args)
-            true
-            false)
-          (if (and (first params) (c/first- args))
-            (let [params* (rest params)
-                  args* (c/rest- args)]
-              (if (and params* args*)
-                (recur params* args*)
-                (if (and (nil? (seq params*)) (nil? args*))
-                  true
-                  false)))
-            false)))
-      false)))
-
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
 (defn arity-conform?
   "Without knowing the types of args, return true if it's possible for args to conform, based on arity alone"
@@ -1325,17 +1336,6 @@
   (let [a (flow-walk a path)
         a* (get-in a path)]
     (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec))))
-
-(s/fdef get-fn-method-invoke :args (s/cat :a ::ana.jvm/fn :args c/spect?))
-(defn get-fn-method-invoke
-  "given an :fn analysis and spect args, return the :fn-method that would be invoked"
-  [a args]
-  (assert (= :fn (:op a)))
-  (let [methods (:methods a)]
-    (->> methods
-         (filter (fn [m]
-                   (method-arity-conform? (:params m) args)))
-         first)))
 
 (s/fdef invoke-with-var :args (s/cat :v var? :args any?) :ret c/spect?)
 (defn invoke-with-var
