@@ -521,6 +521,10 @@
       (assert invoke-a)
       (c/delay-spec (::ret-spec (infer (get-fn-method-invoke invoke-a args)))))))
 
+(defmethod invoke-get-fn-spec :fn [a path _]
+  (let [a* (get-in a path)]
+    (::ret-spec (infer a*))))
+
 (defmethod invoke-get-fn-spec :default [a path _]
   (let [a* (get-in a path)]
     (c/unknown {:message (format "don't know how to get spec or analysis for %s %s" (:op a*) (:form a*))})))
