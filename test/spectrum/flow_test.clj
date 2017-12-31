@@ -264,12 +264,13 @@
       '(fn [x] (cast Number x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Number) nil)
 
       '(fn foo ([x] (foo x 1)) ([x y] (+ x y))) (c/fn-spec (c/or- (c/cat- [(c/class-spec Number)]) (c/cat- [(c/class-spec Number) (c/class-spec Number)])) (c/class-spec Number) nil)
+      '((fn foo ([x] (foo x 1)) ([x y] (+ x y))) 2) (c/class-spec Number)
 
-      '(fn foo [x] (if (> x 1) (foo (/ x 1.0)))) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
-      '(fn foo [x] (if (> x 1) (recur (/ x 1.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
+      '(fn foo [x] (if (> x 1) (foo (/ x 2.0)))) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
+      '(fn foo [x] (if (> x 1) (recur (/ x 2.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)))
 
-      ))
   (testing "invalid"
     (are [form] (c/invalid? (check/infer-form form))
       '(fn [x] (inc (str x)))
-      '(fn [x] (inc x) (x :foo)))))
+      '(fn [x] (inc x) (x :foo))
+      '(fn foo [x] (if (> x 1) (foo 1 2 3) 1)) )))

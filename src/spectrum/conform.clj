@@ -1199,7 +1199,7 @@
 
 (defrecord DelaySpec [s])
 
-(extend-type SpecSpec
+(extend-type DelaySpec
   Spect
   (conform* [this x]
     (-> this :s deref (conform* x)))
@@ -1245,7 +1245,7 @@
   (instance? DelaySpec x))
 
 (defmacro delay-spec [s]
-  `(map->SpecSpec {:s (delay ~s)}))
+  `(map->DelaySpec {:s (delay ~s)}))
 
 (defrecord PredSpec [pred form])
 
@@ -2365,7 +2365,7 @@
        (distinct)))
 
 (defn all-possible-values-length-n
-  "all-possible-values with length == n, but return a single spec `or`ing together each position"
+  "all-possible-values with length == n, but return a single cat, `or`ing together each element"
   [spec n]
   (->> (all-possible-values spec n)
        (filter (fn [s]
@@ -2696,6 +2696,15 @@
       (map->FnSpec {:args args
                     :ret ret
                     :fn f}))))
+
+(s/fdef merge-fn-specs :args (s/cat :specs (s/coll-of fn-spec?) :ret fn-spec?))
+(defn merge-fn-specs
+  "Given a seq of fn-spec representing the arities for a fn, merge them into one fn-spec"
+  [fn-specs]
+  {:pre [(every? fn-spec? fn-specs)]}
+  (let [args (or- (filter identity (map :args fn-specs)))
+        rets (or- (map :ret fn-specs))]
+    (fn-spec args rets nil)))
 
 (s/fdef get-var-spec :args (s/cat :v var?) :ret (s/nilable spect?))
 (defn get-var-spec [v]

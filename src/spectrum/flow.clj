@@ -292,7 +292,7 @@
 
 (defmethod find-binding* :fn [a name]
   (when (-> a :local :name (= name))
-    (:local a)))
+    a))
 
 (defmethod find-binding* :method [a name]
   (or (find-binding-method a name)
@@ -390,6 +390,18 @@
           (let [p* (pop path*)]
             (recur p*)))))))
 
+(defn find-binding-fn-definition
+  "find-binding, when name is a :fn, unwrap until we find the definition"
+  [a path name]
+  (loop [path path]
+    (let [ret (find-binding a path name)]
+      (if (= :fn (:op ret))
+        ret
+        (if (and (= :local (:op ret)) (seq path))
+          (do
+            (recur (pop path)))
+          nil)))))
+
 (s/fdef infer-add-constraint :args (s/cat :a ::analysis :b-path vector? :method-spec c/spect?))
 (defn infer-add-constraint [a b-path method-spec]
   (let [b (get-in a b-path)]
@@ -445,15 +457,15 @@
       :invoke (recur a (conj path :fn))
       (println "don't know how to find analysis for" fn-op))))
 
-(s/fdef invoke-get-fn-spec :args (s/cat :a ::analysis :p ::path) :ret (s/nilable ::c/spect))
+(s/fdef invoke-get-fn-spec :args (s/cat :a ::analysis :p ::path :args c/spect?) :ret (s/nilable ::c/spect))
 
-(defn invoke-get-fn-spec-dispatch [a path]
+(defn invoke-get-fn-spec-dispatch [a path _]
   (-> (get-in a path) :op))
 
 (defmulti invoke-get-fn-spec "Given the :fn from an :invoke a, return the spec for the thing being invoked"
   #'invoke-get-fn-spec-dispatch)
 
-(defmethod invoke-get-fn-spec :var [a path]
+(defmethod invoke-get-fn-spec :var [a path _]
   {:post [(or (nil? %) (c/spect? %))]}
   (let [a* (get-in a path)
         v (-> a* :var)]
@@ -461,17 +473,20 @@
     (if-let [s (get-var-spec v)]
       s
       (if-let [v-a (data/get-var-analysis v)]
-        (c/spec-spec v)
+        (c/delay-spec (infer v-a))
         (do
           (println "warning: couldn't find spec or analysis for" v)
           (c/unknown {:message (format "couldn't find spec or analysis for %s" v)}))))))
 
-(defmethod invoke-get-fn-spec :local [a path]
+(defmethod invoke-get-fn-spec :local [a path args]
   (let [a* (get-in a path)]
     (assert (:name a*))
-    (-> (find-binding a path (:name a*)) ::ret-spec)))
+    (assert (c/spect? args))
+    (let [invoke-a (find-binding-fn-definition a path (:name a*))]
+      (assert invoke-a)
+      (c/delay-spec (::ret-spec (infer (get-fn-method-invoke invoke-a args)))))))
 
-(defmethod invoke-get-fn-spec :default [a path]
+(defmethod invoke-get-fn-spec :default [a path _]
   (let [a* (get-in a path)]
     (c/unknown {:message (format "don't know how to get spec or analysis for %s %s" (:op a*) (:form a*))})))
 
@@ -1011,21 +1026,14 @@
 
 (s/fdef flow-method* :args (s/cat :a ::analysis :path vector? :args (s/nilable c/spect?)))
 (defn flow-method* [a path args-spec]
+  (assert args-spec (format "flow-method: no spec for %s" (:form (get-in a (pop (pop path))))))
   (let [a* (get-in a path)
-        a (if args-spec
-            (update-in a (conj path :params) destructure-fn-params args-spec (macro? a))
-            (do
-              (println "flow-method: no spec for" (:form (get-in a (pop (pop path)))))
-              (assert false)
-              ;; (update-in a (conj path :params) (fn [params]
-              ;;                                    (mapv (fn [p]
-              ;;                                            (assoc p ::ret-spec (c/unknown {:message (format "method params: no spec for %s" (:form (get-in a (pop path)))) :form (:name p) :a-loc (a-loc a*)}))) params)))
-              ))
+        a (update-in a (conj path :params) destructure-fn-params args-spec (macro? a))
         a (flow* a (conj path :body))
         body (get-in a (conj (conj path :body)))
-        body-ret-spec (strip-control-flow (::ret-spec body))]
-    (validate! ::c/spect-like body-ret-spec)
-    (assoc-in a (conj path ::ret-spec) body-ret-spec)))
+        body-ret-spec (strip-control-flow (::ret-spec body))
+        ret-spec (c/fn-spec args-spec body-ret-spec nil)]
+    (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defn flow-method [a path]
   (let [a* (get-in a path)
@@ -1526,14 +1534,12 @@
         a (infer-walk a path [:args])
         a* (get-in a path)
         f-a (invoke-get-fn-analysis a path)
+        a-args (:args a*)
+        invoke-args (c/cat- (mapv (fn [a-arg] (::ret-spec a-arg)) a-args))
         invoke-var? (boolean (get-in a (concat path [:fn :var])))
-        recursive (and invoke-var? (recursive? a (conj path :fn)))
-        s (when-not recursive
-            (invoke-get-fn-spec a (conj path :fn)))]
+        s (invoke-get-fn-spec a (conj path :fn) invoke-args)]
     (if (and s (not (c/unknown? s)) (not (c/invalid? s)) (c/invoke? s))
-      (let [a-args (:args a*)
-            invoke-args (c/cat- (mapv (fn [a-arg] (::ret-spec a-arg)) a-args))
-            s-args (if (:inferred s)
+      (let [s-args (if (:inferred s)
                      invoke-args
                      (if (c/valid? (c/invoke-accept s) invoke-args)
                        (let [spec* (c/maybe-transform s invoke-args)]
@@ -1569,10 +1575,7 @@
                                          (c/invoke-accept s))))]
             (assoc-in a (conj path ::ret-spec) ret-spec))
           (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s" (print-str s))}))))
-      (do
-        (if recursive
-          (assoc-in a (conj path ::ret-spec) (c/unknown {:message "TODO self-recursion"}))
-          (assoc-in a (conj path ::ret-spec) (c/unknown {:message "unknown spec"})))))))
+      (assoc-in a (conj path ::ret-spec) (c/unknown {:message "unknown spec"})))))
 
 (defmethod infer* :static-call [a path]
   (let [a (infer-walk a path [:args])
@@ -1619,28 +1622,17 @@
     (assert (c/spect? (::ret-spec b)))
     (assoc-in a (conj path ::ret-spec) (::ret-spec b))))
 
+
 (defmethod infer* :fn [a path]
   (let [a* (get-in a path)
+        ret-spec (c/delay-spec (::ret-spec (infer a*)))
+        a (assoc-in a (concat path [::ret-spec]) ret-spec)
         a (if (:local a*)
-            ;; FIXME this local could be self-recursive, need complete spec here, but don't have it yet. Maybe re-flow after first infer pass?
-            (assoc-in a (concat path [:local ::ret-spec]) (c/pred-spec #'fn?))
+            (assoc-in a (concat path [:local ::ret-spec]) ret-spec)
             a)
-        a (assoc-in a (concat path [::ret-spec]) (c/pred-spec #'fn?))
         a (infer-walk a path)
         a* (get-in a path)
-        args (->>
-              a*
-              :methods
-              (map (fn [m]
-                     (c/cat- (mapv ::ret-spec (:params m)))))
-              (c/or-))
-        rets (->>
-              (:methods a*)
-              (map (fn [m]
-                     {:post [%]}
-                     (::ret-spec m)))
-              (c/or-))
-        spec (c/fn-spec args rets nil)]
+        spec (c/merge-fn-specs (map ::ret-spec (:methods a*)))]
     (assoc-in a (conj path ::ret-spec) spec)))
 
 (defmethod infer* :fn-method [a path]
@@ -1654,8 +1646,12 @@
                          (assoc p ::ret-spec ret-spec))) (:params a*))
         a (assoc-in a (conj path :params) params)
         a (infer-walk a path)
+        params (get-in a (conj path :params))
         a* (get-in a path)
-        a (assoc-in a (conj path ::ret-spec) (-> a* :body ::ret-spec strip-control-flow))]
+        params-spec (c/cat- (mapv ::ret-spec params))
+        body-ret-spec (-> a* :body ::ret-spec strip-control-flow)
+        ret-spec (c/fn-spec params-spec body-ret-spec nil)
+        a (assoc-in a (conj path ::ret-spec) ret-spec)]
     a))
 
 (defn find-this
