@@ -1547,7 +1547,8 @@
                            (:args spec*)
                            (c/invoke-accept s)))
                        (c/invoke-accept s)))
-            s-args (infer-invoke-constraints s-args (map ::ret-spec a-args))]
+            s-args (infer-invoke-constraints s-args (map ::ret-spec a-args))
+            s-args (c/all-possible-values-length-n s-args (count a-args))]
 
         (if (c/conformy? s-args)
           (let [args (map vector a-args (c/elements s-args))
