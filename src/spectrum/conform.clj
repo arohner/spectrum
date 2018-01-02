@@ -1708,13 +1708,15 @@
 (defn and-consolidate
   "Given the :ps for an `and`, simplify and consolidate forms"
   [ps]
-  {:post [(validate! (s/coll-of spect?) %)]}
+  {:post [(validate! (s/coll-of ::spect-like) %)]}
   (let [ps-orig ps
         ps (distinct ps)
         {ands true not-ands false} (group-by and-spec? ps)
         ps (concat (seq not-ands) (distinct (mapcat (fn [a] (:ps a)) ands)))
         {ors true not-ors false} (group-by or? ps)
-        ps (concat (seq not-ors) [(or- (mapcat (fn [o] (:ps o)) ors))])]
+        ors (mapcat (fn [o] (:ps o)) ors)
+        ps (filter identity (concat (seq not-ors) [(when (seq ors)
+                                                     (or- ors))]))]
     ps))
 
 (s/fdef and- :args (s/cat :forms (s/coll-of ::spect-like)) :ret spect?)
@@ -2367,13 +2369,17 @@
 (defn all-possible-values-length-n
   "all-possible-values with length == n, but return a single cat, `or`ing together each element"
   [spec n]
-  (->> (all-possible-values spec n)
+  (if (and (conformy? spec) (known? spec))
+    (->> (all-possible-values spec n)
        (filter (fn [s]
                  (= n (count (elements s)))))
        (map elements)
-       (apply mapv (fn [& es]
-                     (or- es)))
-       (cat- )))
+       ((fn [elements]
+          (if (seq elements)
+            (cat- (apply mapv (fn [& es]
+                                (or- es)) elements))
+            (invalid {:message (format "no possible value of length n")})))))
+    spec))
 
 (s/fdef conform-collof-value :args (s/cat :collof ::spect :x (s/nilable value?)))
 (defn conform-collof-value [collof x]
@@ -2697,14 +2703,15 @@
                     :ret ret
                     :fn f}))))
 
-(s/fdef merge-fn-specs :args (s/cat :specs (s/coll-of fn-spec?) :ret fn-spec?))
+(s/fdef merge-fn-specs :args (s/cat :specs (s/coll-of spect?) :ret spect?))
 (defn merge-fn-specs
   "Given a seq of fn-spec representing the arities for a fn, merge them into one fn-spec"
   [fn-specs]
-  {:pre [(every? fn-spec? fn-specs)]}
-  (let [args (or- (filter identity (map :args fn-specs)))
-        rets (or- (map :ret fn-specs))]
-    (fn-spec args rets nil)))
+  (if (every? fn-spec? fn-specs)
+    (let [args (or- (filter identity (map :args fn-specs)))
+          rets (or- (map :ret fn-specs))]
+      (fn-spec args rets nil))
+    (invalid {:message (format "can't merge fn-specs: %s" (mapv print-str fn-specs))})))
 
 (s/fdef get-var-spec :args (s/cat :v var?) :ret (s/nilable spect?))
 (defn get-var-spec [v]
@@ -3301,7 +3308,7 @@
   (regex-print-method "Cat" v w))
 
 (defmethod print-method RegexSeq [v ^Writer w]
-  (regex-print-method "Seq" v w))
+  (regex-print-method "Seq" {:ps (take 1 (:ps v))} w))
 
 (defmethod print-method RegexAlt [v ^Writer w]
   (regex-print-method "Alt" v w))

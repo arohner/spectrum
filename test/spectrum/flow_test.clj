@@ -7,7 +7,6 @@
             [spectrum.flow :as flow]
             [spectrum.check :as check]))
 
-(check/maybe-load-clojure-builtins)
 (check/ensure-analysis 'spectrum.flow)
 
 ;; (spec-test/instrument)
@@ -267,10 +266,16 @@
       '((fn foo ([x] (foo x 1)) ([x y] (+ x y))) 2) (c/class-spec Number)
 
       '(fn foo [x] (if (> x 1) (foo (/ x 2.0)))) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
-      '(fn foo [x] (if (> x 1) (recur (/ x 2.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)))
+      '(fn foo [x] (if (> x 1) (recur (/ x 2.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
+
+      ;; testing that this doesn't hang
+      '(fn [x] (update-in x [:foo] inc)) (c/pred-spec #'associative?)))
 
   (testing "invalid"
     (are [form] (c/invalid? (check/infer-form form))
       '(fn [x] (inc (str x)))
       '(fn [x] (inc x) (x :foo))
       '(fn foo [x] (if (> x 1) (foo 1 2 3) 1)) )))
+
+(deftest clojure-core-inferred
+  (is (-> (flow/var-get-spec #'nat-int?) :ret (= (c/pred-spec #'boolean?)))))

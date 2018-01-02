@@ -278,7 +278,7 @@
 (defn filter-fn [spect args-spect]
   (let [f (c/first- args-spect)
         coll (c/second* args-spect)]
-    (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/all-possible-values coll)))
+    (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/all-possible-values coll 3)))
       (assoc spect :ret (c/coll-of (c/and- [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
       (c/invalid {:message (format "filter f does not conform: %s w/ %s" (print-str f) (print-str (first (filter (fn [arg]
                                                                                                                    (c/invalid? (c/invoke f (c/cat- [arg])))) (c/all-possible-values coll 3)))))
@@ -509,7 +509,6 @@
 ;;                                                                        x)))
 
 (defn cast-transformer [spec args]
-  {:post [(do (println "cast" spec args "=>" %) true)]}
   (let [cls-s (c/first- args)
         x (c/second* args)]
     (if (and (c/value? cls-s) (class? (:v cls-s)))
@@ -517,7 +516,6 @@
         (-> spec
             (assoc :args (c/cat- [cls-s (c/class-spec cls)]))
             (assoc :ret (c/class-spec cls))))
-
       spec)))
 
 (ann #'cast cast-transformer)

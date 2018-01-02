@@ -3,6 +3,7 @@
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.check :as check]
             [spectrum.conform :as c]
+            [spectrum.data :as data]
             [spectrum.flow :as flow]))
 
 (in-ns 'clojure.core)

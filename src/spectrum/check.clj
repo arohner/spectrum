@@ -206,6 +206,7 @@
     (mapv flow/flow (ana.jvm/analyze-ns ns env {:eval? false}))))
 
 (defn ensure-analysis [ns]
+  (maybe-load-clojure-builtins)
   (when-not (data/analyzed-ns? ns)
     (println "analyzing" ns)
     (binding [*warn-on-reflection* false

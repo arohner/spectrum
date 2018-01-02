@@ -47,10 +47,12 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 (defn get-dependent-specs [s]
   (get @extra-dependent-specs s))
 
+(s/fdef store-var-analysis :args (s/cat :v var? :a ::ana.jvm/analysis))
 (defn store-var-analysis
   "Store the ana.jvm/analyze result for a var. Used for future type checking"
-  [a]
-  (swap! var-analysis assoc (:var a) a))
+  [v a]
+  (assert (var? v))
+  (swap! var-analysis assoc v a))
 
 (defn store-defmethod-analysis
   [a]
@@ -93,13 +95,13 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   nil)
 
 (defn analyze-cache-ns
-  "analyze and store in var cache, but don't flow or check. Useful for clojure.core and other hard to check nses. "
+  "analyze and store in var cache, but don't flow or check"
   [ns]
   (println "analyzing" ns)
   (let [as (ana.jvm/analyze-ns ns)]
     (doseq [a as]
       (when (= :def (:op a))
-        (store-var-analysis a)))
+        (store-var-analysis (:var a) a)))
     (mark-ns-analyzed! ns)))
 
 (s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis-def))
