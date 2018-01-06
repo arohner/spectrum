@@ -355,10 +355,10 @@
 (defn unknown
   [{:keys [form a-loc message] :as args}]
   (let [a *a*
-        form (if (find args form)
+        form (if form
                form
                (:form *a*))
-        a-loc (if (find args a-loc)
+        a-loc (if a-loc
                 a-loc
                 (select-keys *a* [:file :line :column]))]
     (map->Unknown {:form form :a-loc a-loc :message message})))
@@ -690,7 +690,7 @@
   (constructor [this]
     cat-)
   (elements [this]
-    (->> this :ps (map parse-spec)))
+    (->> this :ps (mapv parse-spec)))
   WillAccept
   (will-accept- [{:keys [ps ks forms ret] :as this}]
     (if (seq ps)
@@ -950,7 +950,7 @@
   (and (seq? x) (symbol? (first x))))
 
 (defn macro? [v]
-  (and (var? v) (.isMacro v)))
+  (and (var? v) (.isMacro ^Var v)))
 
 (defn known-form? [x]
   (let [sym (first x)
@@ -2711,7 +2711,9 @@
     (let [args (or- (filter identity (map :args fn-specs)))
           rets (or- (map :ret fn-specs))]
       (fn-spec args rets nil))
-    (invalid {:message (format "can't merge fn-specs: %s" (mapv print-str fn-specs))})))
+    (or
+     (first (filter invalid? fn-specs))
+     (invalid {:message (format "can't merge fn-specs: %s" (mapv print-str fn-specs))}))))
 
 (s/fdef get-var-spec :args (s/cat :v var?) :ret (s/nilable spect?))
 (defn get-var-spec [v]
@@ -2783,7 +2785,7 @@
             spec*))
         (if (every-known? invoke-args)
           (if (every-valid? invoke-args)
-            (invalid {:message (format "can't invoke %s (%s) with %s" v (print-str spec) (print-str invoke-args))})
+            (invalid {:message (format "invoke-fn-spec can't invoke %s (%s) with %s" v (print-str spec) (print-str invoke-args))})
             (invalid {:message (format "invoke with invalid args %s" (print-str invoke-args))}))
           (unknown {:message (format "invoke %s w/ unknown args %s" v (print-str invoke-args))})))
       (unknown {:message (format "invoke %s no :args spec" spec)}))))

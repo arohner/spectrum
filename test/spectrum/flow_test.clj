@@ -4,6 +4,7 @@
             [clojure.spec.alpha :as s]
             [clojure.spec.test.alpha :as spec-test]
             [spectrum.conform :as c]
+            [spectrum.data :as data]
             [spectrum.flow :as flow]
             [spectrum.check :as check]))
 
@@ -168,7 +169,6 @@
     (c/or- [(c/pred-spec #'int?) (c/recur-form 'x)]) (c/or- [(c/pred-spec #'int?)])
 
     (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)])
-    (c/or- []) (c/or- [])
     (c/or- [(c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)]) (c/recur-form (c/cat- [(c/pred-spec #'int?)]) )]) (c/and- [(c/pred-spec #'integer?) (c/pred-spec #'even?)])))
 
 (deftest invoke-pred?
@@ -262,10 +262,9 @@
 
       '(fn [x] (cast Number x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Number) nil)
 
-      '(fn foo ([x] (foo x 1)) ([x y] (+ x y))) (c/fn-spec (c/or- (c/cat- [(c/class-spec Number)]) (c/cat- [(c/class-spec Number) (c/class-spec Number)])) (c/class-spec Number) nil)
+      '(fn foo ([x] (foo x 1)) ([x y] (+ x y))) (c/fn-spec (c/or- [(c/cat- [(c/class-spec Number)]) (c/cat- [(c/class-spec Number) (c/class-spec Number)])]) (c/class-spec Number) nil)
       '((fn foo ([x] (foo x 1)) ([x y] (+ x y))) 2) (c/class-spec Number)
 
-      '(fn foo [x] (if (> x 1) (foo (/ x 2.0)))) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
       '(fn foo [x] (if (> x 1) (recur (/ x 2.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
 
       ;; testing that this doesn't hang
@@ -275,7 +274,14 @@
     (are [form] (c/invalid? (check/infer-form form))
       '(fn [x] (inc (str x)))
       '(fn [x] (inc x) (x :foo))
-      '(fn foo [x] (if (> x 1) (foo 1 2 3) 1)) )))
+      '(fn foo [x] (if (> x 1) (foo 1 2 3) 1))
+      '(let [foo (fn [x] (inc x))] (foo 1 2)))))
+
+(defn infer-var [v]
+  (-> v
+      (data/get-var-analysis)
+      (flow/flow)
+      ::flow/ret-spec))
 
 (deftest clojure-core-inferred
-  (is (-> (flow/var-get-spec #'nat-int?) :ret (= (c/pred-spec #'boolean?)))))
+  (is (-> (infer-var #'nat-int?) :ret (= (c/pred-spec #'boolean?)))))
