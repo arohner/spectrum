@@ -841,7 +841,7 @@
   [cls method]
   (->> (get-java-method cls method)
        (map method->spec)
-       (c/or-)))
+       (c/merge-fn-specs)))
 
 (s/fdef get-compatible-java-methods :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret (s/nilable (s/coll-of j/reflect-method?)))
 (defn get-compatible-java-methods
@@ -1751,11 +1751,10 @@
         {:keys [class method instance]} a*
         a (maybe-flow-multi-method a path)]
     (if (and class method)
-      (let [invoke-args (c/cat- (concat
-                                 (if (:instance a*)
-                                   [(-> a* :instance ::ret-spec)]
-                                   [(-> a* :class ::ret-spec)])
-                                 (mapv (fn [arg] (::ret-spec arg)) (:args a*))))
+      (let [cls-arg (if (:instance a*)
+                      (-> a* :instance ::ret-spec)
+                      (-> a* :class (c/value)))
+            invoke-args (c/cat- (concat [cls-arg] (mapv (fn [arg] (::ret-spec arg)) (:args a*))))
             methods (get-java-method class method)
             method-specs (map (fn [m]
                                 [m (method->spec m)]) methods)
@@ -1779,7 +1778,8 @@
                          (assert (c/invalid? transformed-spec))
                          transformed-spec))
             a (if (c/conformy? transformed-spec)
-                (let [arg-pairs (map vector (:args a*) (c/elements (:args transformed-spec)))]
+                (let [spec-args (c/all-possible-values-length-n (:args transformed-spec) (inc (count (:args a*))))
+                      arg-pairs (map vector (concat [(:instance a*)] (:args a*)) (c/elements spec-args))]
                   (reduce (fn [a [arg s]]
                             (case (:op arg)
                               (:binding :local) (let [b (find-binding a path (:name arg))

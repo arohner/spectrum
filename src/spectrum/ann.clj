@@ -61,7 +61,8 @@
     (if (c/first-rest? args-spect)
       (let [spect* (c/or- (map c/class-spec classes))
             arg-spect (c/first- args-spect)
-            conform-ret (c/conform spect* arg-spect)]
+            conform-ret (c/conform spect* arg-spect)
+            possible (c/conform arg-spect spect*)]
         (if (c/conformy? conform-ret)
           (let [truth (c/truthyness conform-ret)
                 ret (condp = truth
@@ -69,7 +70,9 @@
                       :falsey (c/value false)
                       (c/pred-spec #'boolean?))]
             (assoc spect :ret ret))
-          (assoc spect :ret (c/value false))))
+          (if (c/conformy? possible)
+            (assoc spect :ret (c/pred-spec #'boolean?))
+            (assoc spect :ret (c/value false)))))
       (c/invalid {:message "args must support first-rest"}))))
 
 (s/fdef instance-transformer :args (s/cat :c class?) :ret ::transformer)

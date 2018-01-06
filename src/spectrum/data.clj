@@ -132,3 +132,10 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 
 (defn get-var-inferred-spec [v]
   (get @var-inferred-specs v))
+
+(defn reset-cache!
+  "Clear cache. Useful for dev"
+  []
+  (swap! var-analysis (constantly {}))
+  (swap! var-inferred-specs (constantly {}))
+  (swap! analyzed-nses (constantly #{})))

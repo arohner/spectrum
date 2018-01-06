@@ -75,56 +75,6 @@
                :parameter-types
                (count)))))
 
-(deftest java-method-spec
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/value 3)]))
-          :ret
-          (= (c/class-spec Long/TYPE))))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i double?)))
-          :ret
-          (= (c/class-spec Double/TYPE))))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Byte/TYPE)]))
-          :ret
-          (= (c/class-spec Long/TYPE))))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Float/TYPE)]))
-          :ret
-          (= (c/class-spec Double/TYPE))))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/cat- [(c/class-spec clojure.lang.BigInt)]))
-          :ret
-          (= (c/or- [(c/class-spec Number) (c/value nil)]))))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'inc (c/parse-spec (s/cat :i int?)))
-          :ret))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Symbol 'equals (c/cat- [(c/value 'clojure.core)]))
-          :ret
-          c/known?))
-
-  (is (-> (flow/get-java-method-spec java.util.Map 'entrySet (c/cat- []))
-          :ret
-          c/known?))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.LockingTransaction 'runInTransaction (c/cat- [(c/parse-spec (s/and fn? ifn?))]))
-          :ret
-          c/known?))
-  (is (-> (flow/get-java-method-spec clojure.lang.Var 'hasRoot (c/cat- []))
-          :ret
-          c/known?))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Indexed 'nth (c/cat- [(c/value 0)]))
-          :ret
-          c/known?))
-
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long) (c/class-spec Long)]))
-          :ret
-          (= (c/class-spec Long/TYPE))))
-  (is (-> (flow/get-java-method-spec clojure.lang.Numbers 'add (c/cat- [(c/class-spec Long/TYPE) (c/class-spec Long/TYPE)]))
-          :ret
-          (= (c/class-spec Long/TYPE)))))
-
 (deftest expression-return-specs
   (are [form ret-spec] (c/valid? ret-spec (::flow/ret-spec (flow/flow (ana.jvm/analyze form))))
     '(+ 1 2) (c/parse-spec #'number?)
@@ -277,11 +227,16 @@
       '(fn foo [x] (if (> x 1) (foo 1 2 3) 1))
       '(let [foo (fn [x] (inc x))] (foo 1 2)))))
 
-(defn infer-var [v]
+(defn infer-var
+  "infer a var return the spec"
+  [v]
   (-> v
       (data/get-var-analysis)
       (flow/flow)
+      :init
+      :expr
       ::flow/ret-spec))
 
 (deftest clojure-core-inferred
+  (is (-> (infer-var #'nat-int?) :args (= (c/cat- [(c/pred-spec #'any?)]))))
   (is (-> (infer-var #'nat-int?) :ret (= (c/pred-spec #'boolean?)))))
