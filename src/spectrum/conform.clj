@@ -1716,7 +1716,9 @@
         {ors true not-ors false} (group-by or? ps)
         ors (mapcat (fn [o] (:ps o)) ors)
         ps (filter identity (concat (seq not-ors) [(when (seq ors)
-                                                     (or- ors))]))]
+                                                     (or- ors))]))
+        ps (distinct ps)
+        ps (remove any-spec? ps)]
     ps))
 
 (s/fdef and- :args (s/cat :forms (s/coll-of ::spect-like)) :ret spect?)
@@ -1848,17 +1850,28 @@
 
 (s/fdef map->OrSpec :args (s/cat :m (s/keys :req-un [:or/ps])) :ret or?)
 
+(defn or-consolidate
+  "Given the ps for an `or`, simplify and consolidate terms"
+  [ps]
+  (let [or-ps (mapcat (fn [p] (when (or? p)
+                                (:ps p))) ps)
+        ps (remove or? ps)
+        ps (concat ps or-ps)
+        ps (map (fn [p]
+                  (if (object-spec? p)
+                    (pred-spec #'any?)
+                    p)) ps)
+        ;; TODO if ps contains any?, do we remove all other spects?
+        ps (set ps)]
+    ps))
+
 (s/def ::or-args (s/coll-of (s/nilable ::spect-like)))
 (s/def ::or-ret (s/nilable spect?))
 (s/fdef or- :args (s/cat :ps ::or-args) :ret ::or-ret)
 (defn or- [ps]
   {:pre [(validate! ::or-args ps)]
    :post [(validate! ::or-ret %)]}
-  (let [or-ps (mapcat (fn [p] (when (or? p)
-                                (:ps p))) ps)
-        ps (remove or? ps)
-        ps (concat ps or-ps)
-        ps (set ps)]
+  (let [ps (or-consolidate ps)]
     (cond
       (some invalid? ps) (invalid {:message "or invalid"
                                    :causes (filter invalid? ps)})
