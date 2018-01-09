@@ -15,6 +15,9 @@
   ;; [var dispatch-value] => analysis cache
   (atom {}))
 
+(defonce java-method-specs
+  (atom {}))
+
 (defonce analyzed-nses
   (atom #{}))
 
@@ -132,6 +135,30 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 
 (defn get-var-inferred-spec [v]
   (get @var-inferred-specs v))
+
+
+(s/def ::reflect-args (s/coll-of class? :kind vector?))
+(s/fdef replace-method-spec :args (s/cat :cls class? :name symbol? :args ::reflect-args :spect :spectrum.conform/spect))
+(defn replace-method-spec
+  "Given a java method replace it
+  with the more accurate spec `spec`.
+
+  implicit (c/or nil) will not be added to arguments or return types,
+  so if nils are necessary, they must be specified.
+
+  Method args is a vector of classes, same as returned by
+  clojure.reflect/reflect :parameter-types. Spec should be an fn-spec"
+
+  [cls method-name method-args spec]
+  {:pre [(class? cls)
+         (symbol? method-name)
+         (vector? method-args)
+         (every? class? method-args)]}
+  (swap! java-method-specs assoc [cls method-name method-args] spec))
+
+(s/fdef get-updated-method-spec :args (s/cat :cls class? :name symbol? :args ::reflect-args))
+(defn get-updated-method-spec [cls method-name method-args]
+  (get @java-method-specs [cls method-name method-args]))
 
 (defn reset-cache!
   "Clear cache. Useful for dev"

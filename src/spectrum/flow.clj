@@ -839,13 +839,17 @@
 
 (defn method->spec [m]
   (let [declaring-class (j/resolve-java-class (:declaring-class m))]
-    (c/fn-spec (c/cat- (concat (if (:static (:flags m))
-                                 [(c/value declaring-class)]
-                                 [(c/class-spec declaring-class)])
-                               (mapv (fn [param]
-                                       (method-type->spec param)) (:parameter-types m))))
-               (method-type->spec (j/resolve-java-class (:return-type m)))
-               nil)))
+    (or
+     (data/get-updated-method-spec declaring-class
+                                   (:name m)
+                                   (mapv j/resolve-java-class (:parameter-types m)))
+     (c/fn-spec (c/cat- (concat (if (:static (:flags m))
+                                  [(c/value declaring-class)]
+                                  [(c/class-spec declaring-class)])
+                                (mapv (fn [param]
+                                        (method-type->spec param)) (:parameter-types m))))
+                (method-type->spec (j/resolve-java-class (:return-type m)))
+                nil))))
 
 (defn get-java-method-spec
   "Returns the spec for all arities of the method or'd together.

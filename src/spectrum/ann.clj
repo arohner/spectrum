@@ -527,3 +527,29 @@
 
 (data/register-dependent-spec (c/pred-spec #'even?) (c/pred-spec #'integer?))
 (data/register-dependent-spec (c/pred-spec #'odd?) (c/pred-spec #'integer?))
+
+(defn object->number [t]
+  (let [t (j/resolve-java-class t)]
+    (if (= Object t)
+      (c/class-spec Number)
+      (c/class-spec t))))
+
+(defn numeric-proper-spec [m]
+  (let [declaring-class (j/resolve-java-class (:declaring-class m))]
+    (c/fn-spec (c/cat- (concat (if (contains? (:flags m) :static)
+                                 [(c/value declaring-class)]
+                                 [(c/class-spec declaring-class)]) (mapv object->number (:parameter-types m))))
+               (object->number (:return-type m))
+               nil)))
+
+(defn replace-numeric-tower-objects! []
+  ;; for every clojure.lang.Numbers operation that takes Object and
+  ;; returns nil or Object, replace-method-spec to Number->Number
+  (doseq [m (:members (clojure.reflect/reflect clojure.lang.Numbers))
+          :when (j/reflect-method? m)]
+    (when (or (some (fn [c] (= Object (j/resolve-java-class c))) (:parameter-types m))
+              (= Object (j/resolve-java-class (:return-type m))))
+      (let [s (numeric-proper-spec m)]
+        (data/replace-method-spec clojure.lang.Numbers (:name m) (mapv j/resolve-java-class (:parameter-types m)) s)))))
+
+(replace-numeric-tower-objects!)
