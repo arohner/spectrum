@@ -400,9 +400,10 @@
                     BigInt BigInt
                     BigInteger BigInt
                     Ratio Ratio
-                    BigDecimal BigDecimal})
+                    BigDecimal BigDecimal
+                    Number Number})
 
-(defn inc-transformer [spect args-spect]
+(defn inc-fn-transformer [spect args-spect]
   (let [arg (c/first- args-spect)]
     (if (c/valid? (c/class-spec Number) arg)
       (let [cs (c/spec->classes arg)
@@ -410,8 +411,16 @@
         (assoc spect :ret ret))
       (c/invalid {:message (format "inc: %s does not conform to Number" (print-str arg))}))))
 
-(ann #'inc inc-transformer)
-(ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-transformer)
+(defn inc-method-transformer [spect args-spect]
+  (let [arg (c/first- (c/rest- args-spect))]
+    (if (c/valid? (c/class-spec Number) arg)
+      (let [cs (c/spec->classes arg)
+            ret (->> cs (map (fn [p] (get inc-ret-class p Long))) (distinct) (map c/class-spec) (c/or-))]
+        (assoc spect :ret ret))
+      (c/invalid {:message (format "inc: %s does not conform to Number" (print-str arg))}))))
+
+(ann #'inc inc-fn-transformer)
+(ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
 
 (ann-protocol? #'c/spect? c/Spect)
 
