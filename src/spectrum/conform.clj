@@ -1291,6 +1291,9 @@
 (defn object-spec? [x]
   (and (class-spec? x) (= Object (:cls x))))
 
+(defn nil-spec? [x]
+  (and (value? x) (= nil (:v x))))
+
 (defn maybe-class [x]
   (cond
     (class-spec? x) (:cls x)
@@ -1861,7 +1864,9 @@
                   (if (object-spec? p)
                     (pred-spec #'any?)
                     p)) ps)
-        ;; TODO if ps contains any?, do we remove all other spects?
+        ps (if (some any-spec? ps)
+             [(first (filter any-spec? ps))]
+             ps)
         ps (set ps)]
     ps))
 
