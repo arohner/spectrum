@@ -539,6 +539,17 @@
     (assert (::ret-spec b) (format "no ret-spec on %s %s %s" (:op b) (:form b) (a-loc-str a)))
     (update-in a (conj b-path ::ret-spec) c/add-constraint constraint)))
 
+(defn infer-maybe-add-constraint
+  "Given an invoke at call-path, add constraint to the binding, if the constraint isn't shadowed by if tests"
+  [a call-path binding-name constraint]
+  (let [b- (find-binding- a call-path binding-name)
+        b (find-binding a call-path binding-name)]
+    (assert b-)
+    (assert b)
+    (if (and (c/valid? constraint (::ret-spec b)) (not (c/valid? constraint (::ret-spec b-))))
+      ;; we're shadowing the if, do nothing
+      a
+      (infer-add-constraint a (:path b) constraint))))
 
 (defn infer-or-constraint [a b-path constraint]
   (let [b (get-in a b-path)]
@@ -1604,7 +1615,7 @@
                                 (:binding :local) (let [b (find-binding a path (:name a-arg))
                                                         b-path (:path b)]
                                                     (assert b-path)
-                                                    (infer-add-constraint a b-path s-arg))
+                                                    (infer-maybe-add-constraint a path (:name b) s-arg))
                                 a)) a args)
                     a)
                 a (if (and (:inferred s) (-> a* :fn :op (= :local)))
@@ -1782,7 +1793,7 @@
                                              [m (assoc s :args args)]))))
                                   (filter identity)
                                   (map (fn [[m s]]
-                                         (c/maybe-transform-method m s (if (c/conform (:args s) invoke-args)
+                                         (c/maybe-transform-method m s (if (c/valid? (:args s) invoke-args)
                                                                          invoke-args
                                                                          (c/invoke-accept s)))))
                                   ((fn [ss]
@@ -1802,7 +1813,7 @@
                               (:binding :local) (let [b (find-binding a path (:name arg))
                                                       b-path (:path b)]
                                                   (assert b-path)
-                                                  (infer-add-constraint a b-path s))
+                                                  (infer-maybe-add-constraint a path (:name b) s))
                               a)) a arg-pairs))
                 a)]
         (assoc-in a (conj path ::ret-spec) ret-spec))
