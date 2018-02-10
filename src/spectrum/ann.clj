@@ -94,7 +94,6 @@
 (def pred->class
   {#'associative? clojure.lang.Associative
    #'boolean? Boolean
-   #'bigdec? BigDecimal
    #'char? Character
    #'chunked-seq? clojure.lang.IChunkedSeq
    #'class? Class
@@ -467,11 +466,9 @@
         int-count (pred-count (c/pred-spec #'int?) args)
         float-count (pred-count (c/pred-spec #'float?) args)
         big-int-count (pred-count (c/and- [(c/pred-spec #'integer?) (c/not- (c/pred-spec #'int?))]) args)
-        big-dec-count (pred-count (c/pred-spec #'bigdec?) args)
         ratio-count (pred-count (c/pred-spec #'ratio?) args)]
     (cond
       (pos? float-count)  (c/class-spec Double/TYPE)
-      (pos? big-dec-count) (c/class-spec BigDecimal)
       (pos? ratio-count) (c/class-spec Ratio)
       (pos? big-int-count) (c/class-spec BigInt)
       (= 2 int-count) (c/class-spec Long/TYPE)
