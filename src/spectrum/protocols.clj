@@ -1,0 +1,118 @@
+(ns spectrum.protocols)
+
+(defprotocol Spect
+  (conform* [spec x]
+    "Return the conforming value or invalid")
+  (explain* [spec path via in x]))
+
+(defprotocol DependentSpecs
+  (dependent-specs- [spec]
+    "Extra specs that are true of every instance of this type."))
+
+(defprotocol KeysGet
+  (keys-get- [this key]))
+
+(defprotocol WillAccept
+  (will-accept- [spec]
+    "Return the spect that will make (derivative spec x) return truthy (not reject/invalid). Return nil when the spect is a regex, but complete. Return reject/invalid when it isn't legal to call derivative on spect"))
+
+(defprotocol SpecToClasses
+  (spec->classes- [this]))
+
+(defprotocol Regex
+  (derivative
+    [spec x]
+    "Given a parsed spec, return the derivative")
+  (re-explain* [spec path via in x])
+  (empty-regex [this]
+    "The empty pattern for this regex")
+  (accept-nil? [this]
+    "True if this pattern successfully matches")
+  (return- [this]
+    "Given a completed regex parse, return the conform matching value")
+  (with-return- [this ret]
+    "add this regex's return data to ret")
+  (regex? [this]
+    "True if this spec is actually a regex, and not just a normal spec implementing the protocol")
+  (constructor [this]
+    "Returns a constructor function that takes :ps")
+  (elements [this]
+    "Returns the components of this regex. (constructor (elements this)) should round-trip"))
+
+(defrecord Accept [ret])
+
+(defrecord Reject [])
+
+(defrecord Invalid [a-loc form message])
+
+(defrecord Unknown [form file line column])
+
+(defrecord RecurForm [args])
+
+(defrecord ThrowForm [s])
+
+(defrecord Value [v type])
+
+(defprotocol FirstRest
+  (first- [this])
+  (rest- [this]
+    "Return a spect or nil.
+
+    Returns nil if it's legal to call rest on this, but there are no
+    items. Return invalid if it's not legal to call rest,
+    i.e. (value :foo)"))
+
+(defprotocol Truthyness
+  (truthyness [this]
+    "The truthyness of this spec, if it appeared in an `if`. Returns :truthy, :falsey or :ambiguous"))
+
+(defprotocol Invoke
+  (invoke- [s args]
+    "if code calls (s args), return the expected return type")
+  (invoke-accept- [s]
+    "Return the most general spec this spec can be invoked with"))
+
+(defprotocol KeywordInvoke
+  (keyword-invoke- [s args]
+    "If code calls (:foo spec), return the expected type"))
+
+(defrecord RegexCat [ps ks forms ret])
+
+(defrecord RegexSeq [ps ks forms splice ret])
+
+(defrecord RegexAlt [ps ks forms ret])
+
+  ;; 'container' spec, for when the user does e.g. (s/cat :x (s/spec
+  ;; (s/* integer?)))  necessary because it changes the behavior of
+  ;; `first`. Also useful as a `delay` for forward-declared specs
+
+(defrecord SpecSpec [s])
+
+(defrecord PredSpec [pred form])
+
+(defrecord ClassSpec [cls])
+
+;;type representing a value satisfying protocol p
+(defrecord ProtocolSpec [p])
+
+(defrecord NotSpec [s])
+
+(defrecord AndSpec [ps])
+
+(defrecord OrSpec [ps ks])
+
+(defrecord TupleSpec [ps])
+
+(defrecord KeysSpec [req req-un opt opt-un])
+
+(defrecord CollOfSpec [s kind])
+
+(defrecord ArrayOf [s])
+
+(defrecord MapOf [ks vs])
+
+(defrecord FnSpec [args ret fn var])
+
+(defrecord MultiSpec [multimethod retag])
+
+(defrecord DelaySpec [s])

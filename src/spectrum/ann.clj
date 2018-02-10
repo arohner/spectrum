@@ -4,6 +4,7 @@
             [spectrum.data :as data]
             [spectrum.flow :as flow]
             [spectrum.java :as j]
+            [spectrum.protocols :as p]
             [spectrum.util :refer (print-once validate!)])
   (:import (clojure.lang BigInt
                          Ratio)))
@@ -82,7 +83,7 @@
 (s/fdef protocol-transformer :args (s/cat :p any?) :ret ::transformer)
 (defn protocol-transformer [protocol]
   (fn [spect args-spect]
-    (let [arg (if (satisfies? c/FirstRest args-spect)
+    (let [arg (if (satisfies? p/FirstRest args-spect)
                 (c/first- args-spect)
                 args-spect)]
       (if arg
@@ -158,7 +159,9 @@
 (s/fdef ann-instance-or :args (s/cat :v var? :classes (s/coll-of class?)))
 (defn ann-instance-or [v classes]
   (ann v (instance-or classes))
-  (data/register-dependent-spec (c/pred-spec v) (c/or- (mapv c/class-spec classes))))
+  (data/register-dependent-spec (c/pred-spec v) (c/or- (mapv c/class-spec classes)))
+  (doseq [c classes]
+    (data/register-dependent-spec (c/class-spec c) (c/pred-spec v))))
 
 (ann-instance-or #'float? [Float Double])
 (ann-instance-or #'int? [Long Integer Short Byte])
@@ -228,7 +231,7 @@
                        (merge (get m1 k) (get m2 k)))))
 
 (ann #'merge (fn [spect args-spect]
-               (assert (c/cat-spec? args-spect))
+               (assert (c/cat? args-spect))
                (if (every? c/keys-spec? (:ps args-spect))
                  (assoc spect :ret (reduce merge-keys (:ps args-spect)))
                  spect)))
@@ -276,6 +279,26 @@
   (or (c/valid? (c/value []) s)
       (c/valid? (c/value nil) s)
       (c/valid? (c/pred-spec #'nil?) s)))
+
+(ann #'first (fn [spect args-spect]
+               (let [arg (c/first- args-spect)]
+                 (assoc spect :ret (c/first- arg)))))
+
+(defn ann-next [spect args-spect]
+  (let [arg (c/first- args-spect)]
+    (assoc spect :ret (c/rest- arg))))
+
+(ann #'next ann-next)
+
+(defn ann-rest [spect args-spect]
+  (let [arg (c/first- args-spect)
+        ret (c/rest- arg)
+        ret (if (= ret (c/value nil))
+              (c/value ())
+              ret)]
+    (assoc spect :ret ret)))
+
+(ann #'rest ann-rest)
 
 (defn filter-fn [spect args-spect]
   (let [f (c/first- args-spect)
@@ -332,7 +355,7 @@
     (assoc spect :ret transducer-fn-spec)
     (let [f (c/first- args-spect)
           colls (c/rest- args-spect)
-          _ (assert (c/cat-spec? colls))
+          _ (assert (c/cat? colls))
           coll-count (count (:ps colls))]
       (if (pos? coll-count)
         (cond
@@ -348,7 +371,7 @@
 (defn mapcat-fn [spect args-spect]
   (let [f (c/first- args-spect)
         colls (c/rest- args-spect)
-        _ (assert (c/cat-spec? colls))
+        _ (assert (c/cat? colls))
         colls (c/coll-items colls)]
     (let [invoke-args (cond
                         (every? c/first-rest? colls) (c/cat- (map c/first- colls))
@@ -372,7 +395,7 @@
     (assoc spect :ret transducer-fn-spec)
     (let [f (c/first- args-spect)
           colls (c/rest- args-spect)
-          _ (assert (c/cat-spec? colls))
+          _ (assert (c/cat? colls))
           coll-count (count (:ps colls))]
       (if (pos? coll-count)
         (cond
@@ -421,7 +444,7 @@
 (ann #'inc inc-fn-transformer)
 (ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
 
-(ann-protocol? #'c/spect? c/Spect)
+(ann-protocol? #'c/spect? p/Spect)
 
 (defn with-not-nil-ret
   "Given the spec for a java method, remove the (or nil) from the ret"
@@ -475,8 +498,9 @@
       :else (c/class-spec Number))))
 
 (defn add-transformer [spect args]
-  (let [a (c/first- args)
-        b (c/second* args)
+  (let [cls (c/first- args)
+        a (c/first- (c/rest- args))
+        b (c/first- (c/rest- (c/rest- args)))
         as (c/spec->classes a)
         bs (c/spec->classes b)
         ret (c/or- (set (for [a as
@@ -484,14 +508,10 @@
                           (add-transform-singular a b))))]
     (assoc spect :ret ret)))
 
-(def add-params [[(c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]
-                 [(c/class-spec Double/TYPE) (c/class-spec Object)]
+(def add-params [[(c/class-spec Double/TYPE) (c/class-spec Object)]
                  [(c/class-spec Object) (c/class-spec Double/TYPE)]
                  [(c/class-spec Object) (c/class-spec Object)]
-                 [(c/class-spec Long/TYPE) (c/class-spec Long/TYPE)]
                  [(c/class-spec Object) (c/class-spec Long/TYPE)]
-                 [(c/class-spec Double/TYPE) (c/class-spec Double/TYPE)]
-                 [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)]
                  [(c/class-spec Long/TYPE) (c/class-spec Object)]])
 
 (doseq [p add-params]
@@ -504,20 +524,17 @@
 
 (ann #'apply ann-apply)
 
+(defn cast-method-transformer [s args]
+  (let [cls (c/first- args)
+        x (c/second* args)]
+    (-> s
+        (assoc
+         :args (c/cat- [(c/class-spec Class) (c/class-spec (:v cls))])
+         :ret (c/class-spec (:v cls))))))
 
-;;
-;; TODO fix ann-method to provide the concrete class
-;; consider (.cast Number x)
-;; spec currently doesn't tell us cls is Number, so no way to update
-;;
+(ann-method java.lang.Class 'cast (c/cat- [(c/class-spec Object)]) cast-method-transformer)
 
-;; (ann-method java.lang.Class 'cast (c/cat- [(c/class-spec Object)]) (fn [s args]
-;;                                                                      (println "ann-method cast" s args)
-;;                                                                      (let [cls (c/first- args)
-;;                                                                            x (c/second* args)]
-;;                                                                        x)))
-
-(defn cast-transformer [spec args]
+(defn cast-fn-transformer [spec args]
   (let [cls-s (c/first- args)
         x (c/second* args)]
     (if (and (c/value? cls-s) (class? (:v cls-s)))
@@ -527,7 +544,7 @@
             (assoc :ret (c/class-spec cls))))
       spec)))
 
-(ann #'cast cast-transformer)
+(ann #'cast cast-fn-transformer)
 
 ;; extra clojure stuff
 

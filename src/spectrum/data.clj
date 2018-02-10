@@ -165,4 +165,5 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   []
   (swap! var-analysis (constantly {}))
   (swap! var-inferred-specs (constantly {}))
-  (swap! analyzed-nses (constantly #{})))
+  (swap! analyzed-nses (constantly #{}))
+  (swap! invoke-transformers (constantly {})))

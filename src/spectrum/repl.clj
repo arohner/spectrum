@@ -1,6 +1,7 @@
 (ns spectrum.repl
   (:require [clojure.spec.alpha :as s]
             [clojure.tools.analyzer.jvm :as ana.jvm]
+            [clojure.test.check.generators :as gen]
             [spectrum.check :as check]
             [spectrum.conform :as c]
             [spectrum.data :as data]

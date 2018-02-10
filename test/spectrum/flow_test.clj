@@ -194,39 +194,6 @@
       (are [spec args] (c/invalid? (flow/infer-invoke-constraints spec args))
         keyword-args-spec [(c/pred-spec #'any?) (c/pred-spec #'number?)]))))
 
-(deftest infer-form
-  (testing "truthy"
-    (are [form expected] (c/equivalent? expected (check/infer-form form))
-      '(fn [x] (if x true false)) (c/fn-spec (c/cat- [(c/class-spec Object)]) (c/or- [(c/value true) (c/value false)]) nil)
-      '(fn [x] (keyword x)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
-      '(fn [x] (keyword "foo" x)) (c/fn-spec (c/cat- [(c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
-      '(fn [x] (inc x)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-      ;; this returns [class Object] rather than [class Number], because (inc)'s input only requires [class Object].
-      '(fn [x] (inc x) x) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-      '(fn [x] (inc x) (keyword x) x) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-      '(fn [x] (not (even? x))) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'boolean?) nil)
-
-      '(fn [x] (+)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-      '(fn [x] (+ x 1)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
-      '(fn [x] (-> x :foo)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?) nil)
-
-      '(fn [x] (cast Number x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Number) nil)
-
-      '(fn foo ([x] (foo x 1)) ([x y] (+ x y))) (c/fn-spec (c/or- [(c/cat- [(c/class-spec Number)]) (c/cat- [(c/class-spec Number) (c/class-spec Number)])]) (c/class-spec Number) nil)
-      '((fn foo ([x] (foo x 1)) ([x y] (+ x y))) 2) (c/class-spec Number)
-
-      '(fn foo [x] (if (> x 1) (recur (/ x 2.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
-
-      ;; testing that this doesn't hang
-      '(fn [x] (update-in x [:foo] inc)) (c/pred-spec #'associative?)))
-
-  (testing "invalid"
-    (are [form] (c/invalid? (check/infer-form form))
-      '(fn [x] (inc (str x)))
-      '(fn [x] (inc x) (x :foo))
-      '(fn foo [x] (if (> x 1) (foo 1 2 3) 1))
-      '(let [foo (fn [x] (inc x))] (foo 1 2)))))
-
 (defn infer-var
   "infer a var return the spec"
   [v]
@@ -237,6 +204,40 @@
       :expr
       ::flow/ret-spec))
 
+(deftest infer-form
+  (testing "truthy"
+    (let [inc-spec (infer-var #'inc)]
+      (are [form expected] (c/equivalent? expected (check/infer-form form))
+        '(fn [x] (if x true false)) (c/fn-spec (c/cat- [(c/class-spec Object)]) (c/or- [(c/value true) (c/value false)]) nil)
+        '(fn [x] (keyword x)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
+        '(fn [x] (keyword "foo" x)) (c/fn-spec (c/cat- [(c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'keyword?) (c/pred-spec #'nil?)]) nil)
+        '(fn [x] (inc x)) inc-spec
+        '(fn [x] (inc x) x) inc-spec
+        '(fn [x] (inc x) (keyword x) x) inc-spec
+        '(fn [x] (not (even? x))) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'boolean?) nil)
+
+        '(fn [] 0) (c/fn-spec (c/cat- []) (c/value 0) nil)
+        '(fn [x] (cast Number x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Number) nil)
+
+        '(fn [x] (+)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Number) nil)
+        '(fn [x] (+ x 1)) (c/fn-spec (c/cat- [(c/or- [(c/class-spec Object) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)])]) (c/or- [(c/class-spec Number) (c/class-spec Long/TYPE) (c/class-spec Double/TYPE)]) nil)
+        '(fn [x] (-> x :foo)) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?) nil)
+
+        '(fn foo ([x] (foo x 1)) ([x y] (+ x y))) (c/fn-spec (c/or- [(c/cat- [(c/class-spec Number)]) (c/cat- [(c/class-spec Number) (c/class-spec Number)])]) (c/class-spec Number) nil)
+        '((fn foo ([x] (foo x 1)) ([x y] (+ x y))) 2) (c/class-spec Number)
+
+        '(fn foo [x] (if (> x 1) (recur (/ x 2.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
+
+        ;; testing that this doesn't hang
+        '(fn [x] (update-in x [:foo] inc)) (c/pred-spec #'associative?))))
+
+  (testing "invalid"
+    (are [form] (c/invalid? (check/infer-form form))
+      '(fn [x] (inc (str x)))
+      '(fn [x] (inc x) (x :foo))
+      '(fn foo [x] (if (> x 1) (foo 1 2 3) 1))
+      '(let [foo (fn [x] (inc x))] (foo 1 2)))))
+
 (deftest clojure-core-inferred
-  (is (-> (infer-var #'nat-int?) :args (= (c/cat- [(c/pred-spec #'any?)]))))
-  (is (-> (infer-var #'nat-int?) :ret (= (c/pred-spec #'boolean?)))))
+  (is (-> (infer-var #'nat-int?) :args (c/valid? (c/cat- [(c/pred-spec #'any?)]))))
+  (is (-> (infer-var #'nat-int?) :ret (c/valid? (c/pred-spec #'boolean?)))))
