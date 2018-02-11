@@ -558,7 +558,7 @@
 (defn cat? [x]
   (instance? RegexCat x))
 
-(s/fdef map->RegexCat :args (s/cat :x (s/keys :opt-un [:cat/ks :cat/ps :cat/fs] :req-un [:cat/ret])) :ret cat?)
+(s/fdef p/map->RegexCat :args (s/cat :x (s/keys :opt-un [:cat/ks :cat/ps :cat/fs] :req-un [:cat/ret])) :ret cat?)
 
 (declare new-regex-cat )
 
@@ -811,7 +811,7 @@
       (new-regex-alt (mapv #(p/derivative % x) ps) ks forms)))
 
   (empty-regex [{:keys [ps ks forms] :as this}]
-    (map->RegexAlt {:ps (map p/empty-regex ps)
+    (p/map->RegexAlt {:ps (map p/empty-regex ps)
                     :ks ks
                     :forms forms}))
   (accept-nil? [{:keys [ps ks forms] :as this}]
@@ -2571,6 +2571,9 @@
                        (valid? (:vs map-of) v)) (vals (:v v))))
     v))
 
+(defn map-of? [x]
+  (instance? MapOf x))
+
 (extend-type MapOf
   p/Spect
   (conform* [{:keys [ks vs] :as this} x]
@@ -3233,7 +3236,7 @@
               :else (do (println "conform bfs " spec args "=>" val "unhandled") (assert false)))))))))
 
 
-(s/fdef conform- :args (s/cat :s ::spect :args (s/nilable (s/and ::spect map?))) :ret ::spect)
+(s/fdef conform- :args (s/cat :s ::spect :args ::spect) :ret ::spect)
 (defn conform-
   "Given a spect and args, return the conforming parse. Behaves similar
   to s/conform, but args must be spectrum spects, rather than clojure.specs"
@@ -3383,6 +3386,7 @@
                   [1 (s/gen ::coll-of)]
                   [1 (s/gen ::or)]
                   ;; [1 (s/gen ::and)]
+                  [1 (s/gen ::map-of)]
                   ]))
 
 (s/def ::pred (s/with-gen pred-spec? #(gen/fmap (fn [p] (pred-spec p)) spectrum.gen/core-predicates-gen)))
@@ -3395,6 +3399,8 @@
 (s/def ::or (s/with-gen or? (fn [] (gen/fmap #(or- %) (gen/delay (gen/vector (s/gen ::spect) 2 5))))))
 
 (s/def ::and (s/with-gen and? (fn [] (gen/fmap #(and- %) (gen/delay (gen/vector (simple-spec-gen) 2 5))))))
+
+(s/def ::map-of (s/with-gen map-of? (fn [] (gen/fmap (fn [k v] (map-of k v)) (gen/delay (gen/vector (simple-spec-gen) 2))))))
 
 ;; non-regex
 

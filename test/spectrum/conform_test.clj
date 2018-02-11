@@ -622,7 +622,7 @@
   (binding [s/*recursion-limit* 2]
     (is (doall (gen/sample (s/gen ::c/spect))))))
 
-(defspec specs-conform-to-themselves 1000
+(defspec specs-conform-to-themselves 500
   (binding [s/*recursion-limit* 2]
     (prop/for-all [s (s/gen ::c/spect)]
       (= s (c/conform s s)))))
