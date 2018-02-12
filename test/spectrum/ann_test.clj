@@ -14,11 +14,11 @@
             [spectrum.check :as check]
             [spectrum.flow :as flow]
             [spectrum.util :as util])
-  (:import (spectrum.conform Unknown
-                             PredSpec
-                             ClassSpec
-                             AndSpec
-                             OrSpec)
+  (:import (spectrum.protocols Unknown
+                               PredSpec
+                               ClassSpec
+                               AndSpec
+                               OrSpec)
            [clojure.lang BigInt PersistentHashMap Ratio Seqable]))
 
 (util/instrument-in-CI)
