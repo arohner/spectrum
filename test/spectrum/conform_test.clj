@@ -304,21 +304,19 @@
   ;;(is (c/regex-seq? (c/rest* (c/parse-spec (s/* integer?)))))
   (is (c/cat? (c/rest- (c/parse-spec (s/+ integer?)))))
   (is (nil? (c/rest- (c/cat- []))))
-
   (is (= (c/pred-spec #'string?) (c/second* (c/cat- [(c/class-spec String) (c/parse-spec #'string?)]))))
-
   (is (= (c/pred-spec #'int?) (c/first- (c/parse-spec (s/cat :x int?)))))
   (is (nil? (c/rest- (c/parse-spec (s/cat :x int?)))))
   (is (= (c/value false) (c/second* (c/cat- [(c/pred-spec #'false?) (c/value false)]))))
-
   (is (= (c/value 1) (c/first- (c/value [1 2 3]))))
   (is (= (c/value [2 3]) (c/rest- (c/value [1 2 3]))))
-
   (is (= (c/cat- [(c/unknown {:message ""})]) (c/rest- (c/cat- [(c/unknown {:message ""}) (c/unknown {:message ""})]))))
-
   (is (= (c/rest- (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])])) nil))
+  (is (= (c/pred-spec #'any?) (c/rest- (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'seqable?) (c/pred-spec #'seq?)]))))
 
-  (is (= (c/pred-spec #'any?) (c/rest- (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'seqable?) (c/pred-spec #'seq?)])))))
+  (testing "rest conformy"
+    (are [s] (c/conformy? (c/rest- s))
+      (c/cat- [(c/and- [(c/pred-spec #'string?) (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'seq?)])])]))))
 
 (deftest truthyness
   (are [s expected] (= expected (c/truthyness s))
@@ -626,3 +624,15 @@
   (binding [s/*recursion-limit* 2]
     (prop/for-all [s (s/gen ::c/spect)]
       (= s (c/conform s s)))))
+
+(defspec cat-first-works
+  (prop/for-all [c (gen/such-that (fn [c] (pos? (count (:ps c)))) (s/gen ::c/cat))]
+    (c/conformy? (c/first- c))))
+
+(defspec cat-rest-1-works
+  (prop/for-all [c (gen/such-that (fn [c] (= 1 (count (:ps c)))) (s/gen ::c/cat))]
+    (nil? (c/rest- c))))
+
+(defspec cat-rest-works
+  (prop/for-all [c (gen/such-that (fn [c] (> (count (:ps c)) 1)) (s/gen ::c/cat))]
+    (c/conformy? (c/rest- c))))
