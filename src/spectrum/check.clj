@@ -47,7 +47,6 @@
 (defn maybe-load-clojure-builtins []
   (when-not (data/analyzed-ns? 'clojure.core)
     (println "loading clojure")
-    (data/load-clojure-data)
     (doseq [n builtin-nses]
       (data/analyze-cache-ns n))))
 
@@ -209,9 +208,7 @@
   (maybe-load-clojure-builtins)
   (when-not (data/analyzed-ns? ns)
     (println "analyzing" ns)
-    (binding [*warn-on-reflection* false
-              *print-level* 3
-              *print-length* 100]
+    (binding [*warn-on-reflection* false]
       (flow-ns ns))
     (data/mark-ns-analyzed! ns)))
 

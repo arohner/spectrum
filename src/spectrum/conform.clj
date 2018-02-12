@@ -1970,7 +1970,8 @@
     (->> this
          :ps
          (map parse-spec)
-         (some accept-nil?)))
+         (some accept-nil?)
+         (boolean)))
   (elements [this]
     (->> this
          :ps
@@ -2291,7 +2292,7 @@
 
 (defn seq-fix-length
   [s n]
-  {:pre [(core/seq? s) (nat-int? n)]}
+  {:pre [(seq? s) (nat-int? n)]}
   (loop [ret [[]]
          n n]
     (let [elem (first (p/elements s))]
@@ -3039,7 +3040,6 @@
     (loop [spec spec
            data data
            iter 0]
-      (println "re-conform:" spec data)
       (if (> iter 100)
         (do (println "infinite re-conform:" spec* data*)
             (assert false)
@@ -3400,7 +3400,7 @@
 
 (s/def ::and (s/with-gen and? (fn [] (gen/fmap #(and- %) (gen/delay (gen/vector (simple-spec-gen) 2 5))))))
 
-(s/def ::map-of (s/with-gen map-of? (fn [] (gen/fmap (fn [k v] (map-of k v)) (gen/delay (gen/vector (simple-spec-gen) 2))))))
+(s/def ::map-of (s/with-gen map-of? (fn [] (gen/fmap (fn [[k v]] (map-of k v)) (gen/delay (gen/vector (simple-spec-gen) 2))))))
 
 ;; non-regex
 
@@ -3414,6 +3414,6 @@
 ;; regex
 (s/def ::cat (s/with-gen cat? (fn [] (gen/fmap #(cat- %) (gen/vector (gen/delay (spec-gen)) 0 5)))))
 (s/def ::alt (s/with-gen alt? (fn [] (gen/fmap #(alt- %) (gen/delay (gen/vector (spec-gen) 1 3))))))
-(s/def ::seq (s/with-gen seq? #(gen/fmap (fn [p] (seq- p)) (gen/delay (spec-gen)))))
+(s/def ::seq (s/with-gen seq? (fn [] (gen/fmap (fn [p] (seq- p)) (gen/delay (spec-gen))))))
 
 (s/def ::spect (s/with-gen spect? simple-spec-gen))

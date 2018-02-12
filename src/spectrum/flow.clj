@@ -68,8 +68,9 @@
   #'flow-dispatch)
 
 (s/fdef flow :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis)
-(def flow (memo/memo (fn [a]
-                       (flow* a []))))
+(def flow (memo/memo (fn
+                       ([a] (flow* a []))
+                       ([a path] (flow* a path)))))
 
 (s/fdef flow-ns :args (s/cat :as ::analyses) :ret ::analyses)
 
@@ -226,7 +227,7 @@
         ret-spec (if-let [s (get-var-spec v)]
                    s
                    (if-let [a (data/get-var-analysis v)]
-                     (::ret-spec (infer a))
+                     (::ret-spec (cached-infer a))
                      (c/value @(:var a*))))]
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
@@ -243,7 +244,7 @@
 (defmulti invoke-get-fn-spec "Given the :fn from an :invoke a, return the spec for the thing being invoked"
   #'invoke-get-fn-spec-dispatch)
 
-(s/fdef recursive? :args (s/cat :a ::ana.jvm/analysis :path ::path :v var?) :ret boolean?)
+(s/fdef recursive? :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret boolean?)
 (defn recursive?
   "Given an invoke of var v at a path, return true if it's a self-call"
   [a path]
@@ -590,22 +591,32 @@
 (defn get-var-fn-analysis [a]
   (some-> a :init maybe-strip-meta))
 
+(defn invoke-get-fn-analysis-var [v]
+  (let [v-a (data/get-var-analysis v)
+        path [:init]
+        path (if (-> (get-in v-a path) :op (= :with-meta))
+               (conj path :expr)
+               path)]
+    {:a v-a :path path :op :var}))
+
 (defn invoke-get-fn-analysis [a path]
   (let [a* (get-in a path)
         _ (assert (= :invoke (:op a*)) (format "invoke-get-fn-analysis passed %s %s" (:op a*) (:form a*)))
         f (:fn a*)
         fn-op (-> a* :fn :op)]
     (condp = fn-op
-      :var {:a (some-> a* :fn :var data/get-var-analysis get-var-fn-analysis) :path []}
-      :the-var {:a (some-> a* :fn :var data/get-var-analysis get-var-fn-analysis) :path []}
-      :fn  {:a (-> a* :fn) :path (conj path :fn)}
+      :var (invoke-get-fn-analysis-var (-> a* :fn :var))
+      :the-var (invoke-get-fn-analysis-var (-> a* :fn :var))
+      :fn  {:a (-> a* :fn) :path (conj path :fn) :op fn-op}
       :local (let [b (find-binding a path (-> a* :fn :name))]
                (assert b)
                (assert (:path b))
                {:a (:init b)
-                :path (:path b)})
+                :path (:path b)
+                :op fn-op})
       :const {:a (-> a* :fn :val)
-              :path (conj path :fn)}
+              :path (conj path :fn)
+              :op fn-op}
       :invoke (recur a (conj path :fn))
       (println "don't know how to find analysis for" fn-op))))
 
@@ -750,29 +761,35 @@
   {:pre [(c/spect? args-spec)]
    :post [(do (when-not (c/spect? %)
                 (println "specialize:" (:form f-a) "->" %)) true) (c/spect? %)]}
-  (println "specialize:" (or (:var f-a) (:form f-a)))
-  (let [v (:var f-a)]
+  (let [f-a* (get-in f-a path)
+        v (:var f-a*)]
     (if (and v (data/get-invoke-transformer v))
       (let [s (get-var-spec v)]
         (c/invoke s args-spec))
       (let [_ (assert (c/conformy? args-spec))
-            _ (assert (= :fn (:op f-a)))
-            f-a (infer-or-flow f-a path)
-            f-a (update-in f-a [:methods] (fn [methods]
-                                            (->> methods
-                                                 (filterv (fn [m]
-                                                            (assert (:params m))
-                                                            (assert (every? ::ret-spec (:params m)))
-                                                            (println "m:" (mapv ::ret-spec (:params m)))
-                                                            (method-arity-conform? (:params m) args-spec))))))
-            _ (when-not (= 1 (count (:methods f-a)))
+            _ (when-not (= :fn (:op f-a*))
+                (println "specialize:" (:form f-a) path (:op f-a*)))
+            _ (assert (= :fn (:op f-a*)))
+            _ (assert path)
+            f-a (infer-or-flow f-a [])
+            _ (assert (::ret-spec f-a))
+            f-a* (get-in f-a path)
+            f-a* (update-in f-a* [:methods] (fn [methods]
+                                              (->> methods
+                                                   (filterv (fn [m]
+                                                              (assert (:params m))
+                                                              (assert (every? ::ret-spec (:params m)))
+                                                              (println "method" (:params m) "conform:" args-spec "=" (method-arity-conform? (:params m) args-spec))
+                                                              (method-arity-conform? (:params m) args-spec))))))
+            _ (when-not (= 1 (count (:methods f-a*)))
                 (println "specialize method count:" (:form f-a) args-spec (count (:methods f-a))))
-            _ (assert (= 1 (count (:methods f-a))))
-            f-a (update-in f-a [:methods 0 :params] (fn [params]
-                                                      (destructure-fn-params params args-spec)))
+            _ (assert (= 1 (count (:methods f-a*))))
+            f-a (assoc-in f-a path f-a*)
+            f-a (update-in f-a (conj path [:methods 0 :params]) (fn [params]
+                                                                  (destructure-fn-params params args-spec)))
             orig-spec (::ret-spec f-a)
-            f-a (flow* f-a [])
-            ret-spec (::ret-spec f-a)]
+            f-a (flow* f-a path)
+            ret-spec (get-in f-a (conj path ::ret-spec))]
         (println "specialize:" (or (:var f-a) (:form f-a)) args-spec "=>" ret-spec)
         (assert (c/spect? ret-spec))
         ret-spec))))
@@ -805,7 +822,7 @@
             (assert (c/spect? fn-spec))
             (assert (c/spect? args-spec))
             (assoc-in a (conj path ::ret-spec) (if f-a
-                                                 (call-site-specialize f-a (:args a*))
+                                                 (call-site-specialize f-a f-a-path args-spec)
                                                  (c/invoke fn-spec args-spec))))
           (assoc-in a (conj path ::ret-spec) (c/unknown {:message (format "invoke: no spec for %s" (:var (:fn a*)))})))
         (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "invoke: wrong number of args %s" (:form a*))})))
@@ -1609,7 +1626,7 @@
   (let [a* (get-in a path)]
     (assert a*)
     (binding [*a* a*]
-      (let [a-post (infer* a path)
+      (let [a-post (cached-infer a path)
             a*-post (get-in a-post path)
             ret-spec (::ret-spec (get-in a-post path))]
         (assert ret-spec)
@@ -1730,8 +1747,7 @@
                   (infer-fn-invoke-add-constraint (:path b) invoke-args)))
             a)
         s (invoke-get-fn-spec a (conj path :fn) invoke-args)
-        {f-a :a f-a-path :path} (invoke-get-fn-analysis a path)]
-    ;;(println "infer invoke:" (:form a*) "s:" s)
+        {f-a :a f-a-path :path f-a-op :op} (invoke-get-fn-analysis a path)]
     (if (and s (not (c/unknown? s)) (not (c/invalid? s)) (or (c/invoke? s) local-inferred-fn?))
       (let [s-args (if (c/valid? (c/invoke-accept s) invoke-args)
                      (let [spec* (c/maybe-transform s invoke-args)]
@@ -1749,8 +1765,7 @@
                                 (:binding :local) (infer-maybe-add-constraint a path (:name a-arg) s-arg)
                                 a)) a args)
                     a)
-
-                ret-spec (if f-a
+                ret-spec (if (and f-a (= :var f-a-op) (not (recursive? a (conj path :fn))))
                            (call-site-specialize f-a f-a-path invoke-args)
                            (c/invoke s (if (c/valid? (c/invoke-accept s) invoke-args)
                                          invoke-args
@@ -1774,6 +1789,8 @@
   "Return the initial fn-spec for this fn-method"
   [a path]
   (let [a* (get-in a path)
+        _ (assert a*)
+        _ (assert (:op a*))
         _ (assert (= :fn-method (:op a*)))
         args (c/cat- (mapv (fn [p]
                              (cond

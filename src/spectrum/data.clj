@@ -85,18 +85,6 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   [v dispatch]
   (get-in (get-defmethod-analysis v dispatch) [:args 1]))
 
-(defn load-clojure-data
-  "fake analysis data for special clojure.core vars that aren't defined in .clj source"
-  []
-  (swap! var-analysis assoc #'clojure.core/in-ns {:init {:op :fn
-                                                         :form '(fake)
-                                                         :env {:file "bogus.clj"
-                                                               :line 1
-                                                               :column 1}
-                                                         :methods [{:variadic? false
-                                                                    :fixed-arity 1}]}})
-  nil)
-
 (defn analyze-cache-ns
   "analyze and store in var cache, but don't flow or check"
   [ns]
