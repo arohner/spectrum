@@ -625,14 +625,28 @@
     (prop/for-all [s (s/gen ::c/spect)]
       (= s (c/conform s s)))))
 
+(defn should-first? [cat]
+  (and (pos? (count (:ps cat)))
+       (some (fn [p]
+               (if (p/regex? p)
+                 (c/first- p)
+                 true)) (:ps cat))))
+
+(defn should-rest? [cat]
+  (and (pos? (count (:ps cat)))
+       (some (fn [p]
+               (if (p/regex? p)
+                 (c/rest- p)
+                 true)) (:ps cat))))
+
 (defspec cat-first-works
-  (prop/for-all [c (gen/such-that (fn [c] (pos? (count (:ps c)))) (s/gen ::c/cat))]
+  (prop/for-all [c (gen/such-that should-first? (s/gen ::c/cat))]
     (c/conformy? (c/first- c))))
 
 (defspec cat-rest-1-works
-  (prop/for-all [c (gen/such-that (fn [c] (= 1 (count (:ps c)))) (s/gen ::c/cat))]
+  (prop/for-all [c (gen/such-that should-rest? (s/gen ::c/cat))]
     (nil? (c/rest- c))))
 
 (defspec cat-rest-works
-  (prop/for-all [c (gen/such-that (fn [c] (> (count (:ps c)) 1)) (s/gen ::c/cat))]
+  (prop/for-all [c (gen/fmap c/cat- (gen/vector (gen/such-that #(or (and (p/regex? %) (c/first- %)) true) (s/gen ::c/spect)) 2))]
     (c/conformy? (c/rest- c))))

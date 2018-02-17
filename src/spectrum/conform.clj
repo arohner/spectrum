@@ -661,10 +661,15 @@
       nil))
   p/FirstRest
   (first- [this]
-    (let [p (some-> this :ps first parse-spec)]
-      (if (and (first-rest? p) (p/regex? p))
-        (first- p)
-        p)))
+    (->> this
+         :ps
+         (map parse-spec)
+         (map (fn [p]
+                (if (and (first-rest? p) (p/regex? p))
+                  (first- p)
+                  p)))
+         (filter identity)
+         first))
   (rest- [this]
     (let [x (will-accept this)]
       (if (and x (conformy? x))
@@ -2566,6 +2571,7 @@
 
 (s/fdef conform-map-of :args (s/cat :m ::spect :v value?) :ret any?)
 (defn conform-map-of [map-of v]
+  {:pre [(value? v) (map? (:v v))]}
   (when (and (every? (fn [k]
                        (valid? (:ks map-of) k)) (keys (:v v)))
              (every? (fn [v]
@@ -2582,7 +2588,7 @@
       (instance? spectrum.protocols.MapOf x) (when (and (valid? (parse-spec ks) (parse-spec (:ks x)))
                                      (valid? (parse-spec vs) (parse-spec (:vs x))))
                             x)
-      (value? x) (conform-map-of this x)
+      (and (value? x) (map? (:v x))) (conform-map-of this x)
       :else nil))
   p/DependentSpecs
   (dependent-specs- [s]
