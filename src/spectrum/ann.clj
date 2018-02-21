@@ -190,11 +190,8 @@
 (ann #'nil? (ann-nil-false nil))
 
 (ann #'not (fn [spect args-spec]
-             (let [x (c/first- args-spec)
-                   x (maybe-convert-value x)]
-               (if (c/value? x)
-                 (assoc spect :ret (c/value (not (:v x))))
-                 spect))))
+             (let [x (c/first- args-spec)]
+               (c/not- x))))
 
 (defn get-cat-vals
   "Given a Cat of Value, return the raw vals"
@@ -550,6 +547,16 @@
 
 (data/register-dependent-spec (c/pred-spec #'even?) (c/pred-spec #'integer?))
 (data/register-dependent-spec (c/pred-spec #'odd?) (c/pred-spec #'integer?))
+
+(data/register-dependent-spec (c/pred-spec #'true?) (c/value true))
+(data/register-dependent-spec (c/pred-spec #'false?) (c/value false))
+(data/register-dependent-spec (c/pred-spec #'nil?) (c/value nil))
+(data/register-dependent-spec (c/pred-spec #'zero?) (c/value 0))
+
+(data/register-dependent-spec (c/value true) (c/pred-spec #'true?))
+(data/register-dependent-spec (c/value false) (c/pred-spec #'false?))
+(data/register-dependent-spec (c/value nil) (c/pred-spec #'nil?))
+(data/register-dependent-spec (c/value 0) (c/pred-spec #'zero?))
 
 (defn object->number [t]
   (let [t (j/resolve-java-class t)]

@@ -1,6 +1,7 @@
 (ns spectrum.java
   (:require [clojure.spec.alpha :as s]
             [clojure.set :as set]
+            [clojure.reflect :as reflect]
             [clojure.string :as str]
             [spectrum.data :as data]
             [spectrum.util :refer (predicate-spec)]))
@@ -36,6 +37,9 @@
 (s/fdef primitive? :args (s/cat :x class?) :ret boolean?)
 (defn primitive? [x]
   (contains? primitives x))
+
+(defn final? [x]
+  (and (class? x) (-> x (reflect/reflect) :flags :final boolean)))
 
 (s/fdef primitive->class :args (s/cat :p primitive?) :ret class?)
 (defn primitive->class [p]

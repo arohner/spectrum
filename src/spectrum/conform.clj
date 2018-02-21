@@ -499,6 +499,12 @@
     (p/dependent-specs- s)
     #{}))
 
+(defn maybe-convert-value [x]
+  (-> (dependent-specs x)
+      (#(filter value? %))
+      first
+      (or x)))
+
 (s/fdef dependent-specs :args (s/cat :s (s/nilable ::spect)) :ret ::dependent-specs)
 (defn dependent-specs [s]
   (set/union (dependent-specs* s) (data/get-dependent-specs s)))
@@ -821,7 +827,7 @@
                     :forms forms}))
   (accept-nil? [{:keys [ps ks forms] :as this}]
     (let [ps (map parse-spec ps)]
-      (some accept-nil? ps)))
+      (boolean (some accept-nil? ps))))
   (return- [{:keys [ps ks forms] :as this}]
     (let [ps (map parse-spec ps)
           p0 (->> ps
@@ -970,17 +976,6 @@
     (parse-spec (s/get-spec x))
     (value x)))
 
-(defn pred->value
-  "If the spec is a pred that checks for a single value e.g. nil? false?, return the value, else nil"
-  [s]
-  (when (pred-spec? s)
-    (condp = (:pred s)
-      #'nil? (value nil)
-      #'false? (value false)
-      #'true? (value true)
-      #'zero? (value 0)
-      nil)))
-
 (predicate-spec value?)
 (defn value? [s]
   (instance? Value s))
@@ -1012,8 +1007,6 @@
     (cond
       (instance? Value x) (when (= (:v this) (:v x))
                             x)
-      (pred->value x) (when (= this (pred->value x))
-                        x)
       :else (when (= (:v this) x)
               x)))
   p/Truthyness
@@ -1580,15 +1573,16 @@
 
 (s/fdef not- :args (s/cat :s ::spect) :ret ::spect)
 (defn not- [s]
-  (if (not? s)
-    (-> s :s)
-    (p/map->NotSpec {:s s})))
+  (cond
+    (not? s) (-> s :s)
+    (value? s) (value (not (:v s)))
+    :else (p/map->NotSpec {:s s})))
 
 (extend-type NotSpec
   p/Spect
   (conform* [this x]
-    (when (and (not (conformy? (p/conform* (:s this) x)))
-             (not (conformy? (p/conform* x (:s this)))))
+    (when (and (not (valid? (parse-spec (:s this)) x))
+               (not (valid? x (parse-spec (:s this)))))
       x))
   p/WillAccept
   (will-accept- [this]
@@ -1619,10 +1613,11 @@
   [ps]
   (let [compatible? (fn [a b]
                       {:pre [(class? a) (class? b)]}
-                      (or (j/interface? a)
-                          (j/interface? b)
-                          (isa? a b)
-                          (isa? b a)))
+                      (and ;; (not (= Object a))
+                       (or (isa? a b)
+                           (isa? b a)
+                           (and (j/interface? a) (not (j/final? b)))
+                           (and (j/interface? b) (not (j/final? a))))))
         ps (map parse-spec ps)
         ps-classes (map (fn [p]
                           (spec->classes p)) ps)]
@@ -1637,7 +1632,7 @@
         true))))
 
 (defn and-not-contradiction?
-  "True if ps contains X and not X"
+  "True if ps contains x and (not- x)"
   [ps]
   (let [nots (filter not? ps)
         not-preds (set (map :s nots))]
@@ -1646,11 +1641,14 @@
                     (valid? np p)) not-preds)) ps)))
 
 (defn and-value-contradiction?
-  "true if and ps contains two non-equal values"
+  "true if `and` ps contains two non-equal values, or values that don't conform to other constraints"
   [ps]
-  (let [values (filter value? ps)]
+  (let [{values true non-values false} (group-by value? ps)]
     (if (seq values)
-      (not (apply = (map :v values)))
+      (or (not (apply = (map :v values)))
+          (not (every? (fn [v]
+                         (every? (fn [s]
+                                   (valid? s v)) non-values)) values)))
       false)))
 
 (s/fdef and-consolidate :args (s/cat :ps (s/coll-of ::spect)) :ret (s/coll-of ::spect))
@@ -1660,6 +1658,7 @@
   {:post [(validate! (s/coll-of ::spect-like) %)]}
   (let [ps-orig ps
         ps (distinct ps)
+        ps (map maybe-convert-value ps)
         {ands true not-ands false} (group-by and? ps)
         ps (concat (seq not-ands) (distinct (mapcat (fn [a] (:ps a)) ands)))
         {ors true not-ors false} (group-by or? ps)
@@ -1674,9 +1673,6 @@
 (defn and- [ps]
   (let [ps (and-consolidate ps)]
     (cond
-      (not (and-classes-compatible? ps)) (invalid {:message "and contains incompatible java classes"})
-      (and-not-contradiction? ps) (invalid {:message "and- contains contradictions"})
-      (and-value-contradiction? ps) (invalid {:message "and- contains incompatible values"})
       (>= (count ps) 2) (p/map->AndSpec {:ps ps})
       :else (first ps))))
 
@@ -1727,7 +1723,14 @@
 (defn non-contradiction?
   "True if adding constraint to s won't result in contradiction"
   [s constraint]
-  (conformy? (add-constraint s constraint)))
+  (let [s* (add-constraint s constraint)
+        {:keys [ps]} s*]
+    (cond
+      (and? s*) (and (conformy? s*)
+                     (and-classes-compatible? ps)
+                     (not (and-not-contradiction? ps))
+                     (not (and-value-contradiction? ps)))
+      :else (conformy? s*))))
 
 (defn or-or-invalid
   [ps message]
@@ -3186,7 +3189,7 @@
 
 (defmethod conform-compound :and-and [spec args]
   (when (every? (fn [p]
-                  (valid? p args)) (map parse-spec (:ps spec)))
+                  (some #(valid? p %) (->> args :ps (map parse-spec)))) (map parse-spec (:ps spec)))
     args))
 
 (defmethod conform-compound :or-or [spec args]
@@ -3301,43 +3304,44 @@
   (#'clojure.core/print-sequential "[" print-method " " "]" (:ps spec) w))
 
 (defmethod print-method RegexCat [v ^Writer w]
-  (regex-print-method "Cat" v w))
+  (regex-print-method "cat" v w))
 
 (defmethod print-method RegexSeq [v ^Writer w]
-  (regex-print-method "Seq" {:ps (take 1 (:ps v))} w))
+  (regex-print-method "seq" {:ps (take 1 (:ps v))} w))
 
 (defmethod print-method RegexAlt [v ^Writer w]
-  (regex-print-method "Alt" v w))
+  (regex-print-method "alt" v w))
 
 (defmethod print-method Value [v ^Writer w]
-  (.write w "#Value[")
+  (.write w "#value[")
   (print-method (:v v) w)
   (.write w "]"))
 
 (defmethod print-method PredSpec [v ^Writer w]
-  (.write w (format "#Pred[" ))
+  (.write w (format "#pred[" ))
   (print-method (:form v) w)
   (.write w "]"))
 
 (defmethod print-method spectrum.protocols.ClassSpec [v ^Writer w]
-  (.write w "#Class[")
+  (.write w "#class[")
   (print-method (:cls v) w)
   (.write w "]"))
 
 (defmethod print-method AndSpec [v ^Writer w]
-  (.write w "#And")
+  (.write w "#and")
   (#'clojure.core/print-sequential "[" print-method " " "]" (:ps v) w))
 
 (defmethod print-method OrSpec [v ^Writer w]
-  (.write w (format "#Or"))
+  (.write w (format "#or"))
   (#'clojure.core/print-sequential "[" print-method " " "]" (:ps v) w))
 
 (defmethod print-method NotSpec [v ^Writer w]
-  (.write w (format "#Or"))
-  (#'clojure.core/print-sequential "[" print-method " " "]" (:ps v) w))
+  (.write w "#not[")
+  (print-method (:s v) w)
+  (.write w "]"))
 
 (defmethod print-method FnSpec [s ^Writer w]
-  (.write w "#Fn")
+  (.write w "#fn")
   (->> (map #(find s %) [:var :args :ret :fn])
        (filter (fn [[k v]]
                  (identity v)))
@@ -3346,7 +3350,7 @@
        (#(print-method % w))))
 
 (defmethod print-method KeysSpec [spec ^Writer w]
-  (.write w "#Keys{")
+  (.write w "#keys{")
   (doseq [type [:req :req-un :opt :opt-un]
           keys (get spec type)
           :when keys]
@@ -3360,7 +3364,7 @@
                        vector? ["[" "]"]
                        set? ["#{" "}"]
                        ["[" "]"])]
-    (.write w "#CollOf")
+    (.write w "#coll")
     (#'clojure.core/print-sequential open print-method " " close [(:s spec)] w)))
 
 ;; #(gen/one-of (map (fn [s] (-> s s/spec s/gen)) #{::pred-spec ::value ::coll-of-spec}))

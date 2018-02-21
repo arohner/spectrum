@@ -89,6 +89,10 @@ which is useful when you want to debug the signature of a form.
   - Not all clojure code is pure
   - Not always easy to write a good generator for all functions (hello, any fn that takes a DB connection)
   - Not always easy to write a generator w/ 100% coverage
+ - you can't spec non-defn functions
+ - you can't spec higher order functions
+ - generative testing with side-effects doesn't work well
+ - generative testing gives false negatives in unlikely bugs
  - spec doesn't deal with non-fn vars at all (binding, alter-var-root, set!, etc)
  - generative testing can be slow
 
