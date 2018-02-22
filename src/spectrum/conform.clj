@@ -499,15 +499,99 @@
     (p/dependent-specs- s)
     #{}))
 
+(predicate-spec value?)
+(defn value? [s]
+  (instance? Value s))
+
+(s/fdef value :args (s/cat :x any?) :ret value?)
+(defn value
+  "spec representing a single value"
+  [v]
+  (p/map->Value {:v v
+                 ;; numbers of different type share same hash, store
+                 ;; type so the values hash differently, because c/conform
+                 ;; is cached
+                 :type (when (number? v)
+                         (class v))
+                 }))
+
+(defn maybe-strip-value [s]
+  (if (value? s)
+    (:v s)
+    s))
+
+(s/fdef get-value :args (s/cat :v value?) :ret any?)
+(defn get-value [v]
+  (:v v))
+
+(extend-type Value
+  p/Spect
+  (conform* [this x]
+    (cond
+      (instance? Value x) (when (= (:v this) (:v x))
+                            x)
+      :else (when (= (:v this) x)
+              x)))
+  p/Truthyness
+  (truthyness [this]
+    (if (:v this)
+      :truthy
+      :falsey))
+  p/Invoke
+  (invoke- [this args]
+    (value-invoke this args))
+  (invoke-accept- [this]
+    (value-invoke-accept this))
+  p/KeywordInvoke
+  (keyword-invoke- [this args]
+    (let [key (first- args)
+          else (second* args)
+          rest (rest- (rest- args))]
+      (cond
+        (nil? key) (invalid {:message "not enough args"})
+        rest (invalid {:message "value keyword invoke: too many args"})
+        (and (value? key) (value? else)) (value (get (:v this) (:v key) (:v else)))
+        (and (value? key) (nil? else)) (value (get (:v this) (:v key)))
+        :else (unknown {:message "don't know how to keyword-invoke"}))))
+  p/FirstRest
+  (first- [{:keys [v] :as this}]
+    (if (and v (or (core/seq? v) (seqable? v)))
+      (if (seq v)
+        (value (first v))
+        nil)
+      (invalid {:message (format "value %s does not support first" v)
+                :form `(first ~v)})))
+  (rest- [{:keys [v] :as this}]
+    (if (or (core/seq? v) (seqable? v))
+      (if (seq (rest v))
+        (value (rest v))
+        nil)
+      (invalid {:message (format "value %s does not support rest" v) :form `(rest ~v)})))
+  p/DependentSpecs
+  (dependent-specs- [this]
+    (if (nil? (:v this))
+      #{}
+      #{(class-spec (class (:v this)))}))
+  p/WillAccept
+  (will-accept- [this]
+    this)
+  p/KeysGet
+  (keys-get- [{:keys [v] :as this} k]
+    (if (coll? v)
+      (value (get v k))
+      (value nil))))
+
+(extend-regex Value)
+
+(s/fdef dependent-specs :args (s/cat :s (s/nilable ::spect)) :ret ::dependent-specs)
+(defn dependent-specs [s]
+  (set/union (dependent-specs* s) (data/get-dependent-specs s)))
+
 (defn maybe-convert-value [x]
   (-> (dependent-specs x)
       (#(filter value? %))
       first
       (or x)))
-
-(s/fdef dependent-specs :args (s/cat :s (s/nilable ::spect)) :ret ::dependent-specs)
-(defn dependent-specs [s]
-  (set/union (dependent-specs* s) (data/get-dependent-specs s)))
 
 (s/fdef recursive-dependent-specs :args (s/cat :s (s/nilable ::spect)) :ret ::dependent-specs)
 (defn recursive-dependent-specs
@@ -975,112 +1059,6 @@
   (if (and (qualified-keyword? x) (s/get-spec x))
     (parse-spec (s/get-spec x))
     (value x)))
-
-(predicate-spec value?)
-(defn value? [s]
-  (instance? Value s))
-
-(s/fdef value :args (s/cat :x any?) :ret value?)
-(defn value
-  "spec representing a single value"
-  [v]
-  (p/map->Value {:v v
-               ;; numbers of different type share same hash, store
-               ;; type so the values hash differently, because c/conform
-               ;; is cached
-               :type (when (number? v)
-                       (class v))
-               }))
-
-(defn maybe-strip-value [s]
-  (if (value? s)
-    (:v s)
-    s))
-
-(s/fdef get-value :args (s/cat :v value?) :ret any?)
-(defn get-value [v]
-  (:v v))
-
-(extend-type Value
-  p/Spect
-  (conform* [this x]
-    (cond
-      (instance? Value x) (when (= (:v this) (:v x))
-                            x)
-      :else (when (= (:v this) x)
-              x)))
-  p/Truthyness
-  (truthyness [this]
-    (if (:v this)
-      :truthy
-      :falsey))
-  p/Invoke
-  (invoke- [this args]
-    (value-invoke this args))
-  (invoke-accept- [this]
-    (value-invoke-accept this))
-  p/KeywordInvoke
-  (keyword-invoke- [this args]
-    (let [key (first- args)
-          else (second* args)
-          rest (rest- (rest- args))]
-      (cond
-        (nil? key) (invalid {:message "not enough args"})
-        rest (invalid {:message "value keyword invoke: too many args"})
-        (and (value? key) (value? else)) (value (get (:v this) (:v key) (:v else)))
-        (and (value? key) (nil? else)) (value (get (:v this) (:v key)))
-        :else (unknown {:message "don't know how to keyword-invoke"}))))
-  p/FirstRest
-  (first- [{:keys [v] :as this}]
-    (if (and v (or (core/seq? v) (seqable? v)))
-      (if (seq v)
-        (value (first v))
-        nil)
-      (invalid {:message (format "value %s does not support first" v)
-                :form `(first ~v)})))
-  (rest- [{:keys [v] :as this}]
-    (if (or (core/seq? v) (seqable? v))
-      (if (seq (rest v))
-        (value (rest v))
-        nil)
-      (invalid {:message (format "value %s does not support rest" v) :form `(rest ~v)})))
-  p/DependentSpecs
-  (dependent-specs- [this]
-    (if (nil? (:v this))
-      #{}
-      #{(class-spec (class (:v this)))}))
-  p/WillAccept
-  (will-accept- [this]
-    this)
-  p/KeysGet
-  (keys-get- [{:keys [v] :as this} k]
-    (if (coll? v)
-      (value (get v k))
-      (value nil))))
-
-(extend-regex Value)
-
-(predicate-spec raw-value?)
-(defn raw-value?
-  "A normal clojure value that isn't a spect, and isn't Value"
-  [x]
-  (not (spect? x)))
-
-(s/fdef valuey? :args (s/cat :x any?) :ret boolean?)
-(defn valuey? [x]
-  (or (value? x) (raw-value? x)))
-
-(s/def ::valuey (s/or :v value? :rv raw-value?))
-(s/fdef get-value :args (s/cat :x ::valuey))
-(defn get-value [x]
-  (if (value? x)
-    (:v x)
-    x))
-
-(predicate-spec truthy-value?)
-(defn truthy-value? [s]
-  "true if s is a value with a truthy value"
-  (and (value? s) (boolean (:v s))))
 
 (extend-type SpecSpec
   p/Spect
@@ -1616,8 +1594,8 @@
                       (and ;; (not (= Object a))
                        (or (isa? a b)
                            (isa? b a)
-                           (and (j/interface? a) (not (j/final? b)))
-                           (and (j/interface? b) (not (j/final? a))))))
+                           (and (j/interface? a) (j/subclassable? b))
+                           (and (j/interface? b) (j/subclassable? a)))))
         ps (map parse-spec ps)
         ps-classes (map (fn [p]
                           (spec->classes p)) ps)]

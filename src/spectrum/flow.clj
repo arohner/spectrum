@@ -822,7 +822,7 @@
             (assert (c/spect? fn-spec))
             (assert (c/spect? args-spec))
             (assoc-in a (conj path ::ret-spec) (if f-a
-                                                 (call-site-specialize f-a f-a-path args-spec)
+                                                 (:ret (call-site-specialize f-a f-a-path args-spec))
                                                  (c/invoke fn-spec args-spec))))
           (assoc-in a (conj path ::ret-spec) (c/unknown {:message (format "invoke: no spec for %s" (:var (:fn a*)))})))
         (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "invoke: wrong number of args %s" (:form a*))})))
@@ -1766,7 +1766,7 @@
                                 a)) a args)
                     a)
                 ret-spec (if (and f-a (= :var f-a-op) (not (recursive? a (conj path :fn))))
-                           (call-site-specialize f-a f-a-path invoke-args)
+                           (:ret (call-site-specialize f-a f-a-path invoke-args))
                            (c/invoke s (if (c/valid? (c/invoke-accept s) invoke-args)
                                          invoke-args
                                          (c/invoke-accept s))))]

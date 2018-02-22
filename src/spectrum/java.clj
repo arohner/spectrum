@@ -39,7 +39,19 @@
   (contains? primitives x))
 
 (defn final? [x]
-  (and (class? x) (-> x (reflect/reflect) :flags :final boolean)))
+  (-> x (reflect/reflect) :flags :final boolean))
+
+(s/fdef array? :args (s/cat :x class?) :ret boolean?)
+(defn array? [^Class x]
+  (.isArray x))
+
+(defn subclassable?
+  "True if it is possible for class X to have child classes"
+  [x]
+  (not (or
+        (primitive? x)
+        (array? x)
+        (final? x))))
 
 (s/fdef primitive->class :args (s/cat :p primitive?) :ret class?)
 (defn primitive->class [p]

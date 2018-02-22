@@ -168,15 +168,12 @@
 (ann-instance-or #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
 
-(defn maybe-convert-value [x]
-  (or (c/pred->value x) x))
-
 (defn ann-nil-false [val]
   (fn [spect args-spect]
     (let [x (c/first- args-spect)
           truthyness (c/truthyness x)]
       (if (not= :ambiguous truthyness)
-        (let [x (maybe-convert-value x)]
+        (let [x (c/maybe-convert-value x)]
           (assoc spect :ret (cond
                               (= :truthy truthyness) (c/value false)
                               (c/value? x) (if (= val (:v x))
@@ -237,8 +234,8 @@
 (ann-method
  clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)])
  (fn [spect args-spect]
-   (let [x (-> args-spect c/first- maybe-convert-value)
-         y (-> args-spect c/second* maybe-convert-value)
+   (let [x (-> args-spect c/first- c/maybe-convert-value)
+         y (-> args-spect c/second* c/maybe-convert-value)
          ret (cond
                (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
                                                  (c/value true)

@@ -201,7 +201,7 @@
       (data/get-var-analysis)
       (flow/flow)
       :init
-      :expr
+      flow/maybe-strip-meta
       ::flow/ret-spec))
 
 (deftest infer-form
