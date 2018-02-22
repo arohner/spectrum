@@ -49,6 +49,8 @@
 
 (defrecord RecurForm [args])
 
+(defrecord Bottom [])
+
 (defrecord ThrowForm [s])
 
 (defrecord Value [v type])

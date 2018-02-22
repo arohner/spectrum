@@ -193,6 +193,27 @@
 (defn invoke? [x]
   (satisfies? p/Invoke x))
 
+(extend-type Bottom
+  p/Spect
+  (conform* [this x]
+    reject)
+  p/Truthyness
+  (truthyness [this]
+    :falsey)
+  p/WillAccept
+  (will-accept- [this]
+    reject))
+
+(defn bottom [{:keys [form a-loc message] :as args}]
+  (let [a *a*
+        form (if (find args form)
+               form
+               (:form *a*))
+        a-loc (if (find args :a-loc)
+                a-loc
+                (select-keys (:meta *a*) [:file :line :column]))]
+    (p/map->Bottom (merge args {:form form :a-loc a-loc :message message}))))
+
 (s/fdef invoke :args (s/cat :s ::spect :args ::spect) :ret ::spect)
 
 (defn invoke [s args]
@@ -1844,9 +1865,7 @@
       (some reject? ps) reject
       (>= (count ps) 2) (p/map->OrSpec {:ps ps})
       (= 1 (count ps)) (first ps)
-      :else (do
-              (assert false)
-              (invalid {:message "or spect requires at least one arg"})))))
+      :else (bottom {:message "or- with no arguments"}))))
 
 (s/fdef or-conj :args (s/cat :s ::spect :x ::spect) :ret ::spect)
 (defn or-conj [s x]

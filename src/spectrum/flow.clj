@@ -632,7 +632,7 @@
    :post [(c/spect? %)]}
   (cond
     (not (contains-control-flow? s)) s
-    (c/control-flow? s) (c/invalid {:message "No non-control-flow return"})
+    (c/control-flow? s) (c/bottom {:message "only control flow"})
     (c/or? s) (c/or- (remove c/control-flow? (c/elements s)))
     :else (assert false (format "Don't know how to strip control flow from %s" (print-str s)))))
 
