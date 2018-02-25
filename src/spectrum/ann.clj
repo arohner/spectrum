@@ -28,7 +28,7 @@
 
 (ann #'instance? (fn [spect args-spect]
                    (let [c (c/first- args-spect)
-                         x (c/second* args-spect)]
+                         x (c/second- args-spect)]
                      (if (and (c/known? c) (c/known? x))
                        (let [cs (c/spec->classes c)
                              xs (c/spec->classes x)
@@ -49,7 +49,7 @@
 
 (ann #'into (fn [spect args-spect]
               (let [to (c/first- args-spect)
-                    from (c/second* args-spect)]
+                    from (c/second- args-spect)]
                 (if (c/known? to)
                   (assoc spect :ret to)
                   spect))))
@@ -197,7 +197,7 @@
 
 (ann #'select-keys (fn [spect args-spect]
                      (let [m (c/first- args-spect)
-                           select (c/second* args-spect)]
+                           select (c/second- args-spect)]
                        (if (and (c/keys-spec? m)
                                 (c/value? select)
                                 (coll? (:v select))
@@ -235,7 +235,7 @@
  clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)])
  (fn [spect args-spect]
    (let [x (-> args-spect c/first- c/maybe-convert-value)
-         y (-> args-spect c/second* c/maybe-convert-value)
+         y (-> args-spect c/second- c/maybe-convert-value)
          ret (cond
                (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
                                                  (c/value true)
@@ -248,7 +248,7 @@
 
 (defn ann-get [spect args-spect]
   (let [coll (c/first- args-spect)
-        key (c/second* args-spect)
+        key (c/second- args-spect)
         not-found (or (c/nth* args-spect 2) (c/value nil))
         ret (cond
               (and (c/value? key) (keyword? (:v key))) (or (c/keys-get coll (c/get-value key)) not-found)
@@ -296,7 +296,7 @@
 
 (defn filter-fn [spect args-spect]
   (let [f (c/first- args-spect)
-        coll (c/second* args-spect)]
+        coll (c/second- args-spect)]
     (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/all-possible-values coll 3)))
       (assoc spect :ret (c/coll-of (c/and- [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
       (c/invalid {:message (format "filter f does not conform: %s w/ %s" (print-str f) (print-str (first (filter (fn [arg]
@@ -307,7 +307,7 @@
   (if (= 1 (count (c/coll-items args-spect)))
     (assoc spect :ret transducer-fn-spec)
     (let [f (c/first- args-spect)
-          coll (c/second* args-spect)]
+          coll (c/second- args-spect)]
       (cond
         (nil? coll) transducer-fn-spec
         (c/equivalent? coll (c/value nil)) (assoc spect :ret (c/value '()))
@@ -520,7 +520,7 @@
 
 (defn cast-method-transformer [s args]
   (let [cls (c/first- args)
-        x (c/second* args)]
+        x (c/second- args)]
     (-> s
         (assoc
          :args (c/cat- [(c/class-spec Class) (c/class-spec (:v cls))])
@@ -530,7 +530,7 @@
 
 (defn cast-fn-transformer [spec args]
   (let [cls-s (c/first- args)
-        x (c/second* args)]
+        x (c/second- args)]
     (if (and (c/value? cls-s) (class? (:v cls-s)))
       (let [cls (:v cls-s)]
         (-> spec

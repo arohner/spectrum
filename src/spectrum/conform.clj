@@ -253,9 +253,7 @@
     (p/rest- ps)
     (rest ps)))
 
-
-
-(defn second* [ps]
+(defn second- [ps]
   (first- (rest- ps)))
 
 (defn nth* [ps i]
@@ -566,7 +564,7 @@
   p/KeywordInvoke
   (keyword-invoke- [this args]
     (let [key (first- args)
-          else (second* args)
+          else (second- args)
           rest (rest- (rest- args))]
       (cond
         (nil? key) (invalid {:message "not enough args"})
@@ -2172,7 +2170,7 @@
 
 (defn keys-invoke [spec args]
   (let [k (first- args)
-        else (second* args)
+        else (second- args)
         rest (rest- (rest- args))]
     (cond
       rest (invalid {:message (format "keys invoke: too many args:" (print-str spec) (print-str args))})
@@ -2409,10 +2407,10 @@
 
 (defmethod coll-of-invoke :map [s args]
   (let [key (first- args)
-        else (or (second* args) (value nil))
+        else (or (second- args) (value nil))
         rest (rest- (rest- args))
         map-key-spec (-> s :s parse-spec first-)
-        map-val-spec (-> s :s parse-spec second*)]
+        map-val-spec (-> s :s parse-spec second-)]
     (cond
       rest (invalid {:message (format "too many args to invoke, got %s" (print-str args))})
       (not key) (invalid {:message "not enough args to invoke"})
@@ -2602,7 +2600,7 @@
     (let [arg-count (count (:ps args))
           k (first- args)
           direct-hit (parse-spec vs)
-          else (or (second* args) (value nil))
+          else (or (second- args) (value nil))
           partial-hit (or- [(parse-spec vs) else])]
       (if (contains? #{1 2} arg-count)
         (->> ks
@@ -3085,7 +3083,7 @@
   (assert (first-rest? args))
   (let [val f
         obj (first- args)
-        else (second* args)
+        else (second- args)
         rest (rest- (rest- args))]
     (assert (value? val))
     (cond
@@ -3117,7 +3115,7 @@
                     (and (keyword? key) (coll? obj)) [key obj]
                     (and (coll? key) (keyword? obj)) [obj key]
                     :else [key obj])
-        else (second* args)]
+        else (second- args)]
     (if-let [ret (get obj key)]
       (value ret)
       else)))
@@ -3140,7 +3138,7 @@
 (defmethod value-invoke :invalid [f args]
   (let [val f
         obj (first- args)
-        else (second* args)
+        else (second- args)
         rest (rest- (rest- args))]
     (cond
       (not obj) (invalid {:message "not enough args to invoke"})
