@@ -12,9 +12,9 @@
             [spectrum.util :refer [fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq multimethod-dispatch-values protocol?]]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j])
-  (:import (clojure.lang Var Keyword IFn)
+  (:import (clojure.lang Var Keyword IFn ISeq)
            java.io.Writer
-           (spectrum.protocols Accept Reject Invalid Unknown ThrowForm RecurForm RegexCat RegexSeq RegexAlt Value AndSpec NotSpec OrSpec TupleSpec SpecSpec DelaySpec PredSpec ClassSpec ProtocolSpec KeysSpec CollOfSpec ArrayOf MapOf FnSpec MultiSpec)))
+           (spectrum.protocols Accept Reject Invalid Unknown Bottom ThrowForm RecurForm RegexCat RegexSeq RegexAlt Value AndSpec NotSpec OrSpec TupleSpec SpecSpec DelaySpec PredSpec ClassSpec ProtocolSpec KeysSpec CollOfSpec ArrayOf MapOf FnSpec MultiSpec)))
 
 (declare conform)
 (declare valid?)
@@ -793,7 +793,10 @@
         nil)))
   p/Truthyness
   (truthyness [this]
-    :truthy))
+    :truthy)
+  p/DependentSpecs
+  (dependent-specs- [this]
+    #{(class-spec ISeq)}))
 
 (defn seq? [x]
   (instance? RegexSeq x))
@@ -1311,10 +1314,6 @@
         #'seq? (seq- (pred-spec #'any?))
         reject))))
 
-;; Spec representing a java class. Probably won't need to use this
-;; directly. Used in java interop, and other places where we don't
-;; have 'real' specs
-
 (defn maybe-map-equivalence-hack [c]
  ;;; hack for the godawful clojure.lang.MapEquivalence
 ;;; hack. deftype checks for MapEquivalence, an interface that is
@@ -1346,7 +1345,9 @@
 (defn spec->classes
   "Given a spec, return the set of concrete classes this spec could be.
 
-   Because specs are more precise than class checks, casting to a class can destroy information. Using this anywhere other than java interop is a code smell."
+   Because specs are more precise than class checks, casting to a
+   class can destroy information. Using this anywhere other than java
+   interop is a code smell."
   [spec]
   {:post [(do (when-not (s/valid? ::spec->classes %)
                 (println "spec->classes" spec "=>" %)) true)
@@ -2194,6 +2195,9 @@
   p/Invoke
   (invoke- [this args]
     (keys-invoke this args))
+  (invoke-accept- [this]
+    (or- [(cat- [(pred-spec #'any?)])
+          (cat- [(pred-spec #'any?) (pred-spec #'any?)])]))
   p/KeysGet
   (keys-get- [this k]
     (assert (keyword? k))
@@ -2691,7 +2695,10 @@
                       (filter (fn [[k v]]
                                 (identity v))))]
     (if (seq invalid-args)
-      (invalid {:message (format "invalid fn: %s" (print-str (into {} invalid-args)))})
+      (do
+        (println "fn-spec invalid args:" args ret)
+        (assert false)
+        (invalid {:message (format "invalid fn: %s" (print-str (into {} invalid-args)))}))
       (p/map->FnSpec {:args args
                     :ret ret
                     :fn f}))))
@@ -3288,7 +3295,7 @@
 
 (defmethod print-method Unknown [spec ^Writer w]
   (let [{:keys [file line column]} spec]
-    (.write w (str "#Unknown[" (if (seq (:message spec))
+    (.write w (str "#unknown[" (if (seq (:message spec))
                                  (:message spec)
                                  (print-method (:form spec) w))
                    (when file
@@ -3317,9 +3324,10 @@
   (print-method (:form v) w)
   (.write w "]"))
 
+(defn class-name [c])
 (defmethod print-method spectrum.protocols.ClassSpec [v ^Writer w]
   (.write w "#class[")
-  (print-method (:cls v) w)
+  (.write w (.getCanonicalName ^Class (:cls v)))
   (.write w "]"))
 
 (defmethod print-method AndSpec [v ^Writer w]

@@ -236,7 +236,12 @@
       '(fn [x] (inc (str x)))
       '(fn [x] (inc x) (x :foo))
       '(fn foo [x] (if (> x 1) (foo 1 2 3) 1))
-      '(let [foo (fn [x] (inc x))] (foo 1 2)))))
+      '(let [foo (fn [x] (inc x))] (foo 1 2))))
+
+  (testing "conformy"
+    (are [form] (c/conformy? (check/infer-form form))
+      '(hash-map :foo :bar))
+    ))
 
 (deftest clojure-core-inferred
   (is (-> (infer-var #'nat-int?) :args (c/valid? (c/cat- [(c/pred-spec #'any?)]))))
