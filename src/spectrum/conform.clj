@@ -109,11 +109,19 @@
   {:post [(validate! (s/coll-of ::spect) %)]}
   (p/fix-length s n))
 
+(def ^:dynamic *disentangle-depth* 0)
+
 (s/fdef disentangle :args (s/cat :s ::spect) :ret (s/coll-of ::spect))
-(defn disentangle [s]
+(defn disentangle
+  "Given a spec containing choices, such as `or` or `alt`, return a
+  seq of concrete specs that don't contain choices"
+  [s]
   {:pre [(spect? s)]
    :post [(validate! (s/coll-of ::spect) %)]}
-  (p/disentangle s))
+  (if (< *disentangle-depth* 3)
+    (binding [*disentangle-depth* (inc *disentangle-depth*)]
+      (p/disentangle s))
+    [s]))
 
 (s/fdef with-return :args (s/cat :this (s/nilable ::spect) :ret :with-return/ret) :ret (s/nilable ::spect))
 (defn with-return [s ret]
@@ -779,21 +787,11 @@
   (regex? [this]
     true)
   (disentangle [this]
-    (loop [rets [[]]
-           args (p/elements this)]
-      (let [[a & ar] args]
-        (if a
-          (let [as (disentangle a)
-                new-rets (mapcat (fn [a]
-                                   {:pre [(validate! ::spect a)]}
-                                   (mapv (fn [ret]
-                                           (if (not (accept? a))
-                                             (do
-                                               (assert (vector? ret))
-                                               (conj ret a))
-                                             ret)) rets)) as)]
-            (recur new-rets ar))
-          (map cat- rets)))))
+    (->> this
+         p/elements
+         (map disentangle)
+         (apply combo/cartesian-product)
+         (map cat-)))
   (constructor [this]
     cat-)
   (elements [this]
@@ -1029,7 +1027,10 @@
   (elements [this]
     (->> this :ps (map parse-spec)))
   (disentangle [this]
-    (->> this p/elements (mapcat disentangle)))
+    (->> this
+         p/elements
+         (map disentangle)
+         (apply concat)))
   (re-explain* [{:keys [ps ks forms] :as spec} path via in x]
     (if (empty? x)
       [{:path path
@@ -2023,7 +2024,9 @@
              (when (valid? p x)
                x)))))
   (disentangle [this]
-    (->> this p/elements (mapcat disentangle)))
+    (->> this
+         p/elements
+         (mapcat disentangle)))
   p/DependentSpecs
   (dependent-specs- [this]
     (->> (:ps this)
