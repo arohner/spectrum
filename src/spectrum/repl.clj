@@ -2,6 +2,7 @@
   (:require [clojure.spec.alpha :as s]
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.test.check.generators :as gen]
+            [spectrum.protocols :as p]
             [spectrum.check :as check]
             [spectrum.conform :as c]
             [spectrum.data :as data]
@@ -11,6 +12,7 @@
   "infer a var return the spec"
   [v]
   (-> v .ns str symbol check/ensure-analysis)
+  (assert (data/get-var-analysis v))
   (-> v
       (data/get-var-analysis)
       (flow/flow)

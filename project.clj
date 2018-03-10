@@ -7,6 +7,7 @@
                  [org.clojure/tools.analyzer.jvm "0.7.2"]
                  [org.clojure/test.check "0.9.0"]
                  [org.clojure/core.memoize "0.5.8"]
+                 [org.clojure/math.combinatorics "0.1.4"]
                  [com.cognitect/transit-clj "0.8.300"]
                  [org.clojure/core.match "0.3.0-alpha4"]]
 

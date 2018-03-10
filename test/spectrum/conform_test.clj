@@ -130,6 +130,9 @@
 
       (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])]) (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])])
 
+      (c/and- [(c/seq- (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)]) (c/seq- (c/pred-spec #'any?))
+      (c/cat- [(c/and- [(c/seq- (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)])]) (c/cat- [(c/seq- (c/pred-spec #'any?))])
+
       (c/cat- []) (c/value [])
 
       ;; and
@@ -304,10 +307,10 @@
   (is (c/seq? (c/rest- (c/parse-spec (s/* integer?)))))
   (is (c/cat? (c/rest- (c/parse-spec (s/+ integer?)))))
   (is (nil? (c/rest- (c/cat- []))))
-  (is (= (c/pred-spec #'string?) (c/second* (c/cat- [(c/class-spec String) (c/parse-spec #'string?)]))))
+  (is (= (c/pred-spec #'string?) (c/second- (c/cat- [(c/class-spec String) (c/parse-spec #'string?)]))))
   (is (= (c/pred-spec #'int?) (c/first- (c/parse-spec (s/cat :x int?)))))
   (is (nil? (c/rest- (c/parse-spec (s/cat :x int?)))))
-  (is (= (c/value false) (c/second* (c/cat- [(c/pred-spec #'false?) (c/value false)]))))
+  (is (= (c/value false) (c/second- (c/cat- [(c/pred-spec #'false?) (c/value false)]))))
   (is (= (c/value 1) (c/first- (c/value [1 2 3]))))
   (is (= (c/value [2 3]) (c/rest- (c/value [1 2 3]))))
   (is (= (c/cat- [(c/unknown {:message ""})]) (c/rest- (c/cat- [(c/unknown {:message ""}) (c/unknown {:message ""})]))))

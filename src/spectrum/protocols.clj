@@ -23,6 +23,9 @@
   (derivative
     [spec x]
     "Given a parsed spec, return the derivative")
+  (disentangle [this]
+    "Given a spec containing choices, such as `or` or `alt`, return a
+seq of concrete specs that don't contain choices")
   (re-explain* [spec path via in x])
   (empty-regex [this]
     "The empty pattern for this regex")
@@ -37,7 +40,11 @@
   (constructor [this]
     "Returns a constructor function that takes :ps")
   (elements [this]
-    "Returns the components of this regex. (constructor (elements this)) should round-trip"))
+    "Returns the components of this regex. (constructor (elements this)) should round-trip")
+  (fix-length [this n]
+    "recursively resolve to all concrete specs of *up to* length n,
+  i.e. (fix-length (seq- int?) 2) -> [(cat) (cat int?) (cat int?
+  int?)]."))
 
 (defrecord Accept [ret])
 
