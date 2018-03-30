@@ -118,6 +118,9 @@
       (c/pred-spec #'class?) (c/class-spec String)
       (c/class-spec Object) (c/value nil)
 
+      (c/class-spec Integer/TYPE (c/value 0))
+      (c/class-spec Long/TYPE (c/value 0))
+
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/value ["foo" :bar])
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)])
 
@@ -576,6 +579,7 @@
   (testing "truthy"
     (are [s constraint] (c/non-contradiction? s constraint)
       (c/pred-spec #'string?) (c/value "foo")
+      (c/class-spec Integer/TYPE) (c/class-spec Long/TYPE)
       (c/value [:file :line :column]) (c/coll-of (c/pred-spec #'any?)) ))
 
   (testing "falsey"

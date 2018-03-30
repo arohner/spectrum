@@ -245,4 +245,6 @@
 
 (deftest clojure-core-inferred
   (is (-> (infer-var #'nat-int?) :args (c/valid? (c/cat- [(c/pred-spec #'any?)]))))
-  (is (-> (infer-var #'nat-int?) :ret (c/valid? (c/pred-spec #'boolean?)))))
+  (is (-> (infer-var #'nat-int?) :ret (c/valid? (c/pred-spec #'boolean?))))
+
+  (check/infer-form '(unchecked-inc 0) (c/value 1)))

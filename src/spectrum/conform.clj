@@ -1443,7 +1443,10 @@
       (or
        (when (= Object cls)
          v)
-       (when (and (seq v-classes) (every? (fn [vc] (isa-boxed? vc cls)) v-classes))
+       (when (some (fn [c] (isa? c cls)) v-classes)
+         v)
+       (when (some (fn [vc]
+                     (j/castable? cls vc)) v-classes)
          v))))
   p/WillAccept
   (will-accept- [this]
@@ -1693,6 +1696,7 @@
                       (and ;; (not (= Object a))
                        (or (isa? a b)
                            (isa? b a)
+                           (j/castable? a b)
                            (and (j/interface? a) (j/subclassable? b))
                            (and (j/interface? b) (j/subclassable? a)))))
         ps (map parse-spec ps)
