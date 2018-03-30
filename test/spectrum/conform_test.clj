@@ -500,6 +500,13 @@
   (is (= [(c/cat- [(c/pred-spec #'integer?) (c/pred-spec #'integer?)])] (c/disentangle (c/parse-spec (s/cat :x integer? :y integer?)))))
   (is (= 2 (count (c/disentangle (c/parse-spec (s/cat :x (s/? integer?) :y integer?)))))))
 
+(deftest fix-length
+  (testing "num-results"
+    (are [s n num-results] (= num-results (count (c/fix-length s n)))
+      (c/cat- [(c/pred-spec #'int?)]) 2 1
+      (c/cat- [(c/?- (c/pred-spec #'int?)) (c/pred-spec #'int?)]) 2 1
+      (c/cat- [(c/?- (c/pred-spec #'int?)) (c/?- (c/pred-spec #'int?))]) 2 1)))
+
 (deftest all-possible-values
   (is (= 3 (count (c/all-possible-values (c/seq- (c/pred-spec #'int?)) 2))))
 

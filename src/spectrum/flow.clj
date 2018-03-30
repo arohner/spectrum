@@ -1870,6 +1870,34 @@
     (assert (c/spect? (::ret-spec b)))
     (assoc-in a (conj path ::ret-spec) (::ret-spec b))))
 
+(defn fn-fixed-arities
+  "Given an :fn, returns a set of ints, the number of required params for each :fn-method"
+  [a path]
+  (let [a* (get-in a path)
+        _ (assert (= :fn (:op a*)))]
+    (->> a* :methods
+         (map :fixed-arity)
+         (set))))
+
+(defn fn-variadic-method-requires-arg?
+  "True if this fn is variadic, and the method requires a rest
+  argument in order to be invoked, because there is another method
+  with the same fixed arity"
+  [a path]
+
+  (let [a* (get-in a path)
+        _ (assert (-> a* :op (= :fn)))
+        max-fixed (:max-fixed-arity a*)]
+    (and (:variadic? a*)
+         (> (count (:methods a*)) 1)
+         (->>
+          a*
+          :methods
+          (filter (fn [m]
+                    (= max-fixed (:fixed-arity m))))
+          (count)
+          (= 2)))))
+
 (defn infer-fn-method-spec
   "add the initial fn-spec for this fn-method"
   [a path]
@@ -1886,7 +1914,9 @@
                                                                         s (assoc s :inferred true)]
                                                                     (assoc p ::ret-spec s))) params)
                                                    params (if (:variadic? a*)
-                                                            (assoc-in params [(-> params count dec) ::ret-spec] (c/and- [(c/seq- (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)]))
+                                                            (if (fn-variadic-method-requires-arg? a (-> path pop pop))
+                                                              (assoc-in params [(-> params count dec) ::ret-spec] (c/and- [(c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))]) (c/class-spec clojure.lang.ISeq)]))
+                                                              (assoc-in params [(-> params count dec) ::ret-spec] (c/seq- (c/pred-spec #'any?))))
                                                             params)]
                                                params)))
         args-spec (c/cat- (mapv ::ret-spec (get-in a (conj path :params))))
@@ -2021,8 +2051,6 @@
             methods (get-java-method class method)
             method-specs (map (fn [m]
                                 [m (method->spec m)]) methods)
-            _ (println "infer java method-specs" (map second method-specs))
-            _ (println "infer java invoke args" invoke-args)
             transformed-spec (->> method-specs
                                   (map (fn [[m s]]
                                          (let [args (infer-invoke-constraints (:args s) (c/elements invoke-args))]
@@ -2038,8 +2066,7 @@
                                      (if (seq ss)
                                        (c/merge-fn-specs ss)
                                        (do
-                                         (println "infer-java invalid" (:form a*) class method (print-str invoke-args))
-                                         (assert false)
+                                         (println "infer-java invalid" (:form a*) class method method-specs (print-str invoke-args))
                                          (c/invalid {:message (format "infer-java: can't invoke %s %s with %s" class method (print-str invoke-args))}))))))
             ret-spec (if (c/fn-spec? transformed-spec)
                        (:ret transformed-spec)
