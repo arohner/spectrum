@@ -1914,7 +1914,7 @@
                                                                     (assoc p ::ret-spec s))) params)
                                                    params (if (:variadic? a*)
                                                             (if (fn-variadic-method-requires-arg? a (-> path pop pop))
-                                                              (assoc-in params [(-> params count dec) ::ret-spec] (c/and- [(c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))]) (c/class-spec clojure.lang.ISeq)]))
+                                                              (assoc-in params [(-> params count dec) ::ret-spec] (c/or- [(c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))]) (c/class-spec clojure.lang.ISeq)]))
                                                               (assoc-in params [(-> params count dec) ::ret-spec] (c/seq- (c/pred-spec #'any?))))
                                                             params)]
                                                params)))
