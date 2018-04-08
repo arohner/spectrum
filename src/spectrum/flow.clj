@@ -252,10 +252,17 @@
 (defmethod flow* :binding [a path]
   a)
 
-(defn get-var-spec [v]
-  (or (c/get-var-spec v)
-      (data/get-var-inferred-spec v)
-      (c/unknown {:message (format "couldn't find spec or analysis for %s" v)})))
+(defn get-var-spec
+  "Get or infer the spec for v, appearing at [a path]"
+  [v a path]
+  (let [a* (get-in a path)]
+    (or (c/get-var-spec v)
+        (data/get-var-inferred-spec v)
+        (if-let [v-a (data/get-var-analysis v)]
+          (if (recursive? a path)
+            (get-self-call-analysis a path)
+            (::ret-spec (cached-infer v-a [])))
+          (c/unknown {:message (format "couldn't find spec or analysis for %s at %s" v (a-loc-str (get-in a path)))})))))
 
 (defmethod flow* :def [a path]
   (let [a* (get-in a path)
@@ -279,11 +286,7 @@
   (let [a (flow-walk a path)
         a* (get-in a path)
         v (:var a*)
-        ret-spec (if-let [s (get-var-spec v)]
-                   s
-                   (if-let [a (data/get-var-analysis v)]
-                     (::ret-spec (cached-infer a))
-                     (c/value @(:var a*))))]
+        ret-spec (get-var-spec v a path)]
     (assoc-in-a a (conj path ::ret-spec) ret-spec)))
 
 (defmethod flow* :with-meta [a path]
@@ -751,7 +754,7 @@
   (if (::ret-spec a)
     a
     (if-let [v (:var a)]
-      (if-let [s (get-var-spec v)]
+      (if-let [s (c/get-var-spec v)]
         (flow a path)
         (cached-infer a path))
       (cached-infer a path))))
@@ -830,7 +833,7 @@
         _ (assert (c/fn-spec? f-spec))
         v (:var f-a*)]
     (if (and v (data/get-invoke-transformer v))
-      (let [s (get-var-spec v)]
+      (let [s (get-var-spec v f-a path)]
         (c/invoke s args-spec))
 
       (if (c/valid? (:args f-spec) args-spec)
@@ -907,7 +910,7 @@
   (let [a* (get-in a path)
         v (-> a* :fn :var)
         spec (when v
-               (get-var-spec v))
+               (get-var-spec v a path))
         a (flow-walk a path)
         a* (get-in a path)
         args-spec (analysis-args->spec (:args a*))]
@@ -1750,11 +1753,7 @@
   (let [a (flow-walk a path)
         a* (get-in a path)
         v (:var a*)
-        ret-spec (if-let [s (get-var-spec v)]
-                   s
-                   (if-let [v-a (data/get-var-analysis v)]
-                     (::ret-spec v-a)
-                     (c/unknown {:message (format "no spec or analysis for %s" v)})))]
+        ret-spec (get-var-spec v a path)]
     (assert c/spect? ret-spec)
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
@@ -2174,7 +2173,7 @@
         a* (get-in a path)
         v (-> a* :fn :var)
         spec (when v
-               (get-var-spec v))
+               (get-var-spec v a path))
         a-args (:args a*)
         s-args (when (and spec (:args spec))
                  ;; (c/all-possible-values-arity-n (:args spec) (count (:args a*)))
