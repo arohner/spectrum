@@ -224,6 +224,9 @@
 (defn invoke? [x]
   (satisfies? p/Invoke x))
 
+(defn bottom? [x]
+  (instance? Bottom x))
+
 (extend-type Bottom
   p/Spect
   (conform* [this x]
@@ -1981,6 +1984,7 @@
   (let [or-ps (mapcat (fn [p] (when (or? p)
                                 (:ps p))) ps)
         ps (remove or? ps)
+        ps (remove bottom? ps)
         ps (concat ps or-ps)
         ps (map (fn [p]
                   (if (object-spec? p)
@@ -2150,7 +2154,7 @@
          (mapcat (fn [p]
                    (with-return p x)))
          ((fn [ps]
-            (if (seq ps)
+            (if (s/valid? (s/coll-of ::spect) ps)
               (or- ps)
               x)))))
   p/SpecToClasses
