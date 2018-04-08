@@ -1924,12 +1924,9 @@
     (->> this
          :ps
          (map parse-spec)
-         (filter p/regex?)
          (map #(p/fix-length % n))
-         ((fn [ss]
-            (assert (< (count ss) 2))
-            ss))
-         first))
+         (apply combo/cartesian-product)
+         (map and-)))
   (accept-nil? [this]
     (->> this
          :ps
@@ -2141,9 +2138,7 @@
     (->> this
          :ps
          (map parse-spec)
-         (map disentangle)
-         (apply combo/cartesian-product)
-         (map or-)))
+         (mapcat disentangle)))
   (return- [this]
     this)
   (with-return- [this x]
