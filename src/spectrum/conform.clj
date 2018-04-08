@@ -1031,6 +1031,8 @@
          p/elements
          (map disentangle)
          (apply concat)))
+  (fix-length [this n]
+    [this])
   (re-explain* [{:keys [ps ks forms] :as spec} path via in x]
     (if (empty? x)
       [{:path path
