@@ -252,15 +252,50 @@
 (defmethod flow* :binding [a path]
   a)
 
+(s/fdef recursive? :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret boolean?)
+(defn recursive?
+  "Given an invoke of var v at a path, return true if it's a self-call"
+  [a path]
+  (let [a* (get-in a path)
+        _ (assert (= :var (:op a*)))
+        v (:var a*)]
+    (assert (var? v))
+    (loop [path path]
+      (let [a* (get-in a path)]
+        (if (and (= :def (:op a*)) (= v (:var a*)))
+          true
+          (if (seq path)
+            (recur (pop path))
+            false))))))
+
+(s/fdef get-self-call-analysis :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret (s/nilable ::ana.jvm/analysis))
+(defn get-self-call-analysis
+  "Given a self-call of var v, return the :fn analysis"
+  [a path]
+  {:post [%]}
+  (let [a* (get-in a path)
+        _ (assert (= :var (:op a*)))
+        v (:var a*)]
+    (assert (recursive? a path))
+    (loop [path path]
+      (let [a* (get-in a path)]
+        (if (and (= :fn (:op a*)) (or (= v (:var (get-in a (pop path))))
+                                      (= v (:var (get-in a (pop (pop path)))))))
+          a*
+          (if (seq path)
+            (recur (pop path))
+            nil))))))
+
 (defn get-var-spec
   "Get or infer the spec for v, appearing at [a path]"
   [v a path]
+  {:post [(c/spect? %)]}
   (let [a* (get-in a path)]
     (or (c/get-var-spec v)
         (data/get-var-inferred-spec v)
         (if-let [v-a (data/get-var-analysis v)]
           (if (recursive? a path)
-            (get-self-call-analysis a path)
+            (::ret-spec (get-self-call-analysis a path))
             (::ret-spec (cached-infer v-a [])))
           (c/unknown {:message (format "couldn't find spec or analysis for %s at %s" v (a-loc-str (get-in a path)))})))))
 
@@ -301,40 +336,6 @@
 
 (defmulti invoke-get-fn-spec "Given the :fn from an :invoke a, return the spec for the thing being invoked"
   #'invoke-get-fn-spec-dispatch)
-
-(s/fdef recursive? :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret boolean?)
-(defn recursive?
-  "Given an invoke of var v at a path, return true if it's a self-call"
-  [a path]
-  (let [a* (get-in a path)
-        _ (assert (= :var (:op a*)))
-        v (:var a*)]
-    (assert (var? v))
-    (loop [path path]
-      (let [a* (get-in a path)]
-        (if (and (= :def (:op a*)) (= v (:var a*)))
-          true
-          (if (seq path)
-            (recur (pop path))
-            false))))))
-
-(s/fdef get-self-call-analysis :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret (s/nilable ::ana.jvm/analysis))
-(defn get-self-call-analysis
-  "Given a self-call of var v, return the :fn analysis"
-  [a path]
-  {:post [%]}
-  (let [a* (get-in a path)
-        _ (assert (= :var (:op a*)))
-        v (:var a*)]
-    (assert (recursive? a path))
-    (loop [path path]
-      (let [a* (get-in a path)]
-        (if (and (= :fn (:op a*)) (or (= v (:var (get-in a (pop path))))
-                                      (= v (:var (get-in a (pop (pop path)))))))
-          a*
-          (if (seq path)
-            (recur (pop path))
-            nil))))))
 
 (defmethod invoke-get-fn-spec :var [a path _]
   {:post [(or (nil? %) (c/spect? %) (do (when-not (c/fn-spec? %)
@@ -1754,7 +1755,7 @@
         a* (get-in a path)
         v (:var a*)
         ret-spec (get-var-spec v a path)]
-    (assert c/spect? ret-spec)
+    (assert (c/spect? ret-spec))
     (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defmethod infer* :the-var [a path]
