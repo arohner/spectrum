@@ -3418,15 +3418,13 @@
   (.write w "]"))
 
 (defmethod print-method PredSpec [v ^Writer w]
-  (.write w (format "#pred[" ))
-  (print-method (:form v) w)
-  (.write w "]"))
+  (.write w (format "#pred " ))
+  (print-method (:form v) w))
 
 (defn class-name [c])
 (defmethod print-method spectrum.protocols.ClassSpec [v ^Writer w]
-  (.write w "#class[")
-  (.write w (.getCanonicalName ^Class (:cls v)))
-  (.write w "]"))
+  (.write w "#class ")
+  (.write w (.getCanonicalName ^Class (:cls v))))
 
 (defmethod print-method AndSpec [v ^Writer w]
   (.write w "#and")
@@ -3467,6 +3465,42 @@
                        ["[" "]"])]
     (.write w "#coll")
     (#'clojure.core/print-sequential open print-method " " close [(:s spec)] w)))
+
+;; Readers
+(defn read-pred [p]
+  (pred-spec (resolve p)))
+
+(defn read-value [v]
+  (value v))
+
+(defn read-or [ps]
+  (or- ps))
+
+(defn read-and [ps]
+  (and- ps))
+
+(defn read-fn [ps]
+  (let [ps (apply hash-map ps)]
+    (fn-spec (:args ps) (:ret ps) (:f ps))))
+
+(defn read-cat [ps]
+  (cat- ps))
+
+(defn read-class [p]
+  (assert (symbol? p))
+  (class-spec (resolve p)))
+
+(defn read-not [p]
+  (not- p))
+
+(set! *data-readers* (merge *data-readers* {'and #'read-and
+                                            'cat #'read-cat
+                                            'class #'read-class
+                                            'fn #'read-fn
+                                            'not #'read-not
+                                            'or #'read-or
+                                            'pred #'read-pred
+                                            'value #'read-value}))
 
 ;; #(gen/one-of (map (fn [s] (-> s s/spec s/gen)) #{::pred-spec ::value ::coll-of-spec}))
 
