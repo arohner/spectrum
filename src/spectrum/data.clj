@@ -135,7 +135,12 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   so if nils are necessary, they must be specified.
 
   Method args is a vector of classes, same as returned by
-  clojure.reflect/reflect :parameter-types. Spec should be an fn-spec"
+  clojure.reflect/reflect :parameter-types. Spec should be an fn-spec
+
+  use this to e.g. indicate a method is always not-nil, regardless of
+  args. use `ann` when the return type is dynamic based on the input
+  arguments.
+"
 
   [cls method-name method-args spec]
   {:pre [(class? cls)
