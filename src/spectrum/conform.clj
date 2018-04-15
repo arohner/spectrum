@@ -102,11 +102,14 @@
   (p/elements s))
 
 (defn fix-length
-  "Given a regex possibly containing RegexSeq, recursively resolve to
+  "Given a regex possibly containing Seq, recursively resolve to
   all concrete specs of *up to* length n, i.e. (fix-length (s/+ int?) 2)
   -> [(cat) (cat int?) (cat int? int?)]. Should be performed after disentangle"
   [s n]
-  {:post [(validate! (s/coll-of ::spect) %)]}
+  {:post [(validate! (s/coll-of ::spect) %)
+          (do (when (< (count %) 1)
+                (println "fix-length failed:" s n "=>" %)) true)
+          (>= (count %) 1)]}
   (p/fix-length s n))
 
 (def ^:dynamic *disentangle-depth* 0)
@@ -1929,7 +1932,7 @@
     (->> this
          :ps
          (map parse-spec)
-         (map #(p/fix-length % n))
+         (map #(fix-length % n))
          (apply combo/cartesian-product)
          (map and-)))
   (accept-nil? [this]
@@ -2137,8 +2140,7 @@
     (->> this
          :ps
          (map parse-spec)
-         (filter p/regex?)
-         (map #(p/fix-length % n))
+         (map #(fix-length % n))
          (apply concat)))
   (disentangle [this]
     (->> this
