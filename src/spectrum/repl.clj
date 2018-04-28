@@ -11,7 +11,7 @@
 
 (defn infer-var
   "infer a var return the spec"
-  [v]
+  [^clojure.lang.Var v]
   (-> v .ns str symbol check/ensure-analysis)
   (assert (data/get-var-analysis v))
   (-> v
@@ -20,6 +20,8 @@
       :init
       flow/maybe-strip-meta
       ::flow/ret-spec))
+
+(c/load-data-readers)
 
 (in-ns 'clojure.core)
 

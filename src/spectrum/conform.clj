@@ -3515,14 +3515,22 @@
 (defn read-not [p]
   (not- p))
 
-(set! *data-readers* (merge *data-readers* {'and #'read-and
-                                            'cat #'read-cat
-                                            'class #'read-class
-                                            'fn #'read-fn
-                                            'not #'read-not
-                                            'or #'read-or
-                                            'pred #'read-pred
-                                            'value #'read-value}))
+(defn read-seq [x]
+  (seq- x))
+
+(defn load-data-readers []
+  (set! *data-readers* (merge *data-readers* {'and #'read-and
+                                              'cat #'read-cat
+                                              'class #'read-class
+                                              'fn #'read-fn
+                                              'not #'read-not
+                                              'or #'read-or
+                                              'pred #'read-pred
+                                              'seq #'read-seq
+                                              'value #'read-value})))
+
+(load-data-readers)
+
 
 ;; #(gen/one-of (map (fn [s] (-> s s/spec s/gen)) #{::pred-spec ::value ::coll-of-spec}))
 
