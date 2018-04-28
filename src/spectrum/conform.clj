@@ -44,10 +44,13 @@
 
 (declare maybe-or-disj)
 
+(declare merge-fn-specs)
 (predicate-spec spect?)
 (defn spect? [x]
   (and (instance? clojure.lang.IRecord x) (satisfies? p/Spect x)))
 
+(defn fn-spec? [x]
+  (instance? spectrum.protocols.FnSpec x))
 
 (s/fdef truthyness :args (s/cat :s ::spect) :ret #{:truthy :falsey :ambiguous})
 (defn truthyness [s]
@@ -2779,8 +2782,6 @@
 (will-accept-this FnSpec)
 
 (predicate-spec fn-spec?)
-(defn fn-spec? [x]
-  (instance? spectrum.protocols.FnSpec x))
 
 (s/def :fn-spec/args (s/nilable ::valid-spect-like))
 (s/def :fn-spec/ret (s/nilable ::valid-spect-like))
