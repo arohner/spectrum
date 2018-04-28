@@ -227,8 +227,10 @@
     reject))
 
 (predicate-spec invoke?)
+
 (defn invoke? [x]
-  (satisfies? p/Invoke x))
+  (and (satisfies? p/Invoke x)
+       (conformy? (p/invoke-accept- x))))
 
 (defn bottom? [x]
   (instance? Bottom x))
@@ -1446,6 +1448,10 @@
     (p/spec->classes- spec)
     (default-spec->classes spec)))
 
+(def invokeable-classes
+  "Set of classes that support p/invoke"
+  #{clojure.lang.IFn clojure.lang.AFn clojure.lang.RestFn clojure.lang.MultiFn})
+
 (extend-type ClassSpec
   p/Spect
   (conform* [this v]
@@ -1470,6 +1476,15 @@
       Object :ambiguous
       nil :falsey
       :truthy))
+  p/Invoke
+  (invoke- [this args]
+    (if (contains? invokeable-classes (-> this :cls))
+      (seq- (pred-spec #'any?))
+      (invalid {:message (format "ClassSpec: can't invoke %s" (print-str this))})))
+  (invoke-accept- [this]
+    (if (contains? invokeable-classes (-> this :cls))
+      (seq- (pred-spec #'any?))
+      (invalid {:message (format "ClassSpec: can't invoke %s" (print-str this))})))
   p/DependentSpecs
   (dependent-specs- [this]
     (let [{:keys [cls]} this
