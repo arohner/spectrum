@@ -1377,8 +1377,8 @@
     (let [pred (:pred this)]
       (cond
         (or (= #'keyword? pred) (= #'symbol? pred)) (pred-keyword-invoke this args)
-        (= #'ifn? pred) (pred-spec #'any?)
-        :else (invalid {:message (format "can't invoke %s" (print-str this))}))))
+        (or (= #'ifn? pred) (= #'fn? pred)) (pred-spec #'any?)
+        :else (invalid {:message (format "FnSpec: can't invoke %s" (print-str this))}))))
   (invoke-accept- [this]
     (let [pred (:pred this)]
       (cond
