@@ -837,19 +837,17 @@
                 (println "specialize:" (:form f-a) "->" %)) true) (c/spect? %)]}
   (let [f-a* (get-in f-a path)
         f-spec (::ret-spec f-a*)
-        _ (assert (c/fn-spec? f-spec))
+        _ (assert (c/invoke? f-spec))
         v (:var f-a*)]
     (if (and v (data/get-invoke-transformer v))
       (let [s (get-var-spec v f-a path)]
         (c/invoke s args-spec))
-
-      (if (c/valid? (:args f-spec) args-spec)
+      (if (c/valid? (c/invoke-accept f-spec) args-spec)
         (let [_ (when-not (c/conformy? args-spec)
                   (println "call-site-specialize:" (:form f-a) args-spec))
               _ (assert (c/conformy? args-spec))
               _ (when-not (= :fn (:op f-a*))
                   (println "specialize:" f-a path (:op f-a*)))
-              _ (assert (= :fn (:op f-a*)))
               _ (assert path)
               f-a (infer-or-flow f-a path)
               f-a* (get-in f-a path)
