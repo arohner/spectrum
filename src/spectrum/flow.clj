@@ -651,9 +651,15 @@
 (defn get-var-fn-analysis [a]
   (some-> a :init maybe-strip-meta))
 
+(defn valid-invoke-analysis? [{:keys [a path] :as args}]
+  {:post [(do (when (not %)
+                (println "valid-invoke-analysis?" args "=>" %)) true)]}
+  (or (-> (get-in a path) :op (= :fn))
+      (-> (get-in a path) :tag (= clojure.lang.IFn))))
+
 (defn invoke-get-fn-analysis-var [v]
   {:post [(if (:a %)
-            (-> (get-in (:a %) (:path %)) :op (= :fn))
+            (valid-invoke-analysis? %)
             true)]}
   (let [v-a (data/get-var-analysis v)
         path [:init]

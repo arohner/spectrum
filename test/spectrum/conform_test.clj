@@ -541,7 +541,9 @@
 
       (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)
 
-      (c/and- [(c/pred-spec #'fn?) (c/fn-spec (c/cat- []) (c/pred-spec #'any?) nil)]) (c/cat- []) (c/pred-spec #'any?))
+      (c/and- [(c/pred-spec #'fn?) (c/fn-spec (c/cat- []) (c/pred-spec #'any?) nil)]) (c/cat- []) (c/pred-spec #'any?)
+
+      (c/class-spec clojure.lang.IFn) (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?))
 
   (testing "invalid"
     (are [spec args] (c/invalid? (c/invoke (c/parse-spec spec) args))
