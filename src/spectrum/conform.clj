@@ -259,14 +259,14 @@
    :post [(validate! ::spect %)]}
   (if (invoke? s)
     (p/invoke- s args)
-    (invalid {:message (format "can't invoke %s" (print-str s))})))
+    (invalid {:message (format "invoke: %s doesn't implement Invoke" (print-str s))})))
 
 (defn invoke-accept [s]
   {:pre [(validate! ::spect s)]
    :post [(validate! ::spect %)]}
   (if (invoke? s)
     (p/invoke-accept- s)
-    (invalid {:message (format "can't invoke %s" (print-str s))})))
+    (invalid {:message (format "invoke-accept: %s doesn't implement Invoke" (print-str s))})))
 
 (s/fdef first-rest? :args (s/cat :x any?) :ret boolean?)
 (defn first-rest? [x]
@@ -1384,7 +1384,7 @@
       (cond
         (or (= #'keyword? pred) (= #'symbol? pred)) (cat- [(pred-spec #'any?) (?- (pred-spec #'any?))])
         (= #'ifn? pred) (pred-spec #'any?)
-        :else (invalid {:message (format "can't invoke %s" (print-str this))}))))
+        :else (invalid {:message (format "FnSpec: can't invoke-accept %s" (print-str this))}))))
   p/FirstRest
   (first- [this]
     (let [p (:pred this)]
@@ -1893,14 +1893,14 @@
          (map (fn [p]
                 (invoke p args)))
          (filter conformy?)
-         (#(or-or-invalid % (format "Can't invoke %s" (print-str this))))))
+         (#(or-or-invalid % (format "and-: Can't invoke %s with %s" (print-str this) (print-str args))))))
   (invoke-accept- [this]
     (->> this
          :ps
          (map parse-spec)
          (map invoke-accept)
          (filter conformy?)
-         (#(or-or-invalid % (format "Can't invoke %s" (print-str this))))))
+         (#(or-or-invalid % (format "and-: Can't invoke accept %s" (print-str this))))))
   p/Regex
   (regex? [this]
     (->> this
@@ -2078,14 +2078,14 @@
          (map (fn [p]
                 (invoke p args)))
          (filter conformy?)
-         (#(or-or-invalid % (format "Can't invoke %s" (print-str this))))))
+         (#(or-or-invalid % (format "or-: Can't invoke %s" (print-str this))))))
   (invoke-accept- [this]
     (->> this
          :ps
          (map parse-spec)
          (map invoke-accept)
          (filter conformy?)
-         (#(or-or-invalid % (format "Can't invoke %s" (print-str this))))))
+         (#(or-or-invalid % (format "or-: Can't invoke-accept %s" (print-str this))))))
   p/KeywordInvoke
   (keyword-invoke- [this args]
     (->> (:ps this)
@@ -2886,7 +2886,7 @@
             spec*))
         (if (every-known? invoke-args)
           (if (every-valid? invoke-args)
-            (invalid {:message (format "invoke-fn-spec can't invoke %s (%s) with %s" v (print-str spec) (print-str invoke-args))})
+            (invalid {:message (format "invoke-fn-spec can't invoke %s (%s) with %s => %s" v (print-str args) (print-str invoke-args) (print-str (conform args invoke-args)))})
             (invalid {:message (format "invoke with invalid args %s" (print-str invoke-args))}))
           (unknown {:message (format "invoke %s w/ unknown args %s" v (print-str invoke-args))})))
       (unknown {:message (format "invoke %s no :args spec" spec)}))))
