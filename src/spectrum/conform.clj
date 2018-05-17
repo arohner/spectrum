@@ -2794,6 +2794,7 @@
 
 
 (extend-regex FnSpec)
+(first-rest-singular FnSpec)
 (will-accept-this FnSpec)
 
 (predicate-spec fn-spec?)
