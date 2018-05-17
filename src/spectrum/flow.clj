@@ -434,34 +434,38 @@
     a))
 
 (defn find-binding*-dispatch [a name]
-  (assert (:op a))
+  {:pre [(:op a) (symbol? name)]}
   (when-not name
     (println "find-binding dispatch no name for" (:op a)))
-  (assert name)
   (:op a))
+
+(s/def :binding/name symbol?)
+(s/def :binding/path vector?)
+(s/def :binding/spect c/spect?)
+
+(s/def ::binding (s/keys :req-un [:binding/name :binding/path :binding/spec]))
 
 (defmulti find-binding* #'find-binding*-dispatch)
 
+(defn find-binding-key [key]
+  (fn find-binding [a name]
+    (some->> (get a key)
+             (map-indexed (fn [i b]
+                            (assoc b :index i)))
+             (filter (fn [b]
+                       (= name (:name b))))
+             first
+             (#(assoc % :path [key (:index %)])))))
+
+(def find-binding-let (find-binding-key :bindings))
+(def find-binding-if (find-binding-key :if-bindings))
+
+(defn find-binding-default [a name]
+  (or (find-binding-if a name)
+      (find-binding-let a name)))
+
 (defmethod find-binding* :default [a name]
-  nil)
-
-(defn find-binding-let [a name]
-  (some->> a
-           :bindings
-           (map-indexed (fn [i b]
-                          (assoc b :index i)))
-           (filter (fn [b] (= name (:name b))))
-           first
-           (#(assoc % :path [:bindings (:index %)]))))
-
-(defmethod find-binding* :let [a name]
-  (find-binding-let a name))
-
-(defmethod find-binding* :letfn [a name]
-  (find-binding-let a name))
-
-(defmethod find-binding* :loop [a name]
-  (find-binding-let a name))
+  (find-binding-default a name))
 
 (defmethod find-binding* :local [a name]
   (when (and (= (:name a) name) (::ret-spec a))
@@ -517,10 +521,66 @@
           (let [p* (pop path*)]
             (recur p*)))))))
 
+(defn if-test
+  "Given an :if, return the test.
+
+Tries harder to find the 'logical' test, if the code does, e.g.
+
+(let [y (instance? C x)]
+  (if y
+   ...
+   ...))
+
+will return `(instance? C x)` rather than `y`
+"
+  [a path]
+  (let [a* (get-in a path)
+        _ (assert (= :if (:op a*)))
+        {:keys [test]} a*]
+    (if (= :local (:op test))
+      (let [b (find-binding- a path (:name test))]
+        (if (:init b)
+          (:init b)
+          test))
+      test)))
+
+(defn if-test-type
+  "Given an :if, return a keyword representing the type of test it is doing, or :unknown"
+  [a path]
+  {:post [(keyword? %)]}
+  (let [a* (get-in a path)
+        _ (assert (= :if (:op a*)))
+        {:keys [test then else]} a*
+        test (if-test a path)]
+    (cond
+      (invoke-predicate? test) :pred
+      (invoke-nil? test) :nil
+      (invoke-truthy? test) :truthy
+      (= :instance? (:op test)) :instance?
+      :else :unknown)))
+
+(defn if-test-binding
+  "Given an :if, return the path to the local binding it tests, or nil
+  if unknown, or not testing a local variable"
+  [a path]
+  (let [a* (get-in a path)
+        _ (assert (= :if (:op a*)))
+        {:keys [test then else]} a*
+        test (if-test a path)
+        binding-name (case (if-test-type a path)
+                       (:pred :nil) (-> test :args first :name)
+                       :truthy (-> test :name)
+                       :instance? (-> test :target :name)
+                       :unknown nil)]
+    (when binding-name
+      (-> (find-binding a path binding-name)
+          :path))))
+
 (defn binding-update-if-specs
   "Given a :binding, walk up the analysis update the binding's ::ret-spec to reflect
   `if` branches taken. Returns the updated binding"
   [a path binding]
+  {:pre [(map? binding)]}
   (loop [path path
          spec (::ret-spec binding)]
     (let [a* (get-in a path)]
@@ -529,26 +589,15 @@
         (let [parent (get-in a (pop path))]
           (if (= :if (:op parent))
             (let [{:keys [test then else]} parent
+                  test (if-test a (pop path))
                   this-expr (cond
                               (and (= (:form a*) (:form test)) (= (a-loc a*) (a-loc test))) :test
                               (and (= (:form a*) (:form then)) (= (a-loc a*) (a-loc then))) :then
                               (and (= (:form a*) (:form else)) (= (a-loc a*) (a-loc else))) :else
                               :else (do
                                       (assert false)))
-                  test (if (= :local (:op test))
-                         (let [b (find-binding- a path (:name test))]
-                           (if (:init b)
-                             (:init b)
-                             test))
-                         test)
-                  this (get parent this-expr)
-                  test-type (cond
-                              (invoke-predicate? test) :pred
-                              (invoke-nil? test) :nil
-                              (invoke-truthy? test) :truthy
-                              (= :instance? (:op test)) :instance?
-                              :else nil)]
-              (if (and test-type
+                  test-type (if-test-type a (pop path))]
+              (if (and (not= :unknown test-type)
                        (or (-> test :form (= (:form binding)))
                            (-> test :args first :name (= (:name binding)))
                            (-> test :target :name (= (:name binding)))))
@@ -580,49 +629,47 @@
 (defn find-binding
   "recursively unwrap a, looking for a :binding for 'name"
   [a path name]
-  {:pre (symbol? name)
+  {:pre [(symbol? name)]
    :post [(s/valid? (s/nilable ::analysis) %)]}
-  (let [b (find-binding- a path name)]
+  (when-let [b (find-binding- a path name)]
     (binding-update-if-specs a path b)))
 
-(s/fdef infer-add-constraint :args (s/cat :a ::analysis :b-path vector? :constraint c/spect?))
+(defn apply-constraints [a constraints]
+  (reduce (fn [a [b-path spec]]
+            (update-in a (conj b-path ::ret-spec) c/add-constraint spec)) a constraints))
+
+(defn maybe-if-bindings
+  "Given a path, walk upwards to the nearest :if-binding, or nil"
+  [a path]
+  (loop [path path]
+    (if (-> (get-in a path) :if-bindings)
+      (conj path :if-bindings)
+      (if (not= [] path)
+        (recur (pop path))
+        nil))))
+
+(s/fdef infer-add-constraint :args (s/cat :a ::analysis :b-path vector? :call-path vector? :constraint c/spect?))
 (defn infer-add-constraint
   "Given an operation at call-path, update binding at b-path to add a constraint on method-spec."
-  [a b-path constraint]
-  (let [b (get-in a b-path)]
-    (assert b (format "binding not found: %s %s" (:form a) b-path))
+  [a b-path call-path constraint]
+  {:pre [(vector? b-path)]
+   :post [(map? %)]}
+  (let [binding (get-in a b-path)
+        _ (assert binding)
+        if-bindings (maybe-if-bindings a call-path)
+        b-spec (::ret-spec binding)]
+    (assert binding (format "binding not found: %s %s" (:form a) b-path))
     (assert b-path)
-    (assert (::ret-spec b) (format "no ret-spec on %s %s %s" (:op b) (:form b) (a-loc-str a)))
-    (update-in a (conj b-path ::ret-spec) c/add-constraint constraint)))
-
-(defn should-add-constraint?
-  "Given an invoke at call-path, return if we should add add constraint to the binding, if the constraint isn't shadowed by :if tests"
-  [a call-path binding-name constraint]
-  (let [b- (find-binding- a call-path binding-name)
-        b (find-binding a call-path binding-name)]
-    (assert b-)
-    (assert b)
-    (if (and (c/valid? constraint (::ret-spec b)) (not (c/valid? constraint (::ret-spec b-))))
-      ;; we're shadowing the if, do nothing
-      false
-      true)))
-
-(defn infer-maybe-add-constraint
-  "Given an invoke at call-path, add constraint to the binding, if the constraint isn't shadowed by if tests"
-  [a call-path binding-name constraint]
-  {:pre [binding-name]}
-
-  (if (should-add-constraint? a call-path binding-name constraint)
-    (let [b (find-binding a call-path binding-name)]
-      (infer-add-constraint a (:path b) constraint))
-    a))
-
-(defn infer-or-constraint [a b-path constraint]
-  (let [b (get-in a b-path)]
-    (assert b (format "binding not found: %s %s" (:form a) b-path))
-    (assert b-path)
-    (assert (::ret-spec b) (format "no ret-spec on %s %s %s %s" (:name b) (keys b) (:op b) (a-loc-str a)))
-    (update-in a (conj b-path ::ret-spec) c/add-or-constraint constraint)))
+    (println "infer-add-constraint" b-path call-path constraint "if-bindings?" if-bindings)
+    (if if-bindings
+      (if (= :if-bindings (last b-path))
+        (assert false "TODO: update an if-binding")
+        (let [binding (update-in binding [::ret-spec] c/add-constraint constraint)
+              binding (merge binding {:call-path call-path
+                                      :path b-path
+                                      :constraint constraint})]
+          (update-in a if-bindings conj binding)))
+      (update-in a (conj b-path ::ret-spec) c/add-constraint constraint))))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret ::c/spect)
 (defn analysis-args->spec
@@ -1771,12 +1818,12 @@
 (s/fdef infer-fn-invoke-add-constraint)
 (defn infer-fn-invoke-add-constraint
   "Given an invoke to the fn at binding b with args, update b's spec to support the call"
-  [a b-path invoke-args]
+  [a b-path call-path invoke-args]
   (let [b (get-in a b-path)
         s (::ret-spec b)]
     (assert b)
     (assert s)
-    (infer-add-constraint a b-path (c/fn-spec invoke-args (c/pred-spec #'any?) nil))))
+    (infer-add-constraint a b-path call-path (c/fn-spec invoke-args (c/pred-spec #'any?) nil))))
 
 (s/fdef infer-invoke-constraints :args (s/cat :s c/spect? :args (s/coll-of c/spect?) :ret c/spect?))
 (defn infer-invoke-constraints
@@ -1823,8 +1870,8 @@
                   b (find-binding a path (-> a* :fn :name))]
               (assert b)
               (-> a
-                  (infer-maybe-add-constraint path fn-name (c/pred-spec #'fn?))
-                  (infer-fn-invoke-add-constraint (:path b) invoke-args)))
+                  (infer-add-constraint (:path b) b path (c/pred-spec #'fn?))
+                  (infer-fn-invoke-add-constraint (:path b) path invoke-args)))
             a)
         s (invoke-get-fn-spec a (conj path :fn) invoke-args)
         {f-a :a f-a-path :path f-a-op :op} (invoke-get-fn-analysis a path)]
@@ -1842,22 +1889,20 @@
                 a (if s-args
                     (reduce (fn [a [a-arg s-arg]]
                               (case (:op a-arg)
-                                (:binding :local) (infer-maybe-add-constraint a path (:name a-arg) s-arg)
+                                (:binding :local) (let [b (find-binding- a path (:name a-arg))]
+                                                    (infer-add-constraint a (:path b) path s-arg))
                                 a)) a args)
                     a)
-                _ (println "infer invoke" (:form a*) "in" (:form a))
-                ret-spec (if (and f-a (= :var f-a-op) (not (recursive? a (conj path :fn))))
+                ret-spec (if (and f-a (= :var f-a-op) (c/fn-spec? s) (not (recursive? a (conj path :fn))))
                            (:ret (call-site-specialize f-a f-a-path invoke-args))
                            (c/invoke s (if (c/valid? (c/invoke-accept s) invoke-args)
                                          invoke-args
                                          (c/invoke-accept s))))]
             (assert ret-spec)
             (assoc-in a (conj path ::ret-spec) ret-spec))
-          (do
-            (println "infer invoke invalid" (:form a*) s invoke-args)
-            (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s with %s" (print-str s-args) (print-str invoke-args))})))))
+          (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s with %s" (print-str s-args) (print-str invoke-args))}))))
       (do
-        (println "unknown spec:" (:form a*) s)
+        (println "infer invoke unknown spec:" (:form a*) s)
         (assert false "unknown spec")
         (assoc-in a (conj path ::ret-spec) (c/unknown {:message (format "infer invoke: unknown spec or invalid spec: %s" s)}))))))
 
@@ -1866,7 +1911,7 @@
         a* (get-in a path)
         b (find-binding a (pop path) (:name a*))]
 
-    (assert b (format "infer :local: failed to find binding: %s %s %s %s" (:name a*) (:form a*) (a-loc-str a*) (get-in a (pop (pop (pop (pop path)))))))
+    (assert b (format "infer :local: failed to find binding: %s %s %s" (:name a*) (:form a*) (a-loc-str a*)))
     (when-not (::ret-spec b)
       (println "error: no ret-spec on:" (:name b) (:op b)))
     (assert (c/spect? (::ret-spec b)))
@@ -1908,19 +1953,22 @@
         _ (assert a*)
         _ (assert (:op a*))
         _ (assert (= :fn-method (:op a*)))
-        a (update-in a (conj path :params) (fn [params]
-                                             (let [params (mapv (fn [p]
-                                                                  (let [s (cond
-                                                                            (and (:tag p) (not= Object)) (c/class-spec (:tag p))
-                                                                            :else (c/pred-spec #'any?))
-                                                                        s (assoc s :inferred true)]
-                                                                    (assoc p ::ret-spec s))) params)
-                                                   params (if (:variadic? a*)
-                                                            (if (fn-variadic-method-requires-arg? a (-> path pop pop))
-                                                              (assoc-in params [(-> params count dec) ::ret-spec] (c/or- [(c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))]) (c/class-spec clojure.lang.ISeq)]))
-                                                              (assoc-in params [(-> params count dec) ::ret-spec] (c/seq- (c/pred-spec #'any?))))
-                                                            params)]
-                                               params)))
+        a (update-in a (conj path :params)
+                     (fn [params]
+                       (let [params (mapv (fn [p]
+                                            (let [s (cond
+                                                      ;; We would like to trust type hints, but they're not validated by the compiler,
+                                                      ;; which means they can be wrong.
+                                                      ;; (and (:tag p) (not= Object)) (c/class-spec (:tag p))
+                                                      :else (c/pred-spec #'any?))
+                                                  s (assoc s :inferred true)]
+                                              (assoc p ::ret-spec s))) params)
+                             params (if (:variadic? a*)
+                                      (if (fn-variadic-method-requires-arg? a (-> path pop pop))
+                                        (assoc-in params [(-> params count dec) ::ret-spec] (c/or- [(c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))]) (c/class-spec clojure.lang.ISeq)]))
+                                        (assoc-in params [(-> params count dec) ::ret-spec] (c/seq- (c/pred-spec #'any?))))
+                                      params)]
+                         params)))
         args-spec (c/cat- (mapv ::ret-spec (get-in a (conj path :params))))
         fn-spec (c/fn-spec args-spec (c/pred-spec #'any?) nil)
         a (assoc-in a (conj path ::ret-spec) fn-spec)]
@@ -2014,7 +2062,7 @@
                                               b-path (:path b)]
                                           (assert b-path)
                                           (assert (c/spect? spec))
-                                          (infer-add-constraint a b-path spec))
+                                          (infer-add-constraint a (:path b) path spec))
                       a)) a (map vector (:args a*) constructor-specs))]
     (assoc-in a (conj path ::ret-spec) (c/class-spec (-> a* :class :val)))))
 
@@ -2060,7 +2108,6 @@
                                              [m (assoc s :args args)]))))
                                   (filter identity)
                                   (map (fn [[m s]]
-                                         {:post [(do (println "m:" m "s:" s) true)]}
                                          (c/maybe-transform-method m s (if (c/valid? (:args s) invoke-args)
                                                                          invoke-args
                                                                          (c/invoke-accept s)))))
@@ -2080,7 +2127,8 @@
                       arg-pairs (map vector (concat [(:instance a*)] (:args a*)) (c/elements spec-args))]
                   (reduce (fn [a [arg s]]
                             (case (:op arg)
-                              (:binding :local) (infer-maybe-add-constraint a path (:name arg) s)
+                              (:binding :local) (let [b (find-binding- a path (:name arg))]
+                                                  (infer-add-constraint a (:path b) path s))
                               a)) a arg-pairs))
                 a)]
         (assoc-in a (conj path ::ret-spec) ret-spec))
@@ -2098,8 +2146,93 @@
   (let [a (infer-walk a path)]
     (infer-java-call a path)))
 
+(defn if-test-constraints
+  "Given an :if, return two path-constraints, one for the :test being truthy, and one for it being falsey.
+
+   Returns empty constraints if we can't parse the test, or if it
+  refers to things we can't constrain (i.e. vars outside of `a`)"
+  [a path]
+  (let [a* (get-in a path)
+        test (if-test a path)
+        test-type (if-test-type a path)]
+    (if (not= :unknown test-type)
+      (let [test-pred (condp = test-type
+                        :nil  (c/pred-spec #'nil?)
+                        :pred (c/pred-spec (-> test :fn :var))
+                        :truthy (c/pred-spec #'identity)
+                        :instance? (c/class-spec (-> test :class)))
+            ;; the thing we're invoking/testing
+            test-arg-a (case test-type
+                         (:nil :pred) (-> test :args first)
+                         :truthy test
+                         :instance? (-> test :target)
+                         :unknown nil)
+            ;;
+            b-path (when (= :local (:op test-arg-a))
+                                (let [b (find-binding a path (:name test-arg-a))]
+                                  (assert b)
+                                  (assert (:path b))
+                                  (:path b)))]
+        (if b-path
+          (condp = test-type
+            :pred [[b-path test-pred] [b-path (c/not- test-pred)]]
+            :nil [[b-path (c/value nil)] [b-path (c/not- test-pred)]]
+            :truthy [[b-path (c/and- [(c/not- (c/pred-spec #'nil?)) (c/not- (c/pred-spec #'false?))])]
+                     [b-path (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'false?)])]]
+            :instance? [[b-path test-pred]
+                        [b-path (c/not- test-pred)]])
+          [[] []])))))
+
+(defn merge-if-bindings
+  "Given an :if at path, combine any bindings and update the original"
+  [a path]
+  (let [a* (get-in a path)
+        _ (assert (= :if (:op a*)))
+        test-target (if-test-binding a path)
+        [[_ test-then-constraint], [_ test-else-constraint]] (if-test-constraints a path)
+
+        bindings-map (->> [:then :else]
+                          (map (fn [branch]
+                                 [branch (-> a
+                                             (get-in (conj path branch :if-bindings))
+                                             (->> (group-by :path)))]))
+                          (into {}))
+        get-other-branch (fn [branch]
+                           (case branch
+                             :then :else
+                             :else :then))
+        update-bindings (fn [a branch]
+                          {:pre [(#{:then :else} branch)]}
+                          (let [[test-this-constraint test-other-constraint] (if (= branch :then)
+                                                                               [test-then-constraint test-else-constraint]
+                                                                               [test-else-constraint test-then-constraint])]
+                            (reduce (fn [a [b-path this-bindings]]
+                                      (let [this-branch branch
+                                            other-branch (get-other-branch branch)
+                                            this-constraints (c/and- (map :constraint this-bindings))]
+                                        (if (= test-target b-path)
+                                          (if-let [other-bindings (get-in bindings-map [other-branch b-path])]
+                                            (let [other-constraints (c/and- (map :constraint other-bindings))]
+                                              (infer-add-constraint a b-path
+                                                                    path
+                                                                    (c/or- [this-constraints other-constraints])))
+                                            (reduce (fn [a {:keys [call-path constraint] :as binding}]
+                                                      (if (c/valid? test-this-constraint constraint)
+                                                        a
+                                                        (infer-add-constraint a b-path call-path constraint))) a this-bindings))
+                                          (reduce (fn [a {:keys [call-path constraint] :as binding}]
+                                                    (infer-add-constraint a b-path path constraint)) a this-bindings)))) a (get bindings-map branch))))]
+    (-> a
+        (update-bindings :then)
+        (update-bindings :else))))
+
 (defmethod infer* :if [a path]
-  (walk-if infer-walk a path))
+  (let [a (assoc-in a (conj path :then :if-bindings) [])
+        a (if (get-in a (conj path :else))
+            (assoc-in a (conj path :else :if-bindings) [])
+            a)
+        a (walk-if infer-walk a path)]
+    (merge-if-bindings a path)))
 
 (defmethod infer* :recur [a path]
   (walk-recur infer-walk a path))
@@ -2148,7 +2281,7 @@
             (:binding :local) (let [b (find-binding a path (:name e))
                                     b-path (:path b)]
                                 (assert b-path)
-                                (infer-add-constraint a b-path (::ret-spec e)))
+                                (infer-add-constraint a b-path path (::ret-spec e)))
             a)]
     (assoc-in a (conj path ::ret-spec) (c/throw-form (::ret-spec e)))))
 
@@ -2159,7 +2292,7 @@
         a (case (:op target)
             (:binding :local) (let [b (find-binding a path (:name target))]
                                 (assert (:path b))
-                                (infer-add-constraint a (:path b) (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'map?) (c/pred-spec #'set?)])))
+                                (infer-add-constraint a (:path b) path (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'map?) (c/pred-spec #'set?)])))
             a)]
     (assoc-in a (conj path ::ret-spec) (keyword-invoke-ret-spec a*))))
 
@@ -2189,7 +2322,7 @@
                                                 b-path (:path b)]
                                             (assert b-path)
                                             (println "protocol-invoke:" s (:name a) "=>" s)
-                                            (infer-add-constraint a b-path s))
+                                            (infer-add-constraint a (:path b) path s))
                         a)) a args)
             a)]
     (assoc-in a (conj path ::ret-spec) (if (and spec (:ret spec))
@@ -2229,7 +2362,7 @@
                               b-path (:path b)]
                           (assert b)
                           (assert b-path)
-                          (infer-or-constraint a b-path (::ret-spec (:val a*))))
+                          (infer-add-constraint a b-path path (::ret-spec (:val a*))))
       a)))
 
 (defmethod infer* :instance-field [a path]

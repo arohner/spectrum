@@ -229,7 +229,12 @@
         '(fn foo [x] (if (> x 1) (recur (/ x 2.0)) x)) (c/fn-spec (c/cat- [(c/class-spec Number)]) (c/class-spec Double) nil)
 
         ;; testing that this doesn't hang
-        '(fn [x] (update-in x [:foo] inc)) (c/pred-spec #'associative?))))
+        '(fn [x] (update-in x [:foo] inc)) (c/pred-spec #'associative?)
+
+        ;; if prediction
+        '(fn [x] (if (int? x) (inc x))) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?) nil)
+        '(fn [x y] (if (int? y) (inc x))) (c/fn-spec (c/cat- [(c/pred-spec #'number?)]) (c/pred-spec #'any?) nil)
+        '(fn [x y] (if (int? y) (inc x) (get x :foo))) (c/fn-spec (c/cat- [(c/or- [(c/pred-spec #'number?) (c/pred-spec #'associative?)])]) (c/pred-spec #'any?) nil))))
 
   (testing "invalid"
     (are [form] (c/invalid? (check/infer-form form))
