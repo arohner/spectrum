@@ -1824,12 +1824,6 @@
     (and? s) (and-conj s constraint)
     :else (and- [s constraint])))
 
-(s/fdef add-or-constraint :args (s/cat :s ::spect :constraint ::spect) :ret ::spect)
-(defn add-or-constraint
-  "given a spec s, `or` it with constraint"
-  [s constraint]
-  (or- [s constraint]))
-
 (s/fdef non-contradiction? :args (s/cat :s ::spect :constraint ::spect) :ret boolean?)
 (defn non-contradiction?
   "True if adding constraint to s won't result in contradiction"

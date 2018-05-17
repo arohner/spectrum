@@ -187,8 +187,9 @@
   ;;     ...))
 
   ;; this .nth call is unreachable in the first iteration, but is
-  ;; always IChunk when (< i count) is true. (.nth nil) breaks things,
-  ;; but never happens, so convince spectrum its type is IChunk
+  ;; always IChunk when (< i count) is true. (.nth nil) fails the type
+  ;; checker, but never happens, so convince spectrum its type is
+  ;; IChunk
 
   (if (some-> a macroexpansion-var (= #'doseq))
     (-> a
@@ -212,7 +213,7 @@
                     a)
                 a* (get-in a path)]
             (when-not (s/valid? ::c/spect-like (::ret-spec a*))
-              (println "walk failed:" (:form a*) (:op a*) "=>" (::ret-spec a*))
+              (println "walk failed:" f (:form a*) (:op a*) "=>" (::ret-spec a*))
               (println (s/explain-str ::c/spect-like (::ret-spec a*))))
             (validate! ::c/spect-like (::ret-spec a*))
             a))
@@ -660,7 +661,6 @@ will return `(instance? C x)` rather than `y`
         b-spec (::ret-spec binding)]
     (assert binding (format "binding not found: %s %s" (:form a) b-path))
     (assert b-path)
-    (println "infer-add-constraint" b-path call-path constraint "if-bindings?" if-bindings)
     (if if-bindings
       (if (= :if-bindings (last b-path))
         (assert false "TODO: update an if-binding")
@@ -875,50 +875,54 @@ will return `(instance? C x)` rather than `y`
 
 (s/fdef call-site-specialize :args (s/cat :f-a ::analysis :args c/spect?) :ret c/spect?)
 (defn call-site-specialize*
-  "Given the analysis for a fn and fn args, return a call-site specialized spec for f"
+  "Given the analysis for a fn and fn args, return a call-site specialized spec for f. specialization can change the :args, e.g. `map`, so this returns a whole fn spec"
   [f-a path args-spec]
   {:pre [(c/spect? args-spec)]
-   :post [(do (when-not (c/spect? %)
-                (println "specialize:" (:form f-a) "->" %)) true) (c/spect? %)]}
+   :post [(c/fn-spec? %)]}
   (let [f-a* (get-in f-a path)
         f-spec (::ret-spec f-a*)
+        unspecialized-ret-spec (or (:ret f-spec) (c/unknown {:message (format "call-site-specialize: no ret-spec on %s" (print-str f-spec))} ))
         _ (assert (c/invoke? f-spec))
         v (:var f-a*)]
-    (if (and v (data/get-invoke-transformer v))
-      (let [s (get-var-spec v f-a path)]
-        (c/invoke s args-spec))
-      (if (c/valid? (c/invoke-accept f-spec) args-spec)
-        (let [_ (when-not (c/conformy? args-spec)
-                  (println "call-site-specialize:" (:form f-a) args-spec))
-              _ (assert (c/conformy? args-spec))
-              _ (when-not (= :fn (:op f-a*))
-                  (println "specialize:" f-a path (:op f-a*)))
-              _ (assert path)
-              f-a (infer-or-flow f-a path)
-              f-a* (get-in f-a path)
-              _ (assert (::ret-spec f-a*))
-              specialized-methods (->> (get-in f-a* [:methods])
-                                       (filterv (fn [m]
-                                                  (assert (::ret-spec m))
-                                                  (assert (c/fn-spec? (::ret-spec m)))
-                                                  (when-not (c/valid? (-> m ::ret-spec :args) args-spec)
-                                                    (println "specialize method" (:form f-a*) (-> m ::ret-spec) args-spec "=>" (c/conform (-> m ::ret-spec :args) args-spec) ))
-                                                  (c/valid? (-> m ::ret-spec :args) args-spec))))
 
-              _ (when-not (= 1 (count specialized-methods))
-                  (println "specialize method count:" (:form f-a) (map ::ret-spec (:methods f-a*)) "args" args-spec "=>" (count specialized-methods) specialized-methods))
-              _ (assert (= 1 (count specialized-methods)))
-              f-a* (assoc-in-a f-a* [:methods] specialized-methods)
-              f-a (assoc-in-a f-a path f-a*)
-              f-a (update-in f-a (conj path [:methods 0 :params]) (fn [params]
-                                                                    (destructure-fn-params params args-spec)))
-              orig-spec (::ret-spec f-a)
-              f-a (flow* f-a path)
-              ret-spec (get-in f-a (conj path ::ret-spec))]
-          (println "specialize:" (or (:var f-a) (:form f-a)) args-spec "=>" ret-spec)
-          (assert (c/spect? ret-spec))
-          ret-spec)
-        f-spec))))
+    ;; there are invokable things we can't specialize, such as IFn, multimethods, etc.
+    (if (= :fn (:op f-a*))
+      (if (and v (data/get-invoke-transformer v))
+        (let [s (get-var-spec v f-a path)]
+          (c/invoke s args-spec))
+        (if (c/valid? (c/invoke-accept f-spec) args-spec)
+          (let [_ (when-not (c/conformy? args-spec)
+                    (println "call-site-specialize:" (:form f-a) args-spec))
+                _ (assert (c/conformy? args-spec))
+                _ (when-not (= :fn (:op f-a*))
+                    (println "specialize:" f-a path (:op f-a*)))
+                _ (assert path)
+                f-a (infer-or-flow f-a path)
+                f-a* (get-in f-a path)
+                _ (assert (::ret-spec f-a*))
+                specialized-methods (->> (get-in f-a* [:methods])
+                                         (filterv (fn [m]
+                                                    (assert (::ret-spec m))
+                                                    (assert (c/fn-spec? (::ret-spec m)))
+                                                    (when-not (c/valid? (-> m ::ret-spec :args) args-spec)
+                                                      (println "specialize method" (:form f-a*) (-> m ::ret-spec) args-spec "=>" (c/conform (-> m ::ret-spec :args) args-spec) ))
+                                                    (c/valid? (-> m ::ret-spec :args) args-spec))))
+
+                _ (when-not (= 1 (count specialized-methods))
+                    (println "specialize method count:" (:form f-a) (map ::ret-spec (:methods f-a*)) "args" args-spec "=>" (count specialized-methods) specialized-methods))
+                _ (assert (= 1 (count specialized-methods)))
+                f-a* (assoc-in-a f-a* [:methods] specialized-methods)
+                f-a (assoc-in-a f-a path f-a*)
+                f-a (update-in f-a (conj path [:methods 0 :params]) (fn [params]
+                                                                      (destructure-fn-params params args-spec)))
+                orig-spec (::ret-spec f-a)
+                f-a (flow* f-a path)
+                f-spec* (get-in f-a (conj path ::ret-spec))]
+            (println "specialize:" (or (:var f-a) (:form f-a)) args-spec "=>" f-spec*)
+            (assert (c/spect? f-spec*))
+            f-spec*)
+          f-spec))
+      f-spec)))
 
 (def call-site-specialize (memo/memo call-site-specialize*))
 
@@ -949,7 +953,7 @@ will return `(instance? C x)` rather than `y`
             (assert (c/spect? args-spec))
             (assoc-in-a a (conj path ::ret-spec) ;; if f-a
                       ;; (:ret (call-site-specialize f-a f-a-path args-spec))
-                      (c/invoke fn-spec args-spec)))
+                        (c/invoke fn-spec args-spec)))
           (assoc-in-a a (conj path ::ret-spec) (c/unknown {:message (format "invoke: no spec for %s" (:var (:fn a*)))})))
         (assoc-in-a a (conj path ::ret-spec) (c/invalid {:message (format "invoke: wrong number of args %s" (:form a*))})))
       (catch Exception e
