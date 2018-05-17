@@ -3436,9 +3436,8 @@
   (regex-print-method "alt" v w))
 
 (defmethod print-method Value [v ^Writer w]
-  (.write w "#value[")
-  (print-method (:v v) w)
-  (.write w "]"))
+  (.write w "#value ")
+  (print-method (:v v) w))
 
 (defmethod print-method PredSpec [v ^Writer w]
   (.write w (format "#pred " ))
@@ -3458,9 +3457,8 @@
   (#'clojure.core/print-sequential "[" print-method " " "]" (:ps v) w))
 
 (defmethod print-method NotSpec [v ^Writer w]
-  (.write w "#not[")
-  (print-method (:s v) w)
-  (.write w "]"))
+  (.write w "#not ")
+  (print-method (:s v) w))
 
 (defmethod print-method FnSpec [s ^Writer w]
   (.write w "#fn")
