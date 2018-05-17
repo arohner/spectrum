@@ -93,24 +93,22 @@
 
 (defn infer-result [a]
   (cond
-    (= :def (:op a)) (println (-> a :var) "=>" (-> a :init maybe-strip-meta ::ret-spec))
-    :else (println (:form a) "=>" (::ret-spec a))))
-
-(def ^:dynamic *inferring* "Set of vars we're currently inferring. Used to break loops"
-  [])
+    (= :def (:op a)) (println "infer-result:" (-> a :var) "=>" (-> a :init maybe-strip-meta ::ret-spec))))
 
 (def cached-infer (memo/memo (fn [a path]
                                {:post [(when a
                                          %)]}
-                               (infer* a path))))
+                               (let [a* (infer* a path)]
+                                 (infer-result (get-in a* path))
+                                 a*))))
 
 (s/fdef infer :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis)
 (defn infer
   "Given an un-spec'd analysis, return our best guess for the spec"
-  [a]
-  (let [a* (cached-infer a [])]
-    (infer-result a*)
-    a*))
+  ([a]
+   (infer a []))
+  ([a path]
+   (cached-infer a path)))
 
 (defn flow-ns
   "Given the result of analyze-ns, flow all forms"
@@ -296,7 +294,7 @@
         (if-let [v-a (data/get-var-analysis v)]
           (if (recursive? a path)
             (::ret-spec (get-self-call-analysis a path))
-            (::ret-spec (cached-infer v-a [])))
+            (::ret-spec (infer v-a [])))
           (c/unknown {:message (format "couldn't find spec or analysis for %s at %s" v (a-loc-str (get-in a path)))})))))
 
 (defmethod flow* :def [a path]
@@ -415,7 +413,7 @@
     ret))
 
 (defmethod invoke-get-fn-spec :fn [a path _]
-  (let [a (cached-infer a path)
+  (let [a (infer a path)
         ret-spec (::ret-spec (get-in a path))]
     (assert ret-spec)
     ret-spec))
@@ -763,8 +761,8 @@
     (if-let [v (:var a)]
       (if-let [s (c/get-var-spec v)]
         (flow a path)
-        (cached-infer a path))
-      (cached-infer a path))))
+        (infer a path))
+      (infer a path))))
 
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
 (defn arity-conform?
@@ -1706,7 +1704,7 @@
 (defn a->java-static-method-name [a]
   (str (:class a) "/" (:method a)))
 
-(def infer-wrap (wrap cached-infer))
+(def infer-wrap (wrap infer))
 
 (defn infer-walk
   ([a path]
