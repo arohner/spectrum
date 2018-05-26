@@ -1276,6 +1276,18 @@
 
 (s/def ::pred (s/or :v var? :fn fn? :nil nil?))
 
+(def any?-form '(clojure.core/fn [x] true))
+(def any?-macroexpanded '(fn* ([x] true)))
+
+(s/fdef any-? :args (s/cat :s pred-spec?) :ret boolean?)
+(defn any-?
+  "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
+  [s]
+  (and (pred-spec? s)
+       (or (-> s :pred (= #'any?))
+           (-> s :pred (= any?-form))
+           (-> s :pred (= any?-macroexpanded)))))
+
 (s/fdef pred-spec :args (s/cat :p ::pred) :ret ::spect)
 (defn pred-spec [p]
   (p/map->PredSpec {:pred p
@@ -1298,17 +1310,6 @@
             fnspec))
         (unknown {:message (format "no spec for %s used as pred-spec" (print-str s))})))
     s))
-
-(def any?-form '(clojure.core/fn [x] true))
-(def any?-macroexpanded '(fn* ([x] true)))
-
-(s/fdef any-spec? :args (s/cat :s pred-spec?) :ret boolean?)
-(defn any-spec?
-  "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
-  [pred-spec]
-  (or (-> pred-spec :pred (= #'any?))
-      (-> pred-spec :pred (= any?-form))
-      (-> pred-spec :pred (= any?-macroexpanded))))
 
 (defn object-spec? [x]
   (and (class-spec? x) (= Object (:cls x))))
@@ -1353,7 +1354,7 @@
   (conform* [spec x]
     (let [pred (:pred spec)]
       (cond
-        (any-spec? spec) x
+        (any-? spec) x
         (and (pred-spec? x) (= pred (:pred x))) x
         (and (= #'class? pred) (class-spec? x)) x
 
@@ -1815,10 +1816,10 @@
                  s ;; can't make values more specific
                  (invalid {:message (format "can't add constraint %s to %s" (print-str constraint) (print-str s))}))
 
-    (any-spec? constraint) s
+    (any-? constraint) s
     (object-spec? constraint) s
 
-    (any-spec? s) constraint
+    (any-? s) constraint
     (object-spec? s) constraint
 
     (and? s) (and-conj s constraint)
@@ -2013,8 +2014,8 @@
         ;; if there's an any?, We could replace all predicates with
         ;; any? here, but that's not as helpful for the user.
 
-        ps (if (some any-spec? ps)
-             (conj (remove any-spec? ps) (first (filter any-spec? ps)))
+        ps (if (some any-? ps)
+             (conj (remove any-? ps) (first (filter any-? ps)))
              ps)
         ps (set ps)]
     ps))

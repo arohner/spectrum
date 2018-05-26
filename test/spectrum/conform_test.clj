@@ -81,12 +81,12 @@
 
 (deftest any-spec-works
   (testing "truthy"
-    (are [s] (c/any-spec? s)
+    (are [s] (c/any-? s)
       (c/pred-spec #'any?)
       (-> (c/pred-spec #'any?) (c/resolve-pred-spec) :args c/first-)))
 
   (testing "falsey"
-    (are [s] (not (c/any-spec? s))
+    (are [s] (not (c/any-? s))
       (c/pred-spec #'integer?))))
 
 (deftest conform-works
