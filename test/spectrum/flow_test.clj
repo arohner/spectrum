@@ -234,7 +234,9 @@
         ;; if prediction
         '(fn [x] (if (int? x) (inc x))) (c/fn-spec (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?) nil)
         '(fn [x y] (if (int? y) (inc x))) (c/fn-spec (c/cat- [(c/pred-spec #'number?)]) (c/pred-spec #'any?) nil)
-        '(fn [x y] (if (int? y) (inc x) (get x :foo))) (c/fn-spec (c/cat- [(c/or- [(c/pred-spec #'number?) (c/pred-spec #'associative?)])]) (c/pred-spec #'any?) nil))))
+        '(fn [x y] (if (int? y) (inc x) (get x :foo))) (c/fn-spec (c/cat- [(c/or- [(c/pred-spec #'number?) (c/pred-spec #'associative?)])]) (c/pred-spec #'any?) nil)
+
+        '(fn [x] (if (instance? String x) (.length x) (throw (Exception. "no")))) (c/fn-spec (c/cat- [(c/pred-spec #'string?)])))))
 
   (testing "invalid"
     (are [form] (c/invalid? (check/infer-form form))

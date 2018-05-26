@@ -1389,7 +1389,7 @@
     (let [pred (:pred this)]
       (cond
         (or (= #'keyword? pred) (= #'symbol? pred)) (cat- [(pred-spec #'any?) (?- (pred-spec #'any?))])
-        (= #'ifn? pred) (pred-spec #'any?)
+        (or (= #'ifn? pred) (= #'fn? pred)) (seq- (pred-spec #'any?))
         :else (invalid {:message (format "FnSpec: can't invoke-accept %s" (print-str this))}))))
   p/FirstRest
   (first- [this]
@@ -1763,7 +1763,8 @@
 (defn and-consolidate
   "Given the :ps for an `and`, simplify and consolidate forms"
   [ps]
-  {:post [(validate! (s/coll-of ::spect-like) %)]}
+  {:pre [(s/assert (s/coll-of ::spect) ps)]
+   :post [(s/assert (s/coll-of ::spect) %)]}
   (let [ps-orig ps
         ps (distinct ps)
         ps (map maybe-convert-value ps)
@@ -1778,11 +1779,15 @@
         ps (filter identity (concat (seq not-ors) [(when (seq ors)
                                                      (or- ors))]))
         ps (distinct ps)
-        ps (remove any-spec? ps)]
+        {anys true not-anys false} (group-by any-? ps)
+        ps (if (seq not-anys)
+             not-anys
+             (take 1 anys))]
     ps))
 
 (s/fdef and- :args (s/cat :forms (s/coll-of ::spect-like :gen-max 5)) :ret ::spect)
 (defn and- [ps]
+  {:pre [(s/assert (s/coll-of ::spect-like) ps)]}
   (let [ps (and-consolidate ps)]
     (cond
       (>= (count ps) 2) (p/map->AndSpec {:ps ps})
@@ -1961,22 +1966,19 @@
   (elements [this]
     (->> this
          :ps
-         (map parse-spec)
-         (filter p/regex?)
-         (map p/elements)
-         ((fn [se]
-            (println "se:" se (count se))
-            (assert (< (count se) 2))
-            se))
-         (first)))
+         (map parse-spec)))
   (return- [this]
     this)
   (with-return- [this x]
     (->> this
          :ps
          (map parse-spec)
+         (map (fn [p]
+                (with-return p x)))
          (mapcat (fn [p]
-                   (with-return p x)))
+                   (if (s/valid? (s/coll-of ::spect) p)
+                     p
+                     [p])))
          ((fn [ps]
             (if (seq ps)
               (and- ps)
@@ -2468,6 +2470,11 @@
 (defn all-possible-values
   "Given a regex, disentangle and fix length, returning all concrete specs up to length n"
   [spec n]
+  {:pre [(do (when-not (spect? spec)
+               (println "all-possible:" spec))
+             true)
+         (spect? spec)
+         (int? n)]}
   (->> spec
        (disentangle)
        (mapcat (fn [s]
@@ -3171,23 +3178,25 @@
         (do (println "infinite re-conform:" spec* data*)
             (assert false)
             (invalid {:message "infinite"}))
-        (if (first-rest? data)
-          (let [x (first- data)]
-            (if (nil? x)
-              (if (accept-nil? spec)
-                (let [r (return spec)]
-                  (if (nil? r)
-                    (value nil)
-                    r))
-                (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
-              (if-let [dp (derivative spec x)]
-                (if (conformy? dp)
-                  (if (and (infinite? dp) (accept-nil? dp) (infinite? (rest- data)))
-                    (return dp)
-                    (recur dp (rest- data) (inc iter)))
+        (if (any-? data)
+          data
+          (if (first-rest? data)
+            (let [x (first- data)]
+              (if (nil? x)
+                (if (accept-nil? spec)
+                  (let [r (return spec)]
+                    (if (nil? r)
+                      (value nil)
+                      r))
                   (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
-                (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))
-          reject)))))
+                (if-let [dp (derivative spec x)]
+                  (if (conformy? dp)
+                    (if (and (infinite? dp) (accept-nil? dp) (infinite? (rest- data)))
+                      (return dp)
+                      (recur dp (rest- data) (inc iter)))
+                    (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
+                  (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))
+            reject))))))
 
 (defn re-explain [spec path via in data]
   (loop [spec spec
@@ -3316,9 +3325,12 @@
     args))
 
 (defmethod conform-compound :or-and [spec args]
-  (when (some (fn [arg]
-                (some (fn [s]
-                        (valid? s arg)) (map parse-spec (:ps spec)))) (map parse-spec (:ps args)))
+  (when (or
+         (some (fn [arg]
+                 (some (fn [s]
+                         (valid? s arg)) (elements spec))) (elements args))
+         (some (fn [s]
+                 (valid? s args)) (elements spec)))
     args))
 
 (defmethod conform-compound :spec-and [spec args]

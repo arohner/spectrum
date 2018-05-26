@@ -130,7 +130,10 @@
       (c/pred-spec #'fn?) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)
       (c/pred-spec #'fn?) (c/get-var-spec #'inc)
 
+      (c/class-spec clojure.lang.IFn) (c/pred-spec #'fn?)
+      (c/cat- []) (c/pred-spec #'any?)
 
+      (c/seq- (c/pred-spec #'int?)) (c/pred-spec #'any?)
       (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])]) (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])])
 
       (c/and- [(c/seq- (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)]) (c/seq- (c/pred-spec #'any?))
@@ -139,6 +142,7 @@
       (c/cat- []) (c/value [])
 
       ;; and
+      (c/and- [(c/pred-spec #'any?)]) (c/pred-spec #'any?)
       (c/and- [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and- [(c/pred-spec #'int?) (c/pred-spec #'even?)])
       (c/and- [(c/pred-spec #'string?) (c/pred-spec #'nil?)]) (c/and- [(c/pred-spec #'string?) (c/pred-spec #'nil?)])
 

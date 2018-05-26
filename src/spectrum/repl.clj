@@ -22,6 +22,7 @@
       ::flow/ret-spec))
 
 (c/load-data-readers)
+(s/check-asserts true)
 
 (in-ns 'clojure.core)
 

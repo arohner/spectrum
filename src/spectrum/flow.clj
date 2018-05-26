@@ -992,10 +992,10 @@ will return `(instance? C x)` rather than `y`
     (when-not (c/spect? else-ret-spec)
       (println "walk-if else not spect:" (:form (:else a*)) (-> a* :else ::ret-spec) (-> a* :else :op)))
     (assoc-in-a a (conj path ::ret-spec) (condp = truthyness
-                                         :truthy then-ret-spec
-                                         :falsey else-ret-spec
-                                         :ambiguous (c/or- [then-ret-spec
-                                                            else-ret-spec])))))
+                                           :truthy then-ret-spec
+                                           :falsey else-ret-spec
+                                           :ambiguous (c/or- [then-ret-spec
+                                                              else-ret-spec])))))
 (defmethod flow* :if [a path]
   (walk-if flow-walk a path))
 
@@ -1874,7 +1874,7 @@ will return `(instance? C x)` rather than `y`
                   b (find-binding a path (-> a* :fn :name))]
               (assert b)
               (-> a
-                  (infer-add-constraint (:path b) b path (c/pred-spec #'fn?))
+                  (infer-add-constraint (:path b) path (c/pred-spec #'ifn?))
                   (infer-fn-invoke-add-constraint (:path b) path invoke-args)))
             a)
         s (invoke-get-fn-spec a (conj path :fn) invoke-args)
@@ -1897,11 +1897,11 @@ will return `(instance? C x)` rather than `y`
                                                     (infer-add-constraint a (:path b) path s-arg))
                                 a)) a args)
                     a)
-                ret-spec (if (and f-a (= :var f-a-op) (c/fn-spec? s) (not (recursive? a (conj path :fn))))
-                           (:ret (call-site-specialize f-a f-a-path invoke-args))
-                           (c/invoke s (if (c/valid? (c/invoke-accept s) invoke-args)
-                                         invoke-args
-                                         (c/invoke-accept s))))]
+                ;;if (and f-a (= :var f-a-op) (c/fn-spec? s) (not (recursive? a (conj path :fn))))
+                ;;(:ret (call-site-specialize f-a f-a-path invoke-args))
+                ret-spec (c/invoke s (if (c/valid? (c/invoke-accept s) invoke-args)
+                                       invoke-args
+                                       (c/invoke-accept s)))]
             (assert ret-spec)
             (assoc-in a (conj path ::ret-spec) ret-spec))
           (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s with %s" (print-str s-args) (print-str invoke-args))}))))
@@ -2187,6 +2187,19 @@ will return `(instance? C x)` rather than `y`
                         [b-path (c/not- test-pred)]])
           [[] []])))))
 
+(defn if-branch-prediction
+  "Predicts whether a branch has to be taken in order to not error out. Returns :then :else or :ambiguous"
+  [a path]
+  {:post [(contains? #{:then :else :ambiguous} %)]}
+  (let [a* (get-in a path)
+        {:keys [test target else]} a*]
+    (if else
+      (cond
+        (-> test ::ret-spec (c/throw?)) :else
+        (-> else ::ret-spec (c/throw?)) :then
+        true :ambiguous)
+      :then)))
+
 (defn merge-if-bindings
   "Given an :if at path, combine any bindings and update the original"
   [a path]
@@ -2194,13 +2207,26 @@ will return `(instance? C x)` rather than `y`
         _ (assert (= :if (:op a*)))
         test-target (if-test-binding a path)
         [[_ test-then-constraint], [_ test-else-constraint]] (if-test-constraints a path)
-
         bindings-map (->> [:then :else]
                           (map (fn [branch]
                                  [branch (-> a
                                              (get-in (conj path branch :if-bindings))
                                              (->> (group-by :path)))]))
                           (into {}))
+        else? (boolean (get-in a (conj path :else)))
+        test-then-binding (when test-target
+                            (merge (find-binding a (conj path :then) (:name (get-in a test-target))) {:call-path (conj path :then)
+                                                                                                      :constraint test-then-constraint}))
+        test-else-binding (when (and test-target else?)
+                            (merge (find-binding a (conj path :else) (:name (get-in a test-target))) {:call-path (conj path :else)
+                                                                                                      :constraint test-else-constraint}))
+        bindings-map (if test-then-binding
+                       (update-in bindings-map [:then test-target] (fnil conj []) test-then-binding)
+                       bindings-map)
+        bindings-map (if (and test-target else?)
+                       (update-in bindings-map [:else test-target] (fnil conj []) test-else-binding)
+                       bindings-map)
+        predicted-branch (if-branch-prediction a path)
         get-other-branch (fn [branch]
                            (case branch
                              :then :else
@@ -2215,17 +2241,18 @@ will return `(instance? C x)` rather than `y`
                                             other-branch (get-other-branch branch)
                                             this-constraints (c/and- (map :constraint this-bindings))]
                                         (if (= test-target b-path)
-                                          (if-let [other-bindings (get-in bindings-map [other-branch b-path])]
-                                            (let [other-constraints (c/and- (map :constraint other-bindings))]
-                                              (infer-add-constraint a b-path
-                                                                    path
-                                                                    (c/or- [this-constraints other-constraints])))
-                                            (reduce (fn [a {:keys [call-path constraint] :as binding}]
-                                                      (if (c/valid? test-this-constraint constraint)
-                                                        a
-                                                        (infer-add-constraint a b-path call-path constraint))) a this-bindings))
-                                          (reduce (fn [a {:keys [call-path constraint] :as binding}]
-                                                    (infer-add-constraint a b-path path constraint)) a this-bindings)))) a (get bindings-map branch))))]
+                                          (let [other-bindings (get-in bindings-map [other-branch b-path])
+                                                other-constraints (c/and- (map :constraint other-bindings))]
+                                            (cond
+                                              (and other-constraints (= predicted-branch :ambiguous)) (infer-add-constraint a b-path
+                                                                                                                         path
+                                                                                                                         (c/or- [this-constraints other-constraints]))
+                                              (or (= predicted-branch this-branch) (not other-constraints)) (reduce (fn [a {:keys [call-path constraint] :as binding}]
+                                                                                                                      (if (c/valid? test-this-constraint constraint)
+                                                                                                                        a
+                                                                                                                        (infer-add-constraint a b-path call-path constraint))) a this-bindings)
+                                              :else a))
+                                          (infer-add-constraint a b-path path this-constraints)))) a (get bindings-map branch))))]
     (-> a
         (update-bindings :then)
         (update-bindings :else))))
