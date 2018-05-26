@@ -3522,7 +3522,8 @@
   (not- p))
 
 (defn read-seq [x]
-  (seq- x))
+  (s/assert (s/coll-of ::spect) x)
+  (seq- (first x)))
 
 (defn load-data-readers []
   (set! *data-readers* (merge *data-readers* {'and #'read-and
