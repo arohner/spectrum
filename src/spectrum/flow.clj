@@ -403,14 +403,7 @@
   {:post [(c/spect? %)]}
   (let [a* (get-in a path)
         b (find-binding a (pop path) (:name a*))
-        ret (::ret-spec b)
-        ret (if (and (c/delay-spec? ret) (= :fn (:op b)))
-              (if-let [invoke-a (find-binding-fn-definition a path (:name a*))]
-                (if-let [ret (::ret-spec invoke-a)]
-                  ret
-                  (c/delay-spec (::ret-spec (infer (get-fn-method-invoke invoke-a args)))))
-                ret)
-              ret)]
+        ret (::ret-spec b)]
     ret))
 
 (defmethod invoke-get-fn-spec :fn [a path _]

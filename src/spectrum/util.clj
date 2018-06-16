@@ -1,7 +1,7 @@
 (ns spectrum.util
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
-            [clojure.spec.test.alpha])
+            [clojure.spec.test.alpha :as stest])
   (:import clojure.lang.Var
            java.lang.System))
 
@@ -114,3 +114,16 @@
 (defn instrument-in-CI []
   (when (System/getenv "CI")
     (clojure.spec.test.alpha/instrument)))
+
+(defn instrument-ns
+  "Instrument all vars in ns, or *ns*"
+  ([]
+   (instrument-ns *ns*))
+  ([ns]
+   (s/check-asserts true)
+   (->> ns
+        (ns-publics)
+        (vals)
+        (mapv (fn [v]
+                (symbol (str (.ns v) "/" (.sym v)))))
+        (stest/instrument))))

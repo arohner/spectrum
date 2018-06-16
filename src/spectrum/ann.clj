@@ -555,6 +555,8 @@
 (data/register-dependent-spec (c/value nil) (c/pred-spec #'nil?))
 (data/register-dependent-spec (c/value 0) (c/pred-spec #'zero?))
 
+(data/register-dependent-spec (c/pred-spec #'fn?) (c/pred-spec #'ifn?))
+
 (defn object->number [t]
   (let [t (j/resolve-java-class t)]
     (if (= Object t)

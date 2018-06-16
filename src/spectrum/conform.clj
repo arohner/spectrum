@@ -5,17 +5,18 @@
             [clojure.math.combinatorics :as combo]
             [clojure.reflect :as reflect]
             [clojure.spec.alpha :as s]
+            [clojure.spec.test.alpha :refer [instrument]]
             [clojure.spec.gen.alpha :as gen]
             [clojure.set :as set]
             [clojure.string :as str]
             [spectrum.gen]
             [spectrum.protocols :as p]
-            [spectrum.util :refer [fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq multimethod-dispatch-values protocol?]]
+            [spectrum.util :refer [fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq multimethod-dispatch-values protocol? instrument-ns]]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword IFn ISeq)
            java.io.Writer
-           (spectrum.protocols Accept Reject Invalid Unknown Bottom ThrowForm RecurForm RegexCat RegexSeq RegexAlt Value AndSpec NotSpec OrSpec TupleSpec SpecSpec DelaySpec PredSpec ClassSpec ProtocolSpec KeysSpec CollOfSpec ArrayOf MapOf FnSpec MultiSpec)))
+           (spectrum.protocols Accept Reject Invalid Unknown Bottom ThrowForm RecurForm RegexCat RegexSeq RegexAlt Value AndSpec NotSpec OrSpec TupleSpec SpecSpec PredSpec ClassSpec ProtocolSpec KeysSpec CollOfSpec ArrayOf MapOf FnSpec MultiSpec)))
 
 (declare conform)
 (declare valid?)
@@ -52,6 +53,10 @@
 (defn fn-spec? [x]
   (instance? spectrum.protocols.FnSpec x))
 
+(predicate-spec cat?)
+(defn cat? [x]
+  (instance? RegexCat x))
+
 (s/fdef truthyness :args (s/cat :s ::spect) :ret #{:truthy :falsey :ambiguous})
 (defn truthyness [s]
   {:post [(contains? #{:truthy :falsey :ambiguous} %)]}
@@ -76,8 +81,7 @@
   (not (p/regex? x)))
 
 (s/def :with-return/ret (s/or :s (s/nilable ::spect) :coll (s/coll-of (s/or :s ::spect :ret :with-return/ret) :kind vector?)))
-
-(s/fdef accept :args (s/cat :x (s/or :s ::spect :wr :with-return/ret)) :ret ::spect)
+(s/fdef accept :args (s/cat :x :with-return/ret) :ret ::spect)
 (defn accept [x]
   (p/map->Accept {:ret x}))
 
@@ -89,15 +93,15 @@
 (defn reject? [x]
   (instance? Reject x))
 
-(s/fdef return :args (s/cat :s :with-return/ret) :ret (s/nilable ::spect))
-(defn return [s]
+(s/fdef return :args (s/cat :s ::spect) :ret (s/nilable ::spect))
+(defn return
+  "Return the :return state of this regex"
+  [s]
   {:post [(validate! (s/nilable ::spect) %)]}
   (validate! (s/or :accept accept? :accept-nil p/accept-nil? :not-re singular?) s)
   (let [ret (p/return- s)]
-    (validate! :with-return/ret ret)
-    (if (vector? ret)
-      (cat- (mapv return ret))
-      ret)))
+    (validate! (s/nilable ::spect) ret)
+    ret))
 
 (s/fdef elements :args (s/cat :s ::spect) :ret (s/coll-of ::spect))
 (defn elements [s]
@@ -129,13 +133,23 @@
       (p/disentangle s))
     [s]))
 
-(s/fdef with-return :args (s/cat :this (s/nilable ::spect) :ret :with-return/ret) :ret (s/nilable ::spect))
-(defn with-return [s ret]
-  {:post [(validate! :with-return/ret %)]}
-  (p/with-return- s ret))
+(s/fdef re-conj-return :args (s/cat :this ::spect :s ::spect) :ret ::spect)
+(defn re-conj-return
+  "update `this`, adding s to the :return state. When splice? is true, join two cats together. Returns updated `this`.
+
+   non-regexes should return `s`"
+  [this s & [{:keys [splice?]
+              :or {splice? false}}]]
+  {:pre [(validate! ::spect this)
+         (validate! ::spect s)]
+   :post [(validate! ::spect %)]}
+  (when splice?
+    (assert (cat? (return this)))
+    (assert (cat? s)))
+  (p/re-conj-return this s splice?))
 
 (s/def ::derivative-ret ::spect)
-(s/fdef derivative :args (s/cat :s ::spect) :ret ::spect)
+(s/fdef derivative :args (s/cat :s ::spect :value any?) :ret ::spect)
 (defn derivative [s x]
   {:post [(do (when-not (s/valid? ::derivative-ret %) (println "invalid derivative:" s "=>" %)) true) (s/valid? ::derivative-ret %)]}
   (p/derivative s x))
@@ -329,9 +343,12 @@
   (accept-nil? [this]
     true)
   (return- [this]
-    (:ret this))
-  (with-return- [this ret]
-    ret)
+    (let [ret (:ret this)]
+      (if (vector? ret)
+        (cat- ret)
+        ret)))
+  (re-conj [this s]
+    s)
   (regex? [this]
     false)
   (disentangle [this]
@@ -355,7 +372,7 @@
     false)
   (return- [this]
     (invalid {:message "reject"}))
-  (with-return- [this ret]
+  (re-conj [this s]
     reject)
   (regex? [this]
     false)
@@ -426,8 +443,8 @@
     true)
   (return- [this]
     (value nil))
-  (with-return- [this r]
-    r)
+  (re-conj [this s]
+    s)
   (regex? [this]
     false)
   p/Truthyness
@@ -449,8 +466,8 @@
     false)
   (return- [this]
     (value nil))
-  (with-return- [this r]
-    r)
+  (re-conj [this s]
+    s)
   (regex? [this]
     false)
   (elements [this]
@@ -483,9 +500,8 @@
                   false)
    :return- (fn [this]
               this)
-   :with-return- (fn [this ret]
-                   {:pre [(s/valid? (s/nilable sequential?) ret)]}
-                   ret)
+   :re-conj (fn [this s]
+              s)
    :regex? (fn [this]
              false)
    :fix-length (fn [this n]
@@ -650,7 +666,7 @@
 
 (extend-regex Value)
 
-(s/fdef dependent-specs :args (s/cat :s (s/nilable ::spect)) :ret ::dependent-specs)
+(s/fdef dependent-specs :args (s/cat :s (s/nilable ::spect-like)) :ret ::dependent-specs)
 (defn dependent-specs [s]
   (set/union (dependent-specs* s) (data/get-dependent-specs s)))
 
@@ -711,26 +727,23 @@
 (s/def :cat/fs (s/nilable coll?))
 (s/def :cat/ret (s/coll-of (s/or :s ::spect-like :cat :cat/ret) :kind vector?))
 
-(predicate-spec cat?)
-(defn cat? [x]
-  (instance? RegexCat x))
-
 (s/fdef p/map->RegexCat :args (s/cat :x (s/keys :opt-un [:cat/ks :cat/ps :cat/fs] :req-un [:cat/ret])) :ret cat?)
 
-(declare new-regex-cat )
-
-(s/fdef cat- :args (s/cat :ps (s/coll-of ::spect-like :kind sequential? :gen-max 5)) :ret ::spect)
-(defn cat- [ps]
-  (new-regex-cat ps nil nil []))
+(defn cat-conj
+  "conj x onto the end of c"
+  [c x]
+  {:pre [(validate! cat? c)
+         (validate! spect? x)]}
+  (cat- (conj (elements c) x)))
 
 (s/fdef new-regex-cat :args (s/cat :ps (s/nilable (s/coll-of any?)) :ks (s/nilable (s/coll-of keyword?)) :fs (s/nilable coll?) :ret :cat/ret) :ret ::spect)
-(defn new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
+(defn- new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
   (if (and ps
            (every? #(conformy? %) ps)
            (every? identity ps))
     (if (accept? p0)
       (let [ret-old ret
-            _ (assert ret)
+            _ (assert vector? ret)
             ret (conj ret (:ret p0))]
         (if pr
           (p/map->RegexCat {:ps pr
@@ -743,6 +756,10 @@
                         :forms forms
                         :ret ret}))
     reject))
+
+(s/fdef cat- :args (s/cat :ps (s/coll-of ::spect-like :kind sequential? :gen-max 5)) :ret ::spect)
+(defn cat- [ps]
+  (new-regex-cat ps nil nil []))
 
 (extend-type RegexCat
   p/Spect
@@ -760,7 +777,7 @@
               (maybe-alt-
                (new-regex-cat (cons (derivative p0 x) pr) ks forms ret)
                (if (accept-nil? p0)
-                 (derivative (new-regex-cat pr kr fr (with-return p0 ret)) x)
+                 (derivative (new-regex-cat pr kr fr ((if (:splice p0) into conj) ret p0)) x)
                  reject)))]
       v))
   (re-explain* [{:keys [ps ks forms ] :as spec} path via in x]
@@ -787,14 +804,12 @@
      (map parse-spec)
      (every? accept-nil?)))
   (return- [{:keys [ps ks ret] :as this}]
-    (p/return- (with-return (some-> ps first parse-spec) ret)))
-  (with-return- [{:keys [ret] :as this} r]
-    (let [ret (p/return- this)]
-      (if (empty? ret)
-        r
-        (if r
-          (conj r ret)
-          (conj [] ret)))))
+    (cat- (if-let [r (some-> ps first parse-spec)]
+            (conj ret r)
+            ret)))
+  (re-conj-return [{:keys [ret ps ks forms] :as this} s splice?]
+    (assert (vector? ret))
+    (new-regex-cat ps ks forms ((if splice? into conj) (elements ret) s)))
   (regex? [this]
     true)
   (disentangle [this]
@@ -835,7 +850,7 @@
             [k0 & kr] ks
             [f0 & fr] forms]
         (if (and (accept-nil? p) pr)
-          (or- [wa (will-accept (new-regex-cat pr kr fr (with-return p0 ret)))])
+          (or- [wa (will-accept (new-regex-cat pr kr fr (conj ret p0)))])
           wa))
       nil))
   p/FirstRest
@@ -875,6 +890,7 @@
 
 (s/fdef seq- :args (s/cat :s ::spect-like :opts (s/? (s/keys :opt-un [:seq/splice]))) :ret ::spect)
 (defn seq- [s & [{:keys [splice]}]]
+  {:pre [(s/assert ::spect-like s)]}
   (if (conformy? s)
     (p/map->RegexSeq {:ps [s s]
                       :forms nil
@@ -884,6 +900,7 @@
 
 (defn new-regex-seq [ps ret splice forms]
   (assert (= 2 (count ps)))
+  ;; Seq takes two p's, because of `accept` and stateful regexes, such as `(cat x y)`
   (let [[p1 p2] ps]
     (if (every? conformy? ps)
       (if (accept? p1)
@@ -912,19 +929,18 @@
       (assert p2)
       (maybe-alt- (new-regex-seq [(derivative p1 x) p2] ret splice forms)
                   (when (accept-nil? p1)
-                    (new-regex-seq [(derivative p2 x) p2] (with-return p1 ret) splice forms)))))
+                    (new-regex-seq [(derivative p2 x) p2] (re-conj-return ret p1) splice forms)))))
   (accept-nil? [this]
     true)
   (return- [this]
     (let [[p1 p2] (:ps this)
           p1 (parse-spec p1)]
-      (with-return p1 (:ret this))))
-  (with-return- [this r]
-    (let [{:keys [splice]} this
-          ret (p/return- this)]
-      (if (empty? ret)
-        r
-        ((if splice into conj) r ret))))
+      (cat- (:ret this))))
+  (re-conj-return [this s splice?]
+    (let [{:keys [ret]} this]
+      (new-regex-seq (:ps this) (if splice?
+                                  (cat- (into (elements ret) (elements s)))
+                                  (cat- (conj (elements ret) s))))))
   (regex? [this]
     true)
   (elements [this]
@@ -976,7 +992,7 @@
       [(seq (map first pks)) (when ks (seq (map second pks))) (when forms (seq (map #(nth % 2) pks)))])
     [(seq (filter f ps)) ks forms]))
 
-(defn new-regex-alt [ps ks forms]
+(defn- new-regex-alt [ps ks forms]
   (let [i (first (filter invalid? ps))]
     (if (not i)
       (let [[[p1 & pr :as ps] [k1 :as ks] forms] (filter-alt ps ks forms #(and % (not (reject? %))))]
@@ -1028,11 +1044,6 @@
               nil
               (return p0))]
       r))
-  (with-return- [this r]
-    (let [ret (p/return- this)]
-      (if (= ret nil)
-        r
-        (conj r ret))))
   (constructor [this]
     alt-)
   (elements [this]
@@ -1190,8 +1201,6 @@
     (accept-nil? (parse-spec (:s this))))
   (return- [this]
     this)
-  (with-return- [this ret]
-    (p/with-return- (:s this) ret))
   (regex? [this]
     (-> this :s parse-spec p/regex?))
   (elements [this]
@@ -1224,54 +1233,6 @@
     (p/map->SpecSpec {:s s})
     s))
 
-(extend-type DelaySpec
-  p/Spect
-  (conform* [this x]
-    (-> this :s deref (p/conform* x)))
-  p/WillAccept
-  (will-accept- [this]
-    (-> this :s deref p/will-accept-))
-  p/Regex
-  (derivative [this x]
-    (-> this :s deref (derivative x)))
-  (empty-regex [this]
-    (-> this :s deref p/empty-regex))
-  (accept-nil? [this]
-    (-> this :s deref accept-nil?))
-  (return- [this]
-    this)
-  (with-return- [this ret]
-    (-> this :s deref (p/with-return- ret)))
-  (regex? [this]
-    (-> this :s deref p/regex?))
-  (elements [this]
-    (-> this :s deref p/elements))
-  p/FirstRest
-  (first- [this]
-    (-> this :s deref first-))
-  (rest- [this]
-    (-> this :s deref rest-))
-  p/Truthyness
-  (truthyness [this]
-    (-> this :s deref p/truthyness))
-  p/Invoke
-  (invoke- [this args]
-    (-> this :s deref (invoke args)))
-  (invoke-accept- [this]
-    (-> this :s deref invoke-accept))
-  p/DependentSpecs
-  (dependent-specs- [this]
-    (-> this :s deref dependent-specs))
-  p/SpecToClasses
-  (spec->classes- [this]
-    (-> this :s deref spec->classes)))
-
-(defn delay-spec? [x]
-  (instance? DelaySpec x))
-
-(defmacro delay-spec [s]
-  `(p/map->DelaySpec {:s (delay ~s)}))
-
 (extend-regex PredSpec)
 
 (s/def ::pred (s/or :v var? :fn fn? :nil nil?))
@@ -1279,7 +1240,7 @@
 (def any?-form '(clojure.core/fn [x] true))
 (def any?-macroexpanded '(fn* ([x] true)))
 
-(s/fdef any-? :args (s/cat :s pred-spec?) :ret boolean?)
+(s/fdef any-? :args (s/cat :s any?) :ret boolean?)
 (defn any-?
   "To prevent infinite recursion, recognize if this is the 'any? spec, and return true"
   [s]
@@ -1328,10 +1289,7 @@
   (->>
    (recursive-dependent-specs spec)
    (filter (fn [s]
-             (or (class-spec? s)
-                 (and (or? s)
-                      (every? (fn [p]
-                                (class-spec? p)) (:ps s))))))
+             (class-spec? s)))
    (most-specific-spec)
    ((fn [s]
       (if (or? s)
@@ -1727,6 +1685,7 @@
                            (and (j/interface? a) (j/subclassable? b))
                            (and (j/interface? b) (j/subclassable? a)))))
         ps (map parse-spec ps)
+
         ps-classes (map (fn [p]
                           (spec->classes p)) ps)]
     (loop [[p-classes & pr-classes] ps-classes]
@@ -1759,12 +1718,11 @@
                                    (valid? s v)) non-values)) values)))
       false)))
 
-(s/fdef and-consolidate :args (s/cat :ps (s/coll-of ::spect)) :ret (s/coll-of ::spect))
+(s/fdef and-consolidate :args (s/cat :ps (s/coll-of ::spect-like)) :ret (s/coll-of ::spect))
 (defn and-consolidate
   "Given the :ps for an `and`, simplify and consolidate forms"
   [ps]
-  {:pre [(s/assert (s/coll-of ::spect) ps)]
-   :post [(s/assert (s/coll-of ::spect) %)]}
+  {:post [(s/assert (s/coll-of ::spect-like) %)]}
   (let [ps-orig ps
         ps (distinct ps)
         ps (map maybe-convert-value ps)
@@ -1789,6 +1747,7 @@
 (defn and- [ps]
   {:pre [(s/assert (s/coll-of ::spect-like) ps)]}
   (let [ps (and-consolidate ps)]
+    (assert (<= (count (filter p/regex? ps)) 1))
     (cond
       (>= (count ps) 2) (p/map->AndSpec {:ps ps})
       :else (first ps))))
@@ -1969,20 +1928,12 @@
          (map parse-spec)))
   (return- [this]
     this)
-  (with-return- [this x]
-    (->> this
-         :ps
-         (map parse-spec)
-         (map (fn [p]
-                (with-return p x)))
-         (mapcat (fn [p]
-                   (if (s/valid? (s/coll-of ::spect) p)
-                     p
-                     [p])))
-         ((fn [ps]
-            (if (seq ps)
-              (and- ps)
-              x))))))
+  (re-conj-return [this x]
+    (let [this-re (->> this elements (filter p/regex?) first)
+          rest-ps (->> this elements (remove p/regex?))]
+      (if this-re
+        (and- (conj rest-ps (re-conj-return this-re x)))
+        x))))
 
 (defmethod parse-spec* `s/and [x]
   (and- (rest x)))
@@ -2168,16 +2119,14 @@
          (mapcat disentangle)))
   (return- [this]
     this)
-  (with-return- [this x]
+  (re-conj-return [this x]
     (->> this
-         :ps
-         (map parse-spec)
-         (mapcat (fn [p]
-                   (with-return p x)))
-         ((fn [ps]
-            (if (s/valid? (s/coll-of ::spect) ps)
-              (or- ps)
-              x)))))
+         (elements)
+         (map (fn [s]
+                (if (p/regex? s)
+                  (re-conj-return s x)
+                  x)))
+         (or-)))
   p/SpecToClasses
   (spec->classes- [this]
     (->> this
@@ -2743,7 +2692,10 @@
                                 else)) (disentangle k))))
              (filter identity)
              (or- ))
-        (invalid {:message (format "wrong number of args passed to %s, got %s" (print-str this) (print-str args))})))))
+        (invalid {:message (format "wrong number of args passed to %s, got %s" (print-str this) (print-str args))}))))
+  (invoke-accept- [this]
+    (or- [(cat- [(pred-spec #'any?)])
+          (cat- [(pred-spec #'any?) (pred-spec #'any?)])])))
 
 (extend-regex MapOf)
 (will-accept-this MapOf)
@@ -2820,17 +2772,17 @@
     (if (seq invalid-args)
       (do
         (println "fn-spec invalid args:" args ret)
-        (assert false)
         (invalid {:message (format "invalid fn: %s" (print-str (into {} invalid-args)))}))
       (p/map->FnSpec {:args args
                       :ret ret
                       :fn f}))))
 
-(s/fdef merge-fn-specs :args (s/cat :specs (s/coll-of ::spect) :ret ::spect))
+(s/fdef merge-fn-specs :args (s/cat :specs (s/coll-of ::spect)) :ret ::spect)
 (defn merge-fn-specs
   "Given a seq of fn-spec representing the arities for a fn, merge them into one fn-spec"
   [fn-specs]
   (if (every? fn-spec? fn-specs)
+    ;;; TODO disentangle and fix-length
     (let [args (or- (filter identity (map :args fn-specs)))
           rets (or- (map :ret fn-specs))]
       (fn-spec args rets nil))
@@ -2895,8 +2847,9 @@
 
 (s/fdef invoke-fn-spec :args (s/cat :s fn-spec? :args ::spect) :ret ::spect)
 (defn invoke-fn-spec [spec invoke-args]
-  {:post [(do (when-not (spect? %)
-                (println "invoke failed:" spec %)) true) (spect? %)]}
+  {:post [(do (when-not (conformy? %)
+                (println "invoke-fn-spec:" spec invoke-args "->" %)) true)
+          (spect? %)]}
   (let [v (:var spec)
         args (parse-spec (:args spec))]
     (if args
@@ -2909,7 +2862,9 @@
             spec*))
         (if (every-known? invoke-args)
           (if (every-valid? invoke-args)
-            (invalid {:message (format "invoke-fn-spec can't invoke %s (%s) with %s => %s" v (print-str args) (print-str invoke-args) (print-str (conform args invoke-args)))})
+            (do
+              (println "invoke-fn-spec" v spec invoke-args)
+              (invalid {:message (format "invoke-fn-spec can't invoke %s %s with %s => %s" v (print-str args) (print-str invoke-args) (print-str (conform args invoke-args)))}))
             (invalid {:message (format "invoke with invalid args %s" (print-str invoke-args))}))
           (unknown {:message (format "invoke %s w/ unknown args %s" v (print-str invoke-args))})))
       (unknown {:message (format "invoke %s no :args spec" spec)}))))
@@ -3292,8 +3247,7 @@
       (or (keyword? v) (symbol? v)) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
       (nil? v) (invalid {:message "can't invoke nil"})
       :else (do
-              (println "unknown value-invoke:" v* (class v))
-              (assert false (format "unknown value invoke: %s" (print-str v*)))))))
+              (invalid {:message (format "unknown value invoke: %s" (print-str v*))})))))
 
 (def spect-generator (gen/elements [(pred-spec #'int?) (class-spec Long) (value true) (value false) (unknown nil)]))
 
@@ -3380,7 +3334,6 @@
   "Given a spect and args, return the conforming parse. Behaves similar
   to s/conform, but args must be spectrum spects, rather than clojure.specs"
   [spec args]
-  {:post [(s/valid? ::spect %)]}
   (try
     (conform-bfs spec args)
     (catch Throwable e
@@ -3571,7 +3524,7 @@
                   [1 (s/gen ::map-of)]
                   ]))
 
-(s/def ::pred (s/with-gen pred-spec? #(gen/fmap (fn [p] (pred-spec p)) spectrum.gen/core-predicates-gen)))
+;; (s/def ::pred (s/with-gen pred-spec? #(gen/fmap (fn [p] (pred-spec p)) spectrum.gen/core-predicates-gen)))
 (s/def ::value (s/with-gen value? #(gen/fmap (fn [x] (value x)) (s/gen (s/spec any?)))))
 
 (s/def ::coll-of (s/with-gen coll-of? (fn [] (gen/fmap #(coll-of %) (gen/delay (s/gen ::spect))))))
@@ -3599,3 +3552,6 @@
 (s/def ::seq (s/with-gen seq? (fn [] (gen/fmap (fn [p] (seq- p)) (gen/delay (spec-gen))))))
 
 (s/def ::spect (s/with-gen spect? simple-spec-gen))
+
+(instrument-ns)
+nil

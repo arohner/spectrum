@@ -122,8 +122,9 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   nil)
 
 (defn get-var-inferred-spec [v]
+  {:post [(do (when %
+                (:var %)) true)]}
   (get @var-inferred-specs v))
-
 
 (s/def ::reflect-args (s/coll-of class? :kind vector?))
 (s/fdef replace-method-spec :args (s/cat :cls class? :name symbol? :args ::reflect-args :spect :spectrum.conform/spect))

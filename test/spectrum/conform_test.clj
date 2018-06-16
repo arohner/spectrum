@@ -118,8 +118,8 @@
       (c/pred-spec #'class?) (c/class-spec String)
       (c/class-spec Object) (c/value nil)
 
-      (c/class-spec Integer/TYPE (c/value 0))
-      (c/class-spec Long/TYPE (c/value 0))
+      (c/class-spec Integer/TYPE) (c/value 0)
+      (c/class-spec Long/TYPE) (c/value 0)
 
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/value ["foo" :bar])
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)])
@@ -301,10 +301,6 @@
 
       (c/not- (c/pred-spec #'string?)) (c/pred-spec #'string?)
       (c/not- (c/pred-spec #'string?)) (c/pred-spec #'any?)
-
-      (c/class-spec Long) (c/class-spec Short)
-      (c/class-spec Short) (c/class-spec Long)
-      (c/class-spec Long) (c/class-spec Double)
 
       (c/pred-spec #'keyword?) (c/cat- [(c/pred-spec #'keyword?)])
       (c/pred-spec #'keyword?) (c/seq- (c/pred-spec #'keyword?)))))

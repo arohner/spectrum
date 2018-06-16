@@ -35,6 +35,8 @@ seq of concrete specs that don't contain choices")
     "Given a completed regex parse, return the conform matching value")
   (with-return- [this ret]
     "add this regex's return data to ret")
+  (re-conj-return [this s splice?]
+    "Add s to this regex. Non-regexes should return s")
   (regex? [this]
     "True if this spec is actually a regex, and not just a normal spec implementing the protocol")
   (constructor [this]
@@ -125,5 +127,3 @@ seq of concrete specs that don't contain choices")
 (defrecord FnSpec [args ret fn var])
 
 (defrecord MultiSpec [multimethod retag])
-
-(defrecord DelaySpec [s])

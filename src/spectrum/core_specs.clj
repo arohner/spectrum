@@ -8,7 +8,7 @@
            (clojure.lang ISeq
                          Seqable)))
 
-;;; specs for clojure.core fns, used as hacks/testing. Delete when official versions become available
+;;; specs for clojure.core fns, should only be used in cases where inference can't work.
 
 (defn namespace? [x] (instance? clojure.lang.Namespace))
 
