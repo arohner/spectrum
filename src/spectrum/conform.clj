@@ -149,7 +149,7 @@
   (p/re-conj-return this s splice?))
 
 (s/def ::derivative-ret ::spect)
-(s/fdef derivative :args (s/cat :s ::spect :value any?) :ret ::spect)
+(s/fdef derivative :args (s/cat :s (s/nilable ::spect) :value any?) :ret ::spect)
 (defn derivative [s x]
   {:post [(do (when-not (s/valid? ::derivative-ret %) (println "invalid derivative:" s "=>" %)) true) (s/valid? ::derivative-ret %)]}
   (p/derivative s x))
@@ -160,7 +160,7 @@
   {:post [(do (when-not (s/valid? ::will-accept-ret %) (println "invalid will-accept:" s "=>" %)) true) (s/valid? ::will-accept-ret %)]}
   (p/will-accept- s))
 
-(s/fdef accept-nil? :args (s/cat :s ::spect) :ret boolean?)
+(s/fdef accept-nil? :args (s/cat :s (s/nilable ::spect)) :ret boolean?)
 (defn accept-nil? [s]
   {:post [(boolean? %)]}
   (p/accept-nil? s))
@@ -192,7 +192,7 @@
 (defn conformy?
   "True if the conform result returns anything other than invalid or reject"
   [x]
-  (boolean (and x
+  (boolean (and (not (false? x))
                 (not (invalid? x))
                 (not (reject? x)))))
 
@@ -642,14 +642,13 @@
       (if (seq v)
         (value (first v))
         nil)
-      (invalid {:message (format "value %s does not support first" v)
-                :form `(first ~v)})))
+      reject))
   (rest- [{:keys [v] :as this}]
     (if (or (core/seq? v) (seqable? v))
       (if (seq (rest v))
         (value (rest v))
         nil)
-      (invalid {:message (format "value %s does not support rest" v) :form `(rest ~v)})))
+      reject))
   p/DependentSpecs
   (dependent-specs- [this]
     (if (nil? (:v this))
@@ -2188,11 +2187,12 @@
       (loop [ps (:ps spec)
              xs xs]
         (let [p (first ps)
-              x (first- xs)]
+              x (when (first-rest? xs)
+                  (first- xs))]
           (cond
             (and p x) (when (valid? (parse-spec p) (parse-spec x))
                         (recur (rest ps) (rest- xs)))
-            (and (not p) (not x)) xs-orig)))))
+            (and (not p) (not x) (first-rest? xs)) xs-orig)))))
   p/Regex
   (accept-nil? [this]
     (not (seq (:ps this))))
@@ -3125,33 +3125,30 @@
 (s/fdef re-conform :args (s/cat :s ::spect :d ::spect) :ret ::spect)
 (defn re-conform [spec data]
   (let [spec* spec
-        data* data]
-    (loop [spec spec
-           data data
-           iter 0]
-      (if (> iter 100)
-        (do (println "infinite re-conform:" spec* data*)
-            (assert false)
-            (invalid {:message "infinite"}))
-        (if (any-? data)
-          data
-          (if (first-rest? data)
-            (let [x (first- data)]
-              (if (nil? x)
-                (if (accept-nil? spec)
-                  (let [r (return spec)]
-                    (if (nil? r)
-                      (value nil)
-                      r))
+        data* data
+        data-coll? (and (first-rest? data) (not (reject? (first- data))))]
+    (if (or data-coll? (valid? (value nil) data))
+      (loop [spec spec
+             data data]
+        (let [x (when (first-rest? data)
+                  (first- data))]
+          (if (or (reject? x) (nil? x))
+            (if (accept-nil? spec)
+              (let [r (return spec)]
+                (if (nil? r)
+                  (value nil)
+                  r))
+              (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
+            (if (conformy? x)
+              (if-let [dp (derivative spec x)]
+                (if (conformy? dp)
+                  (if (and (first-rest? dp) (infinite? dp) (accept-nil? dp) (infinite? (rest- data)))
+                    (return dp)
+                    (recur dp (rest- data)))
                   (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
-                (if-let [dp (derivative spec x)]
-                  (if (conformy? dp)
-                    (if (and (infinite? dp) (accept-nil? dp) (infinite? (rest- data)))
-                      (return dp)
-                      (recur dp (rest- data) (inc iter)))
-                    (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
-                  (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))
-            reject))))))
+                (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
+              ))))
+      (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))))
 
 (defn re-explain [spec path via in data]
   (loop [spec spec

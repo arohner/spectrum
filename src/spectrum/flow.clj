@@ -437,7 +437,7 @@
 (s/def :binding/path vector?)
 (s/def :binding/spect c/spect?)
 
-(s/def ::binding (s/keys :req-un [:binding/name :binding/path :binding/spec]))
+(s/def ::binding (s/keys :req-un [:binding/name :binding/path :binding/spect]))
 
 (defmulti find-binding* #'find-binding*-dispatch)
 
@@ -1250,10 +1250,12 @@ will return `(instance? C x)` rather than `y`
         a* (get-in a path)
         {:keys [class method instance]} a*]
     (if (and class method)
-      (let [invoke-args (c/cat- (concat
-                                 (if (:instance a*)
-                                   [(-> a* :instance ::ret-spec)]
-                                   [(-> a* :class ::ret-spec)])
+      (let [cls-or-inst (if (:instance a*)
+                          (-> a* :instance ::ret-spec)
+                          (-> a* :class c/value))
+            _ (validate! ::c/spect cls-or-inst)
+            invoke-args (c/cat- (concat
+                                 [cls-or-inst]
                                  (mapv (fn [arg] (::ret-spec arg)) (:args a*))))
             spec (get-java-method-spec class method)
             meth (get-conforming-java-method class method invoke-args)

@@ -131,14 +131,13 @@
       (c/pred-spec #'fn?) (c/get-var-spec #'inc)
 
       (c/class-spec clojure.lang.IFn) (c/pred-spec #'fn?)
-      (c/cat- []) (c/pred-spec #'any?)
 
-      (c/seq- (c/pred-spec #'int?)) (c/pred-spec #'any?)
       (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])]) (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])])
 
       (c/and- [(c/seq- (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)]) (c/seq- (c/pred-spec #'any?))
       (c/cat- [(c/and- [(c/seq- (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)])]) (c/cat- [(c/seq- (c/pred-spec #'any?))])
 
+      (c/cat- []) (c/value nil)
       (c/cat- []) (c/value [])
 
       ;; and
@@ -152,6 +151,10 @@
       (c/not- (c/pred-spec #'string?)) (c/pred-spec #'keyword?)
       (c/or- [(c/pred-spec #'any?) (c/pred-spec #'nil?)]) (c/and- [(c/not- (c/pred-spec #'chunked-seq?)) (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'seq?)])])
       (c/cat- [(c/or- [(c/pred-spec #'any?) (c/pred-spec #'nil?)])]) (c/cat- [(c/and- [(c/not- (c/pred-spec #'chunked-seq?)) (c/or- [(c/pred-spec #'nil?) (c/pred-spec #'seq?)])])])
+
+      ;; seq
+      (c/seq- (c/pred-spec #'any?)) (c/value nil)
+      (c/seq- (c/pred-spec #'any?)) (c/pred-spec #'nil?)
       ))
 
   (testing "should return value parse-spec"
@@ -290,7 +293,10 @@
       (c/parse-spec ::ana.jvm/analysis) (c/value 3)
       (c/parse-spec ::ana.jvm/analysis) (c/value {})
 
+      (c/cat- []) (c/pred-spec #'any?)
+
       (c/seq- (c/pred-spec #'integer?)) (c/or- [(c/pred-spec #'string?) (c/pred-spec #'nil?)])
+      (c/seq- (c/pred-spec #'int?)) (c/pred-spec #'any?)
 
       (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'keyword?)]) (c/tuple-spec [(c/pred-spec #'string?) (c/pred-spec #'string?)])
 
@@ -589,7 +595,9 @@
     (are [s constraint] (c/non-contradiction? s constraint)
       (c/pred-spec #'string?) (c/value "foo")
       (c/class-spec Integer/TYPE) (c/class-spec Long/TYPE)
-      (c/value [:file :line :column]) (c/coll-of (c/pred-spec #'any?)) ))
+      (c/value [:file :line :column]) (c/coll-of (c/pred-spec #'any?))
+      (c/seq- (c/pred-spec #'any?)) (c/value nil)
+      (c/seq- (c/pred-spec #'any?)) (c/pred-spec #'nil?)))
 
   (testing "falsey"
     (are [s contraint] (false? (c/non-contradiction? s contraint))
