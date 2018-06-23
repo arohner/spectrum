@@ -119,6 +119,21 @@
           (>= (count %) 1)]}
   (p/fix-length s n))
 
+(s/fdef min-length :args (s/cat :s ::spect) :ret int?)
+(defn min-length [s]
+  {:post [(validate! int? %)]}
+  (if (p/regex? s)
+    (p/min-length s)
+    1))
+
+(s/def ::max-length-ret (s/or :i int? :unlimited #{:unlimited}))
+(s/fdef max-length :args (s/cat :s ::spect) :ret ::max-length-ret)
+(defn max-length [s]
+  {:post [(validate! ::max-length-ret %)]}
+  (if (p/regex? s)
+    (p/max-length s)
+    1))
+
 (def ^:dynamic *disentangle-depth* 0)
 
 (s/fdef disentangle :args (s/cat :s ::spect) :ret (s/coll-of ::spect))
@@ -319,15 +334,6 @@
       (recur (rest- ps) (dec i)))
     nil))
 
-(def first-rest-singular-impl
-  {:first- (fn [this] reject)
-   :rest- (fn [this] reject)})
-
-(defn first-rest-singular
-  "FirstRest implementation for a type that is singular"
-  [s]
-  (extend s p/FirstRest first-rest-singular-impl))
-
 (declare reject)
 
 (extend-type Accept
@@ -357,8 +363,6 @@
   (will-accept- [this]
     reject))
 
-(first-rest-singular Accept)
-
 (extend-type Reject
   p/Spect
   (conform* [spec x]
@@ -384,8 +388,6 @@
   p/Truthyness
   (truthyness [this]
     :falsey))
-
-(first-rest-singular Reject)
 
 (defn unknown? [x]
   (instance? Unknown x))
@@ -472,8 +474,6 @@
     false)
   (elements [this]
     [this]))
-
-(first-rest-singular Invalid)
 
 (s/fdef spec-dx :args (s/cat :spec ::spect :x ::spect) :ret ::spect)
 (defn spec-dx [spec x]
@@ -737,6 +737,7 @@
 
 (s/fdef new-regex-cat :args (s/cat :ps (s/nilable (s/coll-of any?)) :ks (s/nilable (s/coll-of keyword?)) :fs (s/nilable coll?) :ret :cat/ret) :ret ::spect)
 (defn- new-regex-cat [[p0 & pr :as ps] [k0 & kr :as ks] [f0 & fr :as forms] ret]
+  {:post [(validate! ::spect %)]}
   (if (and ps
            (every? #(conformy? %) ps)
            (every? identity ps))
@@ -821,6 +822,17 @@
     cat-)
   (elements [this]
     (->> this :ps (mapv parse-spec)))
+  (min-length [this]
+    (->> (elements this)
+         (map (fn [p]
+                (if (p/regex? p)
+                  (p/min-length p)
+                  1)))
+         (apply +)))
+  (max-length [this]
+    (->> (elements this)
+         (map max-length)
+         (apply +)))
   (fix-length [s n]
     (loop [rets [[]]
            elems (p/elements s)]
@@ -951,6 +963,10 @@
          parse-spec
          (disentangle)
          (map seq-)))
+  (min-length [this]
+    0)
+  (max-length [this]
+    Integer/MAX_VALUE)
   (fix-length [this n]
     (loop [ret [[]]
            n n]
@@ -1052,6 +1068,12 @@
          p/elements
          (map disentangle)
          (apply concat)))
+  (min-length [this]
+    (apply max (map p/min-length (elements this))))
+  (max-length [this]
+    (->> (elements this)
+         (map p/max-length)
+         (apply max)))
   (fix-length [this n]
     [this])
   (re-explain* [{:keys [ps ks forms] :as spec} path via in x]
@@ -1347,22 +1369,7 @@
       (cond
         (or (= #'keyword? pred) (= #'symbol? pred)) (cat- [(pred-spec #'any?) (?- (pred-spec #'any?))])
         (or (= #'ifn? pred) (= #'fn? pred)) (seq- (pred-spec #'any?))
-        :else (invalid {:message (format "FnSpec: can't invoke-accept %s" (print-str this))}))))
-  p/FirstRest
-  (first- [this]
-    (let [p (:pred this)]
-      (condp = p
-        #'nil? (value nil)
-        #'seqable? (pred-spec #'any?)
-        #'seq? (pred-spec #'any?)
-        reject)))
-  (rest- [this]
-    (let [p (:pred this)]
-      (condp = p
-        #'nil? (value nil)
-        #'seqable? (seq- (pred-spec #'any?))
-        #'seq? (seq- (pred-spec #'any?))
-        reject))))
+        :else (invalid {:message (format "FnSpec: can't invoke-accept %s" (print-str this))})))))
 
 (defn maybe-map-equivalence-hack [c]
  ;;; hack for the godawful clojure.lang.MapEquivalence
@@ -1459,7 +1466,6 @@
     (set [(:cls this)])))
 
 (extend-regex ClassSpec)
-(first-rest-singular ClassSpec)
 
 (defn protocol-spec? [x]
   (instance? ProtocolSpec x))
@@ -1660,7 +1666,6 @@
         :falsey :truthy))))
 
 (extend-regex NotSpec)
-(first-rest-singular NotSpec)
 
 (defn and-conform-literal [and-s x]
   (when (every? (fn [f]
@@ -1725,6 +1730,10 @@
   (let [ps-orig ps
         ps (distinct ps)
         ps (map maybe-convert-value ps)
+        {values true not-values false} (group-by value? ps)
+        ps (if (seq values)
+             values
+             not-values)
         {ands true not-ands false} (group-by and? ps)
         ps (concat (seq not-ands) (distinct (mapcat (fn [a] (:ps a)) ands)))
         {fns true not-fns false} (group-by fn-spec? ps)
@@ -1915,6 +1924,18 @@
          (map #(fix-length % n))
          (apply combo/cartesian-product)
          (map and-)))
+  (min-length [this]
+    (if (some p/regex? (elements this))
+      (->> this elements (filter p/regex?) first min-length)
+      1))
+  (max-length [this]
+    (->> this
+         (elements)
+         (map (fn [p]
+                (if (p/regex? p)
+                  (p/max-length p)
+                  1)))
+         (apply max)))
   (accept-nil? [this]
     (->> this
          :ps
@@ -1962,12 +1983,8 @@
                   (if (object-spec? p)
                     (pred-spec #'any?)
                     p)) ps)
-
-        ;; if there's an any?, We could replace all predicates with
-        ;; any? here, but that's not as helpful for the user.
-
         ps (if (some any-? ps)
-             (conj (remove any-? ps) (first (filter any-? ps)))
+             (take 1 (filterv any-? ps))
              ps)
         ps (set ps)]
     ps))
@@ -2031,12 +2048,14 @@
     (->> this
          :ps
          (map parse-spec)
+         (filter p/regex?)
          (map first-)
          (or-)))
   (rest- [this]
     (->> this
          :ps
          (map parse-spec)
+         (filter p/regex?)
          (map rest-)
          (or-)))
   p/Invoke
@@ -2105,6 +2124,15 @@
     (->> this
          :ps
          (map parse-spec)))
+  (min-length [this]
+    (if (some p/regex? (elements this))
+      (->> this elements (filter p/regex?) first min-length)
+      1))
+  (max-length [this]
+    (->> this
+         (elements)
+         (map max-length)
+         (apply max)))
   (fix-length [this n]
     (->> this
          :ps
@@ -2429,10 +2457,7 @@
        (mapcat (fn [s]
                  (fix-length s n)))
        (filter (fn [s]
-                 {:pre [(spect? s)]}
-                 (if (p/regex? s)
-                   (<= (count (p/elements s)) n)
-                   [s])))
+                 (<= (min-length s) n)))
        (distinct)))
 
 (defn all-possible-values-length-n
@@ -2441,13 +2466,13 @@
   (if (and (conformy? spec) (known? spec))
     (->> (all-possible-values spec n)
          (filter (fn [s]
-                   (= n (count (p/elements s)))))
+                   (= n (min-length s))))
          (map p/elements)
          ((fn [elements]
             (if (seq elements)
               (cat- (apply mapv (fn [& es]
                                   (or- es)) elements))
-              (invalid {:message (format "no possible value of length n")})))))
+              (invalid {:message (format "no possible value of length n: %s %s" (print-str spec) n)})))))
     spec))
 
 (s/fdef conform-collof-value :args (s/cat :collof ::spect :x (s/nilable value?)))
@@ -2550,7 +2575,6 @@
   (will-accept- [this]
     this))
 
-(first-rest-singular ArrayOf)
 (extend-regex ArrayOf)
 
 (s/fdef array-of :args (s/cat :x class-spec?) :ret ::spect)
@@ -2748,7 +2772,6 @@
 
 
 (extend-regex FnSpec)
-(first-rest-singular FnSpec)
 (will-accept-this FnSpec)
 
 (predicate-spec fn-spec?)

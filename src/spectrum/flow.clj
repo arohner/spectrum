@@ -998,8 +998,10 @@ will return `(instance? C x)` rather than `y`
     (assoc-in-a a (conj path ::ret-spec) (c/value (:val a*)))))
 
 (defmethod flow* :do [a path]
-  (let [a (flow-walk a path)]
-    (assoc-in-a a (conj path ::ret-spec) (-> a (get-in path) :ret ::ret-spec))))
+  (let [a (flow-walk a path)
+        a* (get-in a path)
+        ret-spec (or (some c/throw? (:statements a*)) (-> a* :ret ::ret-spec))]
+    (assoc-in-a a (conj path ::ret-spec) ret-spec)))
 
 (defn walk-catch [walk-fn a path]
   {:post [(s/valid? ::analysis (get-in % path))]}
@@ -1565,8 +1567,7 @@ will return `(instance? C x)` rather than `y`
 (defmethod flow* :throw [a path]
   (let [a (flow-walk a path)
         a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (c/unknown {:form {:exception (-> a* :exception :class :val)}
-                                                   :message "form thows exception"}))))
+    (assoc-in a (conj path ::ret-spec) (c/throw-form (c/class-spec (-> a* :exception :class :val))))))
 
 (s/fdef keyword-invoke-ret-spec :args (s/cat :a ::analysis) :ret c/spect?)
 (defn keyword-invoke-ret-spec
@@ -1827,28 +1828,28 @@ will return `(instance? C x)` rather than `y`
 (s/fdef infer-invoke-constraints :args (s/cat :s c/spect? :args (s/coll-of c/spect?) :ret c/spect?))
 (defn infer-invoke-constraints
   "Given a spec (which could accept multiple type or arities), and a
-  set of partially constrained argument specs, return a spec
-  representing all possible concrete specs that args could conform
-  to"
+  seq of partially constrained argument specs, constrain all
+  arguments, returning a spec representing all possible concrete specs
+  that args could conform to"
   [spec args]
   {:pre [(validate! c/spect? spec)
+         (s/assert c/conformy? spec)
          (not (c/spect? args))
          (not (c/fn-spec? spec))
          (validate! (s/coll-of c/spect?) args)]
-   :post [(validate! c/spect? %)
-          (if (c/valid? spec args)
-            (c/conformy? %)
-            true)]}
+   :post [(validate! c/spect? %)]}
   (if (not (c/unknown? spec))
     (let [rets (->> (c/all-possible-values spec (count args))
                     (filter (fn [s]
-                              (= (count (c/elements s)) (count args))))
+                              (<= (c/min-length s) (count args))))
                     (filter (fn [s]
                               (every? (fn [[s a]]
                                         (c/non-contradiction? a s)) (map vector (c/elements s) args)))))]
       (if (seq rets)
         (c/or- rets)
-        (c/invalid {:message (format "infer-invoke-constraints can't invoke %s with %s" (print-str spec) (print-str args))})))
+        (do
+          (println "infer-invoke invalid:" spec args)
+          (c/invalid {:message (format "infer-invoke-constraints: can't invoke %s with %s" (print-str spec) (print-str args))}))))
     spec))
 
 (defmethod infer* :invoke [a path]
@@ -1882,7 +1883,7 @@ will return `(instance? C x)` rather than `y`
                          (c/invoke-accept s)))
                      (c/invoke-accept s))
             s-args (infer-invoke-constraints s-args (c/elements invoke-args))
-            s-args (c/all-possible-values-length-n s-args (count (c/elements invoke-args)))]
+            s-args (c/all-possible-values-length-n s-args (c/min-length s-args))]
         (if (c/conformy? s-args)
           (let [args (map vector (:args a*) (c/elements s-args))
                 a (if s-args
@@ -1945,7 +1946,9 @@ will return `(instance? C x)` rather than `y`
           (= 2)))))
 
 (defn infer-fn-method-spec
-  "add the initial fn-spec for this fn-method"
+  "add the initial fn-spec for this fn-method.
+
+This is called inside infer :fn, so variadic args will get their internal `cat` applied"
   [a path]
   {:post [(every? ::ret-spec (get-in % (conj path :params)))]}
   (let [a* (get-in a path)
@@ -1963,9 +1966,11 @@ will return `(instance? C x)` rather than `y`
                                                   s (assoc s :inferred true)]
                                               (assoc p ::ret-spec s))) params)
                              params (if (:variadic? a*)
-                                      (if (fn-variadic-method-requires-arg? a (-> path pop pop))
-                                        (assoc-in params [(-> params count dec) ::ret-spec] (c/or- [(c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))]) (c/class-spec clojure.lang.ISeq)]))
-                                        (assoc-in params [(-> params count dec) ::ret-spec] (c/seq- (c/pred-spec #'any?))))
+                                      (let [ret-spec (if (fn-variadic-method-requires-arg? a (-> path pop pop))
+                                                       (c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))])
+                                                       (c/cat- [(c/seq- (c/pred-spec #'any?))]))
+                                            ret-spec (assoc ret-spec :inferred true)]
+                                        (assoc-in params [(-> params count dec) ::ret-spec] ret-spec))
                                       params)]
                          params)))
         args-spec (c/cat- (mapv ::ret-spec (get-in a (conj path :params))))
@@ -2033,8 +2038,9 @@ will return `(instance? C x)` rather than `y`
 
 (defmethod infer* :do [a path]
   (let [a (infer-walk a path)
-        a* (get-in a path)]
-    (assoc-in a (conj path ::ret-spec) (-> a* :ret ::ret-spec))))
+        a* (get-in a path)
+        ret-spec (or (some c/throw? (:statements a*)) (-> a* :ret ::ret-spec))]
+    (assoc-in a (conj path ::ret-spec) ret-spec)))
 
 (defmethod infer* :new [a path]
   (let [a (infer-walk a path)

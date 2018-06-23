@@ -33,8 +33,6 @@ seq of concrete specs that don't contain choices")
     "True if this pattern successfully matches")
   (return- [this]
     "Given a completed regex parse, return the conform matching value")
-  (with-return- [this ret]
-    "add this regex's return data to ret")
   (re-conj-return [this s splice?]
     "Add s to this regex. Non-regexes should return s")
   (regex? [this]
@@ -43,6 +41,10 @@ seq of concrete specs that don't contain choices")
     "Returns a constructor function that takes :ps")
   (elements [this]
     "Returns the components of this regex. (constructor (elements this)) should round-trip")
+  (min-length [this]
+    "The minimum length sequence this regex will consume")
+  (max-length [this]
+    "The maximum length sequence this regex will consume. Returns int?. Use Integer/MAX_VALUE for unlimited")
   (fix-length [this n]
     "recursively resolve to all concrete specs of *up to* length n,
   i.e. (fix-length (seq- int?) 2) -> [(cat) (cat int?) (cat int?
