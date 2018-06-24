@@ -231,8 +231,7 @@
                  spect)))
 
 
-(ann-method
- clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)])
+(ann-method clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)])
  (fn [spect args-spect]
    (let [x (-> args-spect c/first- c/maybe-convert-value)
          y (-> args-spect c/second- c/maybe-convert-value)
@@ -435,8 +434,6 @@
         (assoc spect :ret ret))
       (c/invalid {:message (format "inc: %s does not conform to Number" (print-str arg))}))))
 
-(ann #'inc inc-fn-transformer)
-(ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
 
 (ann-protocol? #'c/spect? p/Spect)
 
@@ -582,3 +579,17 @@
         (data/replace-method-spec clojure.lang.Numbers (:name m) (mapv j/resolve-java-class (:parameter-types m)) s)))))
 
 (replace-numeric-tower-objects!)
+
+(ann-method clojure.lang.Numbers 'lt (c/cat- [(c/class-spec Number) (c/class-spec Number)])
+            (fn [spect args]
+              (println "numbers lt" args)
+              (let [args (c/rest- args)
+                    x (c/first- args)
+                    y (c/second- args)]
+                (if (and (c/value? x) (c/value? y))
+                  (assoc spect :ret (c/value (< (:v x) (:v y))))
+                  spect))))
+
+(ann #'inc inc-fn-transformer)
+(ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
+(ann-method clojure.lang.Numbers 'unchecked_inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)

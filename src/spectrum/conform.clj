@@ -286,7 +286,6 @@
     (p/map->Bottom (merge args {:form form :a-loc a-loc :message message}))))
 
 (s/fdef invoke :args (s/cat :s ::spect :args ::spect) :ret ::spect)
-
 (defn invoke [s args]
   {:pre [(validate! ::spect s)
          (validate! ::spect args)]

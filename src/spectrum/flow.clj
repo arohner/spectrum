@@ -224,7 +224,9 @@
 (def flow-wrap (wrap flow*))
 
 (s/fdef walk-a :args (s/cat :f fn? :a ::ana.jvm/analysis :path vector?) :ret ::analysis)
-(defn walk-a [f a path]
+(defn walk-a
+  "Given an analysis a, recursively call f on all of a's children"
+  [f a path]
   (reduce (fn [a c]
             (if (contains? (get-in a path) c)
               (let [new-path (conj path c)
@@ -239,6 +241,38 @@
   "Walk the children of a*"
   [a path]
   (walk-a flow-wrap a path))
+
+(defn analyze-cache-dispatch [a path]
+  (-> a (get-in path) :op))
+
+(defmulti analyze-cache* #'analyze-cache-dispatch)
+
+(defn analyze-cache-walk [a path]
+  (walk-a analyze-cache* a path))
+
+(defmethod analyze-cache* :default [a path]
+  (analyze-cache-walk a path)
+  a)
+
+(defmethod analyze-cache* :def [a path]
+  (let [a* (get-in a path)
+        v (:var a*)]
+    (assert (var? v))
+    (data/store-var-analysis v a)
+    (analyze-cache-walk a path)
+    a))
+
+(defn analyze-cache [a]
+  (analyze-cache* a []))
+
+(defn analyze-cache-ns
+  "analyze and store in var cache, but don't flow or check"
+  [ns]
+  (println "analyzing" ns)
+  (let [as (ana.jvm/analyze-ns ns)]
+    (doseq [a as]
+      (analyze-cache a))
+    (data/mark-ns-analyzed! ns)))
 
 (defmethod flow* :default [a path]
   (assert false (format "unhandled: %s %s" (:op (get-in a path)) (a-loc-str (get-in a path)))))
@@ -313,7 +347,7 @@
   ;; the-var => (var foo). Returns the actual var
   (let [a (flow-walk a path)
         a* (get-in a path)]
-    (assoc-in-a (conj path ::ret-spec) (c/value (:var a*)))))
+    (assoc-in-a a (conj path ::ret-spec) (c/value (:var a*)))))
 
 (defmethod flow* :var [a path]
   ;; :var => the value the var holds
@@ -689,16 +723,7 @@ will return `(instance? C x)` rather than `y`
 (defn get-var-fn-analysis [a]
   (some-> a :init maybe-strip-meta))
 
-(defn valid-invoke-analysis? [{:keys [a path] :as args}]
-  {:post [(do (when (not %)
-                (println "valid-invoke-analysis?" args "=>" %)) true)]}
-  (or (-> (get-in a path) :op (= :fn))
-      (-> (get-in a path) :tag (= clojure.lang.IFn))))
-
 (defn invoke-get-fn-analysis-var [v]
-  {:post [(if (:a %)
-            (valid-invoke-analysis? %)
-            true)]}
   (let [v-a (data/get-var-analysis v)
         path [:init]
         path (if (-> (get-in v-a path) :op (= :with-meta))
@@ -1794,7 +1819,6 @@ will return `(instance? C x)` rather than `y`
     (when (-> a* :init)
       (let [s (-> a* :init ::ret-spec)]
         (assert (c/spect? s))
-        (println "infer :def storing" (-> a* :var) "=>" s)
         (data/store-var-inferred-spec v s)))
     (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
 

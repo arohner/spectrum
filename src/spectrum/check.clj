@@ -48,7 +48,7 @@
   (when-not (data/analyzed-ns? 'clojure.core)
     (println "loading clojure")
     (doseq [n builtin-nses]
-      (data/analyze-cache-ns n))))
+      (flow/analyze-cache-ns n))))
 
 (s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
 
