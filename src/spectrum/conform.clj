@@ -1970,6 +1970,19 @@
 
 (s/fdef map->OrSpec :args (s/cat :m (s/keys :req-un [:or/ps])) :ret or?)
 
+(defn join-not-pairs
+  "If two spects in ps are (not x) and x, replace them with any?"
+  [ps]
+  (let [ps (set ps)
+        {nots true
+         pos-ps false} (group-by not? ps)]
+    (reduce (fn [ps not-s]
+              (if-let [s (->> pos-ps (filter #(= (:s not-s) %)) first)]
+                (-> ps
+                    (disj not-s s)
+                    (conj (pred-spec #'any?)))
+                ps)) ps nots)))
+
 (defn or-consolidate
   "Given the ps for an `or`, simplify and consolidate terms"
   [ps]
@@ -1978,6 +1991,7 @@
         ps (remove or? ps)
         ps (remove bottom? ps)
         ps (concat ps or-ps)
+        ps (join-not-pairs ps)
         ps (map (fn [p]
                   (if (object-spec? p)
                     (pred-spec #'any?)

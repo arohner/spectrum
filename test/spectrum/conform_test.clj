@@ -401,12 +401,18 @@
 (deftest or-
   (let [a (c/value :a)
         b (c/value :b)
-        c (c/value :c)]
+        c (c/value :c)
+        int? (c/pred-spec #'int?)
+        not-int? (c/not- (c/pred-spec #'int?))
+        string? (c/pred-spec #'string?)]
     (are [start expected] (= expected start)
       (c/or- [a]) a
       (c/or- [a a]) a
       (c/or- [a b]) (c/or- [a b])
-      (c/or- [c b a]) (c/or- [a b c]))))
+      (c/or- [c b a]) (c/or- [a b c])
+      (c/or- [a int? not-int?]) (c/pred-spec #'any?))))
+
+
 
 ;; (deftest or-conj
 ;;   (let [a (c/value :a)
