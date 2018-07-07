@@ -7,8 +7,8 @@
   ;; var => ana.jvm/analysis cache
   (atom {}))
 
-(defonce var-inferred-specs
-  ;; var => inferred spec
+(defonce var-specs
+  ;; var => spec
   (atom {}))
 
 (defonce defmethod-analysis
@@ -85,16 +85,6 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   [v dispatch]
   (get-in (get-defmethod-analysis v dispatch) [:args 1]))
 
-(defn analyze-cache-ns
-  "analyze and store in var cache, but don't flow or check"
-  [ns]
-  (println "analyzing" ns)
-  (let [as (ana.jvm/analyze-ns ns)]
-    (doseq [a as]
-      (when (= :def (:op a))
-        (store-var-analysis (:var a) a)))
-    (mark-ns-analyzed! ns)))
-
 (s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis-def))
 (defn get-var-analysis
   [v]
@@ -114,17 +104,17 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
            :init
            :expr))
 
-(s/fdef store-var-inferred-spec :args (s/cat :v var? :s :spectrum.conform/spect) :ret nil?)
-(defn store-var-inferred-spec [v s]
-  {:pre [(var? v)
-         s]}
-  (swap! var-inferred-specs assoc v s)
+(s/fdef store-var-spec :args (s/cat :v var? :s :spectrum.conform/spect) :ret nil?)
+(defn store-var-spec [v s]
+  {:pre [(var? v)]}
+  (println "storing" v "=>" s)
+  (swap! var-specs assoc v s)
   nil)
 
-(defn get-var-inferred-spec [v]
+(defn get-var-spec [v]
   {:post [(do (when %
                 (:var %)) true)]}
-  (get @var-inferred-specs v))
+  (get @var-specs v))
 
 (s/def ::reflect-args (s/coll-of class? :kind vector?))
 (s/fdef replace-method-spec :args (s/cat :cls class? :name symbol? :args ::reflect-args :spect :spectrum.conform/spect))
@@ -158,6 +148,6 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   "Clear cache. Useful for dev"
   []
   (swap! var-analysis (constantly {}))
-  (swap! var-inferred-specs (constantly {}))
+  (swap! var-specs (constantly {}))
   (swap! analyzed-nses (constantly #{}))
   (swap! invoke-transformers (constantly {})))

@@ -325,7 +325,7 @@
   {:post [(c/spect? %)]}
   (let [a* (get-in a path)]
     (or (c/get-var-spec v)
-        (data/get-var-inferred-spec v)
+        (data/get-var-spec v)
         (if-let [v-a (data/get-var-analysis v)]
           (if (recursive? a path)
             (::ret-spec (get-self-call-analysis a path))
@@ -377,7 +377,7 @@
   (let [a* (get-in a path)
         v (-> a* :var)]
     (assert (var? v))
-    (or (data/get-var-inferred-spec v)
+    (or (data/get-var-spec v)
         (when (recursive? a path)
           (::ret-spec (get-self-call-analysis a path)))
         (when-let [v-a (data/get-var-analysis v)]
@@ -1819,7 +1819,7 @@ will return `(instance? C x)` rather than `y`
     (when (-> a* :init)
       (let [s (-> a* :init ::ret-spec)]
         (assert (c/spect? s))
-        (data/store-var-inferred-spec v s)))
+        (data/store-var-spec v s)))
     (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
 
 (defmethod infer* :var [a path]

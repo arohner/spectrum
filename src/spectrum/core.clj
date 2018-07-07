@@ -5,9 +5,8 @@
   (:import clojure.lang.Namespace))
 
 (defn var-spec
-  "Used to attach a spec to a non-fn var. Checks conformity during binding, set!, alter-var-root"
-  [v s])
-
-(defn defrecord-spec
-  "Attach a spec to a defrecord. You probably want to use s/keys"
-  [r s])
+  "Used to attach a spec to a non-fn var. Checks conformity during binding, set!, alter-var-root, etc."
+  [v s]
+  {:pre [(validate! var? v)
+         (validate! c/spect? s)]}
+  (data/store-var-spec v s))
