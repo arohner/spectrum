@@ -582,7 +582,6 @@
 
 (ann-method clojure.lang.Numbers 'lt (c/cat- [(c/class-spec Number) (c/class-spec Number)])
             (fn [spect args]
-              (println "numbers lt" args)
               (let [args (c/rest- args)
                     x (c/first- args)
                     y (c/second- args)]

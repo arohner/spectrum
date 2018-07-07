@@ -103,6 +103,10 @@
     (validate! (s/nilable ::spect) ret)
     ret))
 
+(defn regex? [x]
+  {:post [(boolean? %)]}
+  (p/regex? x))
+
 (s/fdef elements :args (s/cat :s ::spect) :ret (s/coll-of ::spect))
 (defn elements [s]
   {:post [(validate! (s/coll-of ::spect) %)]}
@@ -1898,7 +1902,8 @@
     (->> this
          :ps
          (map parse-spec)
-         (some p/regex?)))
+         (some p/regex?)
+         boolean))
   (derivative [this x]
     (let [resp (conform this x)]
       (if (conformy? resp)
@@ -2116,7 +2121,8 @@
     (->> this
          :ps
          (map parse-spec)
-         (some p/regex?)))
+         (some p/regex?)
+         boolean))
   (derivative [this x]
     (let [resp (conform this x)]
       (if (conformy? resp)
@@ -3182,7 +3188,7 @@
             (if (conformy? x)
               (if-let [dp (derivative spec x)]
                 (if (conformy? dp)
-                  (if (and (first-rest? dp) (infinite? dp) (accept-nil? dp) (infinite? (rest- data)))
+                  (if (and (first-rest? dp) (infinite? dp) (accept-nil? dp) (first-rest? (rest- data)) (infinite? (rest- data)))
                     (return dp)
                     (recur dp (rest- data)))
                   (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))

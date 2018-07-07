@@ -755,7 +755,9 @@ will return `(instance? C x)` rather than `y`
 
 (defn contains-control-flow? [s]
   {:pre [(c/spect? s)]}
-  (some c/control-flow? (c/elements s)))
+  (if (c/regex? s)
+    (some c/control-flow? (c/elements s))
+    false))
 
 (s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
 (defn strip-control-flow
@@ -1086,9 +1088,10 @@ will return `(instance? C x)` rather than `y`
 
 (defn method-type->spec [method-type]
   (let [c (j/resolve-java-class method-type)]
-    (if (j/primitive? c)
-      (c/class-spec c)
-      (c/or- [(c/class-spec c) (c/pred-spec #'nil?)]))))
+    (cond
+      (j/primitive? c) (c/class-spec c)
+      (= c clojure.lang.ISeq) (c/seq- (c/pred-spec #'any?))
+      :else (c/or- [(c/class-spec c) (c/pred-spec #'nil?)]))))
 
 (s/fdef compatible-java-method-relaxed? :args (s/cat :arg-spec ::c/spect :m (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method-relaxed?
@@ -1188,7 +1191,9 @@ will return `(instance? C x)` rather than `y`
                       (and (instance? clojure.reflect.Method m)
                            (= method (:name m)))))))
 
-(defn method->spec [m]
+(defn method->spec
+  "Given a java method, translate it to a spec, and add s/nilable to arguments & return type as necessary"
+  [m]
   (let [declaring-class (j/resolve-java-class (:declaring-class m))]
     (or
      (data/get-updated-method-spec declaring-class
@@ -1871,9 +1876,7 @@ will return `(instance? C x)` rather than `y`
                                         (c/non-contradiction? a s)) (map vector (c/elements s) args)))))]
       (if (seq rets)
         (c/or- rets)
-        (do
-          (println "infer-invoke invalid:" spec args)
-          (c/invalid {:message (format "infer-invoke-constraints: can't invoke %s with %s" (print-str spec) (print-str args))}))))
+        (c/invalid {:message (format "infer-invoke-constraints: can't invoke %s with %s" (print-str spec) (print-str args))})))
     spec))
 
 (defmethod infer* :invoke [a path]
@@ -1992,7 +1995,8 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
                              params (if (:variadic? a*)
                                       (let [ret-spec (if (fn-variadic-method-requires-arg? a (-> path pop pop))
                                                        (c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))])
-                                                       (c/cat- [(c/seq- (c/pred-spec #'any?))]))
+                                                       (c/seq- (c/pred-spec #'any?)) ;;(c/cat- [(c/seq- (c/pred-spec #'any?))])
+                                                       )
                                             ret-spec (assoc ret-spec :inferred true)]
                                         (assoc-in params [(-> params count dec) ::ret-spec] ret-spec))
                                       params)]
