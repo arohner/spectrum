@@ -743,7 +743,11 @@
     (if (accept? p0)
       (let [ret-old ret
             _ (assert vector? ret)
-            ret (conj ret (:ret p0))]
+            ret-p0 (:ret p0)
+            ret-p0 (if (vector? ret-p0)
+                     (cat- ret-p0)
+                     ret-p0)
+            ret (conj ret ret-p0)]
         (if pr
           (p/map->RegexCat {:ps pr
                             :ks kr
