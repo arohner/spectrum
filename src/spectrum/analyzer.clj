@@ -49,3 +49,10 @@
                                   (ana.jvm/analyze form (assoc env :ns (ns-name *ns*)) opts)))
                          (recur false))))))))
            (get-in @env/*env* [::analyzed-clj path]))))))
+
+;; api that the rest of spectrum is allowed to use. Wrap ana.jvm so we know we can change them all in one place
+(defn analyze-ns [ns]
+  (analyze-ns-1 ns))
+
+(defn analyze [form & opts]
+  (apply ana.jvm/analyze form opts))

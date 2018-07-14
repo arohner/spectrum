@@ -11,6 +11,7 @@
             [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as gen]
             [clojure.string :as str]
+            [spectrum.analyzer :as analyzer]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.data :as data :refer (*a*)]
@@ -269,7 +270,7 @@
   "analyze and store in var cache, but don't flow or check"
   [ns]
   (println "analyzing" ns)
-  (let [as (ana.jvm/analyze-ns ns)]
+  (let [as (analyzer/analyze-ns ns)]
     (doseq [a as]
       (analyze-cache a))
     (data/mark-ns-analyzed! ns)))

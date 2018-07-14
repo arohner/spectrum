@@ -42,7 +42,7 @@
 
 ;; clojure.spec isn't in the check list atm, because analyzer re-evals the protocols, which breaks e.g. (satsifies? s/Spec) checking
 
-(def builtin-nses '[clojure.core clojure.set clojure.string])
+(def builtin-nses '[clojure.core clojure.set clojure.string clojure.spec.alpha clojure.spec.gen.alpha])
 
 (defn maybe-load-clojure-builtins []
   (when-not (data/analyzed-ns? 'clojure.core)
@@ -63,7 +63,7 @@
 "
   ([form]
    (maybe-load-clojure-builtins)
-   (let [a (ana.jvm/analyze form)]
+   (let [a (analyzer/analyze form)]
      (binding [*a* a]
        (flow/flow a))))
   ([form specs]
@@ -76,7 +76,7 @@
                                             :env {}
                                             :local :let
                                             ::flow/ret-spec spec}])) specs))
-         a (ana.jvm/analyze form (assoc (ana.jvm/empty-env) :locals locals))]
+         a (analyzer/analyze form (assoc (ana.jvm/empty-env) :locals locals))]
      (binding [*a* a]
        (flow/flow a)))))
 
@@ -87,7 +87,7 @@
   (maybe-load-clojure-builtins)
   (println "checking " ns)
   (some->>
-   (ana.jvm/analyze-ns ns (ana.jvm/empty-env) {:eval? false})
+   (analyzer/analyze-ns-1 ns (ana.jvm/empty-env))
    (flow/flow-ns)
    (mapcat check*)
    (filter identity)))
@@ -202,7 +202,7 @@
 
 (defn flow-ns [ns]
   (let [env (ana.jvm/empty-env)]
-    (mapv flow/flow (ana.jvm/analyze-ns ns env {:eval? false}))))
+    (mapv flow/flow (analyzer/analyze-ns-1 ns env))))
 
 (defn ensure-analysis [ns]
   (maybe-load-clojure-builtins)
