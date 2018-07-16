@@ -447,9 +447,25 @@
     (assert ret-spec)
     ret-spec))
 
+(def keyword-invoke-spec (c/cat- [(c/pred-spec #'keyword?) (c/or- [(c/pred-spec #'map?) (c/pred-spec #'set?)]) (c/?- (c/pred-spec #'any?))]))
+
+(defmethod invoke-get-fn-spec :const [a path _]
+  (let [a* (get-in a path)
+        v (:val a*)]
+    (c/value v)))
+
+(defmethod invoke-get-fn-spec :with-meta [a path _]
+  (invoke-get-fn-spec a (conj path :expr) _))
+
+(defmethod invoke-get-fn-spec :set [a path _]
+  (c/value (set (:items (get-in a path)))))
+
+(defmethod invoke-get-fn-spec :map [a path _]
+  (c/value (set (:items (get-in a path)))))
+
 (defmethod invoke-get-fn-spec :default [a path _]
   (let [a* (get-in a path)]
-    (c/unknown {:message (format "don't know how to get spec or analysis for %s %s" (:op a*) (:form a*))})))
+    (c/unknown {:message (format "don't know how to get spec or analysis for %s %s %s" (:op a*) (:form a*) (a-loc-str a))})))
 
 (defmethod flow* :fn [a path]
   (let [;;a (flow-walk a path)
@@ -752,7 +768,12 @@ will return `(instance? C x)` rather than `y`
               :path (conj path :fn)
               :op fn-op}
       :invoke (recur a (conj path :fn))
-      (println "don't know how to find analysis for" fn-op))))
+      :with-meta (recur a (conj path :fn :expr))
+      :set {:a a :path path* :op fn-op}
+      :map {:a a :path path* :op fn-op}
+      (do
+        (println "invoke-get-fn-analysis" (:form a*) (:op a*))
+        (assert false (format "don't know how to find analysis for %s" fn-op))))))
 
 (defn contains-control-flow? [s]
   {:pre [(c/spect? s)]}
