@@ -751,9 +751,10 @@ will return `(instance? C x)` rather than `y`
 
 (defn invoke-get-fn-analysis [a path]
   (let [a* (get-in a path)
-        _ (assert (= :invoke (:op a*)) (format "invoke-get-fn-analysis passed %s %s" (:op a*) (:form a*)))
         f (:fn a*)
-        fn-op (-> a* :fn :op)]
+        [fn-op path*] (or (when (-> a* :fn :op)
+                            [(-> a* :fn :op) (conj path :fn)])
+                          [(-> a* :op) path])]
     (condp = fn-op
       :var (invoke-get-fn-analysis-var (-> a* :fn :var))
       :the-var (invoke-get-fn-analysis-var (-> a* :fn :var))
@@ -771,6 +772,7 @@ will return `(instance? C x)` rather than `y`
       :with-meta (recur a (conj path :fn :expr))
       :set {:a a :path path* :op fn-op}
       :map {:a a :path path* :op fn-op}
+      :if {:a a :path path* :op :if}
       (do
         (println "invoke-get-fn-analysis" (:form a*) (:op a*))
         (assert false (format "don't know how to find analysis for %s" fn-op))))))
@@ -2028,6 +2030,16 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
         a (assoc-in a (conj path ::ret-spec) fn-spec)]
     a))
 
+(defn a-def?
+  "if any parent node is a :def, return the var"
+  [a path]
+  (let [a* (get-in a path)]
+    (if (= :def (:op a*))
+      (:var a*)
+      (if (seq path)
+        (recur a (pop path))
+        nil))))
+
 (defmethod infer* :fn [a path]
   (let [a* (get-in a path)
         ;; before walking the fn methods, set up specs for the fn-methods in case there's any self calls
@@ -2036,6 +2048,9 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
                     (infer-fn-method-spec a (conj path :methods method-index))) a (range (count (:methods a*))))
         a* (get-in a path)
         ret-spec (c/merge-fn-specs (map ::ret-spec (:methods a*)))
+        _ (when-let [v (a-def? a path)]
+            ;; store the preliminary spec in case this is a mutually recursive fn
+            (data/store-var-spec v ret-spec))
         a (assoc-in a (concat path [::ret-spec]) ret-spec)
         _ (assert (c/fn-spec? ret-spec))
         a (if (:local a*)
@@ -2128,8 +2143,7 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
 
 (defn infer-loop-let [a path]
   {:post [(c/spect-or-control-flow? (::ret-spec (get-in % path)))]}
-  (let [a* (get-in a path)
-        a (infer-walk a path)
+  (let [a (infer-walk a path)
         a* (get-in a path)
         ret-spec (::ret-spec (:body a*))]
     (assert ret-spec)

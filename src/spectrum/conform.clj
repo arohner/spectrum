@@ -589,7 +589,8 @@
 (defn value? [s]
   (instance? Value s))
 
-(s/fdef value :args (s/cat :x any?) :ret value?)
+;; we can't specify :args any? because when checking spec.alpha, we can't store `::s/invalid` literals
+(s/fdef value :ret value?)
 (defn value
   "spec representing a single value"
   [v]
@@ -2447,13 +2448,15 @@
   {:post [(validate! (s/coll-of ::spect :kind set?) %)]}
   (loop [ret #{}
          s s]
-    (let [v (first- s)]
-      (if (conformy? v)
-        (let [ret (conj ret v)]
-          (if (and (not (infinite? s)) (rest- s))
-            (recur ret (rest- s))
-            ret))
-        ret))))
+    (if (first-rest? s)
+      (let [v (first- s)]
+        (if (conformy? v)
+          (let [ret (conj ret v)]
+            (if (and (not (infinite? s)) (rest- s))
+              (recur ret (rest- s))
+              ret))
+          ret))
+      ret)))
 
 (s/fdef will-accept-concrete :args (s/cat :s ::spect) :ret (s/* ::spect))
 (defn will-accept-concrete
@@ -3284,10 +3287,10 @@
   (let [v* v
         v (:v v)]
     (cond
-      (vector? v) (cat- [v (pred-spec #'nat-int?)])
-      (set? v) (cat- [v (pred-spec #'any?)])
-      (map? v) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
-      (or (keyword? v) (symbol? v)) (or- [(cat- [v (pred-spec #'any?)]) (cat- [v (pred-spec #'any?) (pred-spec #'any?)])])
+      (vector? v) (cat- [(pred-spec #'nat-int?)])
+      (set? v) (cat- [(pred-spec #'any?)])
+      (map? v) (or- [(cat- [(pred-spec #'any?)]) (cat- [(pred-spec #'any?) (pred-spec #'any?)])])
+      (or (keyword? v) (symbol? v)) (or- [(cat- [(pred-spec #'any?)]) (cat- [(pred-spec #'any?) (pred-spec #'any?)])])
       (nil? v) (invalid {:message "can't invoke nil"})
       :else (do
               (invalid {:message (format "unknown value invoke: %s" (print-str v*))})))))
