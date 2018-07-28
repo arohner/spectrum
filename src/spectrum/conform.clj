@@ -362,6 +362,8 @@
     false)
   (disentangle [this]
     [this])
+  (fix-length [this n]
+    [this])
   p/WillAccept
   (will-accept- [this]
     reject))
