@@ -23,7 +23,7 @@
   be used to make the spec less specific.
   "
   [v f]
-  (swap! data/invoke-transformers assoc v f)
+  (data/add-invoke-transformer v f)
   nil)
 
 (ann #'instance? (fn [spect args-spect]

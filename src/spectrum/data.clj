@@ -1,7 +1,7 @@
 (ns spectrum.data
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
-            [spectrum.util :refer (print-once protocol?)]))
+            [spectrum.util :refer (print-once protocol? def-instance-predicate instrument-ns)]))
 
 (defonce var-analysis
   ;; var => ana.jvm/analysis cache
@@ -32,6 +32,12 @@
 
 ;; current ana.jvm/analysis, if any
 (def ^:dynamic *a* nil)
+
+(def-instance-predicate reflect-method? clojure.reflect.Method)
+(s/fdef add-invoke-transformer :args (s/cat :v (s/alt :v var? :m reflect-method?) :f fn?))
+(defn add-invoke-transformer [v f]
+  (swap! invoke-transformers assoc v f)
+  nil)
 
 (defn get-invoke-transformer [v]
   (get @invoke-transformers v))
