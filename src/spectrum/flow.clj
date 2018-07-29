@@ -463,9 +463,25 @@
 (defmethod invoke-get-fn-spec :map [a path _]
   (c/value (set (:items (get-in a path)))))
 
+(defmethod invoke-get-fn-spec :invoke [a path _]
+  (let [a* (get-in a path)]
+    (::ret-spec a*)))
+
+(defmethod invoke-get-fn-spec :if [a path _]
+  (let [a* (get-in a path)
+        truthyness (c/truthyness (-> a* :test ::ret-spec))]
+    (cond
+      (= :truthy truthyness) (-> a* :then ::ret-spec)
+      (= :falsey truthyness) (if (-> a* :else)
+                               (-> a* :else ::ret-spec)
+                               (c/value nil))
+      :else (if (-> a* :else)
+              (c/or- [(-> a* :then ::ret-spec) (-> a* :else ::ret-spec)])
+              (c/or- [(-> a* :then ::ret-spec) (c/value nil)])))))
+
 (defmethod invoke-get-fn-spec :default [a path _]
   (let [a* (get-in a path)]
-    (c/unknown {:message (format "don't know how to get spec or analysis for %s %s %s" (:op a*) (:form a*) (a-loc-str a))})))
+    (c/unknown {:message (format "invoke-get-fn-spec :default. don't know how to get spec for %s %s %s" (:op a*) (:form a*) (a-loc-str a))})))
 
 (defmethod flow* :fn [a path]
   (let [;;a (flow-walk a path)
@@ -723,7 +739,7 @@ will return `(instance? C x)` rather than `y`
                   (when-not (::ret-spec arg)
                     (println "no ret-spec:" (:form arg) (:op arg)))
                   (assert (::ret-spec arg))
-                  (c/maybe-spec-spec (::ret-spec arg))) args)))
+                  (::ret-spec arg)) args)))
 
 (s/fdef invoke-valid-arity? :args (s/cat :f ::analysis :arg-count integer?) :ret boolean?)
 (defn invoke-valid-arity?
@@ -776,24 +792,6 @@ will return `(instance? C x)` rather than `y`
       (do
         (println "invoke-get-fn-analysis" (:form a*) (:op a*))
         (assert false (format "don't know how to find analysis for %s" fn-op))))))
-
-(defn contains-control-flow? [s]
-  {:pre [(c/spect? s)]}
-  (if (c/regex? s)
-    (some c/control-flow? (c/elements s))
-    false))
-
-(s/fdef strip-control-flow :args (s/cat :s (s/nilable c/spect?)) :ret (s/nilable c/spect?))
-(defn strip-control-flow
-  "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
-  [s]
-  {:pre [(c/spect? s)]
-   :post [(c/spect? %)]}
-  (cond
-    (not (contains-control-flow? s)) s
-    (c/control-flow? s) (c/bottom {:message "only control flow"})
-    (c/or? s) (c/or- (remove c/control-flow? (c/elements s)))
-    :else (assert false (format "Don't know how to strip control flow from %s" (print-str s)))))
 
 (def control-flow-ops #{:case :fn-method :if :letfn :method :quote})
 
@@ -1223,13 +1221,12 @@ will return `(instance? C x)` rather than `y`
      (data/get-updated-method-spec declaring-class
                                    (:name m)
                                    (mapv j/resolve-java-class (:parameter-types m)))
-     (c/fn-spec (c/cat- (concat (if (:static (:flags m))
-                                  [(c/value declaring-class)]
-                                  [(c/class-spec declaring-class)])
-                                (mapv (fn [param]
-                                        (method-type->spec param)) (:parameter-types m))))
-                (method-type->spec (j/resolve-java-class (:return-type m)))
-                nil))))
+     (c/fn-spec {:args (c/cat- (concat (if (:static (:flags m))
+                                         [(c/value declaring-class)]
+                                         [(c/class-spec declaring-class)])
+                                       (mapv (fn [param]
+                                               (method-type->spec param)) (:parameter-types m))))
+                 :ret (method-type->spec (j/resolve-java-class (:return-type m)))}))))
 
 (defn get-java-method-spec
   "Returns the spec for all arities of the method or'd together.
@@ -1408,7 +1405,7 @@ will return `(instance? C x)` rather than `y`
         a* (get-in a path)]
     (update-in a (conj path ::ret-spec) (fn [s]
                                           {:pre [(c/spect? s)]}
-                                          (strip-control-flow s)))))
+                                          (c/strip-control-flow s)))))
 
 (defn walk-recur [walk-fn a path]
   (let [a (walk-fn a path)
@@ -1516,9 +1513,8 @@ will return `(instance? C x)` rather than `y`
     (when-not m
       (println "unknown method spec:" protocol-class protocol-method params))
     (assert m)
-    (c/fn-spec (c/cat- (vec (concat [(c/class-spec record)] (take (count (:parameter-types m)) (repeat (c/unknown {:message "no spec for protocol fn" protocol-class protocol-method}))))))
-               (c/pred-spec #'any?)
-               nil)))
+    (c/fn-spec {:args (c/cat- (vec (concat [(c/class-spec record)] (take (count (:parameter-types m)) (repeat (c/unknown {:message "no spec for protocol fn" protocol-class protocol-method}))))))
+                :ret (c/pred-spec #'any?)})))
 
 (s/fdef protocol-fn-spec* :args (s/cat :cls class? :method symbol?) :ret (s/nilable c/fn-spec?))
 (defn protocol-fn-spec*
@@ -1592,7 +1588,7 @@ will return `(instance? C x)` rather than `y`
         ;;a (flow* a path)
         a (flow-walk a path)
         a* (get-in a path)
-        body-ret-spec (strip-control-flow (::ret-spec (:body a*)))]
+        body-ret-spec (c/strip-control-flow (::ret-spec (:body a*)))]
     (assoc-in a (conj path ::ret-spec) body-ret-spec)))
 
 (defmethod flow* :vector [a path]
@@ -2026,7 +2022,7 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
                                       params)]
                          params)))
         args-spec (c/cat- (mapv ::ret-spec (get-in a (conj path :params))))
-        fn-spec (c/fn-spec args-spec (c/pred-spec #'any?) nil)
+        fn-spec (c/fn-spec {:args args-spec :ret (c/pred-spec #'any?)})
         a (assoc-in a (conj path ::ret-spec) fn-spec)]
     a))
 
@@ -2039,6 +2035,15 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
       (if (seq path)
         (recur a (pop path))
         nil))))
+
+(defn a-def-fn?
+  "if this node is the :fn for a `defn`, return the var"
+  [a path]
+  (and (= (get-in a (conj path :op)) :fn)
+       (or (when (= (get-in a (-> path pop (conj :op))) :def)
+             (get-in a (-> path pop (conj :var))))
+           (when (= (get-in a (-> path pop pop (conj :op))) :def)
+             (get-in a (-> path pop pop (conj :var)))))))
 
 (defmethod infer* :fn [a path]
   (let [a* (get-in a path)
@@ -2070,8 +2075,8 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
 
         a* (get-in a path)
         params-spec (c/cat- (mapv ::ret-spec params))
-        body-ret-spec (-> a* :body ::ret-spec strip-control-flow)
-        ret-spec (assoc (c/fn-spec params-spec body-ret-spec nil) :inferred true)
+        body-ret-spec (-> a* :body ::ret-spec c/strip-control-flow)
+        ret-spec (assoc (c/fn-spec {:args params-spec :ret body-ret-spec}) :inferred true)
         a (assoc-in a (conj path ::ret-spec) ret-spec)]
     a))
 
@@ -2494,7 +2499,7 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
         ;;a (flow* a path)
         a (infer-walk a path)
         a* (get-in a path)
-        body-ret-spec (strip-control-flow (::ret-spec (:body a*)))]
+        body-ret-spec (c/strip-control-flow (::ret-spec (:body a*)))]
     (assoc-in a (conj path ::ret-spec) body-ret-spec)))
 
 (defmethod infer* :letfn [a path]

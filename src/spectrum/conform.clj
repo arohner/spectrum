@@ -289,6 +289,26 @@
                 (select-keys (:meta *a*) [:file :line :column]))]
     (p/map->Bottom (merge args {:form form :a-loc a-loc :message message}))))
 
+(defn contains-control-flow? [s]
+  {:pre [(spect? s)]}
+  (cond
+    (> (count (elements s)) 1) (some contains-control-flow? (elements s))
+    (control-flow? s) true
+    :else false))
+
+(s/fdef strip-control-flow :args (s/cat :s ::spect) :ret ::spect)
+(defn strip-control-flow
+  "Given the ret-spec for a function, remove control flow (recur and throw) from the type."
+  [s]
+  {:pre [(spect? s)]
+   :post [(spect? %) (do (when (contains-control-flow? %)
+                           (println "failed to strip control flow:" s "=>" %)) true) (not (contains-control-flow? %))]}
+  (cond
+    (not (contains-control-flow? s)) s
+    (control-flow? s) (bottom {:message "only control flow"})
+    (or? s) (or- (remove control-flow? (elements s)))
+    :else (assert false (format "Don't know how to strip control flow from %s" (print-str s)))))
+
 (s/fdef invoke :args (s/cat :s ::spect :args ::spect) :ret ::spect)
 (defn invoke [s args]
   {:pre [(validate! ::spect s)
@@ -1653,10 +1673,10 @@
 
 (s/fdef not- :args (s/cat :s ::spect) :ret ::spect)
 (defn not- [s]
-  (cond
-    (not? s) (-> s :s)
-    (value? s) (value (not (:v s)))
-    :else (p/map->NotSpec {:s s})))
+  (let [s (maybe-convert-value s)]
+    (cond
+      (not? s) (-> s :s)
+      :else (p/map->NotSpec {:s s}))))
 
 (extend-type NotSpec
   p/Spect
@@ -2001,6 +2021,7 @@
   (let [or-ps (mapcat (fn [p] (when (or? p)
                                 (:ps p))) ps)
         ps (remove or? ps)
+        ps (map maybe-convert-value ps)
         ps (remove bottom? ps)
         ps (concat ps or-ps)
         ps (join-not-pairs ps)
@@ -2808,11 +2829,27 @@
 (s/def :fn-spec/ret (s/nilable ::valid-spect-like))
 (s/def :fn-spec/fn (s/nilable ::valid-spect-like))
 
-(s/fdef fn-spec :args (s/cat :args :fn-spec/args :ret :fn-spec/ret :fn :fn-spec/fn))
+(s/def :fn-spec/method (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn]))
+(s/def :fn-spec/methods (s/coll-of :fn-spec/method))
+
+(s/fdef fn-spec :args (s/cat :m (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn :fn-spec/methods])))
 (s/fdef map->FnSpec :args (s/cat :m (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn])) :ret ::valid-spect)
 
-(defn fn-spec [args ret f]
-  {:pre []}
+(defn fn-spec [{:keys [args ret f methods] :as fn-spec}]
+  (when args
+    (assert (every? (fn [m]
+                      (when (:args m)
+                        (valid? args (:args m)))) methods)))
+  (when ret
+    (assert (not (contains-control-flow? ret)))
+    (assert (every? (fn [m]
+                      (when (:ret m)
+                        (valid? ret (:ret m)))) methods)))
+
+  (when methods
+    (assert (every? (fn [m]
+                      (not (:methods m))) methods)))
+
   (let [invalid-args (->>
                       {:args args :ret ret :fn f}
                       (remove (fn [[k v]]
@@ -2826,7 +2863,8 @@
         (invalid {:message (format "invalid fn: %s" (print-str (into {} invalid-args)))}))
       (p/map->FnSpec {:args args
                       :ret ret
-                      :fn f}))))
+                      :fn f
+                      :methods methods}))))
 
 (s/fdef merge-fn-specs :args (s/cat :specs (s/coll-of ::spect)) :ret ::spect)
 (defn merge-fn-specs
@@ -2836,7 +2874,7 @@
     ;;; TODO disentangle and fix-length
     (let [args (or- (filter identity (map :args fn-specs)))
           rets (or- (map :ret fn-specs))]
-      (fn-spec args rets nil))
+      (fn-spec {:args args :ret rets :methods fn-specs}))
     (or
      (first (filter invalid? fn-specs))
      (invalid {:message (format "can't merge fn-specs: %s" (mapv print-str fn-specs))}))))
@@ -2867,7 +2905,13 @@
 (defn valid-transformation?
   "True if a spec transformer can transform from A->B"
   [a b]
-  (or (valid? a b) (invalid? b) (unknown? b)))
+  (and
+   (or (valid? a b)
+       (invalid? b)
+       (unknown? b))
+   (if (:methods a)
+     (:methods b)
+     true)))
 
 (s/fdef maybe-transform :args (s/cat :s ::spect :args ::spect) :ret ::spect)
 (defn maybe-transform [spec args]
@@ -2896,12 +2940,29 @@
 (defn every-known? [s]
   (every? #(known? %) (coll-items s)))
 
+(s/fdef get-fn-method :args (s/cat :f fn-spec? :args ::spect) :ret fn-spec?)
+(defn get-fn-method
+  "Given an fn-spec, return the method that will be invoked, or the fn-spec"
+  [fn-spec invoke-args]
+  {:post [(fn-spec? %)]}
+  (if (:methods fn-spec)
+    (if-let [m (->> (:methods fn-spec)
+                    (filter (fn [m]
+                              (when (:args m)
+                                (valid? (:args m) invoke-args))))
+                    first)]
+      (merge m (when (:var fn-spec)
+                 (select-keys fn-spec [:var])))
+      fn-spec)
+    fn-spec))
+
 (s/fdef invoke-fn-spec :args (s/cat :s fn-spec? :args ::spect) :ret ::spect)
 (defn invoke-fn-spec [spec invoke-args]
   {:post [(do (when-not (conformy? %)
                 (println "invoke-fn-spec:" spec invoke-args "->" %)) true)
           (spect? %)]}
   (let [v (:var spec)
+        spec (get-fn-method spec invoke-args)
         args (parse-spec (:args spec))]
     (if args
       (if (valid? args invoke-args)
@@ -2915,7 +2976,7 @@
           (if (every-valid? invoke-args)
             (do
               (println "invoke-fn-spec" v spec invoke-args)
-              (invalid {:message (format "invoke-fn-spec can't invoke %s %s with %s => %s" v (print-str args) (print-str invoke-args) (print-str (conform args invoke-args)))}))
+              (invalid {:message (format "invoke-fn-spec can't invoke %s %s with %s => %s" (if v v "") (print-str args) (print-str invoke-args) (print-str (conform args invoke-args)))}))
             (invalid {:message (format "invoke with invalid args %s" (print-str invoke-args))}))
           (unknown {:message (format "invoke %s w/ unknown args %s" v (print-str invoke-args))})))
       (unknown {:message (format "invoke %s no :args spec" spec)}))))
@@ -3510,7 +3571,7 @@
 
 (defn read-fn [ps]
   (let [ps (apply hash-map ps)]
-    (fn-spec (:args ps) (:ret ps) (:f ps))))
+    (fn-spec ps)))
 
 (defn read-cat [ps]
   (cat- ps))

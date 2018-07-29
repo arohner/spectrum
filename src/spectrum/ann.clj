@@ -590,5 +590,11 @@
                   spect))))
 
 (ann #'inc inc-fn-transformer)
+
 (ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
 (ann-method clojure.lang.Numbers 'unchecked_inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
+
+(defn to-string-ann [spec args]
+  (assoc spec :ret (c/class-spec String)))
+
+(ann-method java.lang.Object 'toString (c/cat- []) to-string-ann)

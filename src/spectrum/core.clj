@@ -1,7 +1,9 @@
 (ns spectrum.core
   (:require [clojure.spec.alpha :as s]
             [spectrum.conform :as c]
-            [spectrum.java :as j])
+            [spectrum.java :as j]
+            [spectrum.data :as data]
+            [spectrum.util :refer [validate!]])
   (:import clojure.lang.Namespace))
 
 (defn var-spec

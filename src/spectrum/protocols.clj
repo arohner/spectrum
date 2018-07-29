@@ -126,6 +126,6 @@ seq of concrete specs that don't contain choices")
 
 (defrecord MapOf [ks vs])
 
-(defrecord FnSpec [args ret fn var])
+(defrecord FnSpec [args ret fn var methods])
 
 (defrecord MultiSpec [multimethod retag])

@@ -16,7 +16,7 @@
   (assert (data/get-var-analysis v))
   (-> v
       (data/get-var-analysis)
-      (flow/flow)
+      (flow/infer)
       :init
       flow/maybe-strip-meta
       ::flow/ret-spec))
