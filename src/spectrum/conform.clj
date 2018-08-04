@@ -289,6 +289,30 @@
                 (select-keys (:meta *a*) [:file :line :column]))]
     (p/map->Bottom (merge args {:form form :a-loc a-loc :message message}))))
 
+(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
+(defn recur? [x]
+  (instance? RecurForm x))
+
+(defn recur-form [args]
+  (p/map->RecurForm {:args args}))
+
+(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
+(defn throwable? [x]
+  (instance? Throwable x))
+
+(s/fdef throw? :args (s/cat :x any?) :ret boolean?)
+(defn throw? [x]
+  (instance? ThrowForm x))
+
+(s/fdef throw-form :args (s/cat :e ::spect) :ret throw?)
+(defn throw-form [e]
+  (assert (spect? e))
+  (p/map->ThrowForm {:s e}))
+
+(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
+(defn control-flow? [x]
+  (or (throw? x) (recur? x)))
+
 (defn contains-control-flow? [s]
   {:pre [(spect? s)]}
   (cond
@@ -571,30 +595,6 @@
     reject))
 
 (extend-regex ThrowForm)
-
-(s/fdef recur? :args (s/cat :x any?) :ret boolean?)
-(defn recur? [x]
-  (instance? RecurForm x))
-
-(defn recur-form [args]
-  (p/map->RecurForm {:args args}))
-
-(s/fdef throwable? :args (s/cat :x any?) :ret boolean?)
-(defn throwable? [x]
-  (instance? Throwable x))
-
-(s/fdef throw? :args (s/cat :x any?) :ret boolean?)
-(defn throw? [x]
-  (instance? ThrowForm x))
-
-(s/fdef throw-form :args (s/cat :e ::spect) :ret throw?)
-(defn throw-form [e]
-  (assert (spect? e))
-  (p/map->ThrowForm {:s e}))
-
-(s/fdef control-flow? :args (s/cat :x any?) :ret boolean?)
-(defn control-flow? [x]
-  (or (throw? x) (recur? x)))
 
 (defn spect-or-control-flow? [x]
   (or (spect? x) (control-flow? x)))
@@ -1393,12 +1393,14 @@
       (cond
         (or (= #'keyword? pred) (= #'symbol? pred)) (pred-keyword-invoke this args)
         (or (= #'ifn? pred) (= #'fn? pred)) (pred-spec #'any?)
+        (= #'any? pred) (pred-spec #'any?)
         :else (invalid {:message (format "FnSpec: can't invoke %s" (print-str this))}))))
   (invoke-accept- [this]
     (let [pred (:pred this)]
       (cond
         (or (= #'keyword? pred) (= #'symbol? pred)) (cat- [(pred-spec #'any?) (?- (pred-spec #'any?))])
         (or (= #'ifn? pred) (= #'fn? pred)) (seq- (pred-spec #'any?))
+        (= #'any? pred) (pred-spec #'any?)
         :else (invalid {:message (format "FnSpec: can't invoke-accept %s" (print-str this))})))))
 
 (defn maybe-map-equivalence-hack [c]

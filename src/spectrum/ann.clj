@@ -562,11 +562,10 @@
 
 (defn numeric-proper-spec [m]
   (let [declaring-class (j/resolve-java-class (:declaring-class m))]
-    (c/fn-spec (c/cat- (concat (if (contains? (:flags m) :static)
-                                 [(c/value declaring-class)]
-                                 [(c/class-spec declaring-class)]) (mapv object->number (:parameter-types m))))
-               (object->number (:return-type m))
-               nil)))
+    (c/fn-spec {:args (c/cat- (concat (if (contains? (:flags m) :static)
+                                        [(c/value declaring-class)]
+                                        [(c/class-spec declaring-class)]) (mapv object->number (:parameter-types m))))
+                :ret (object->number (:return-type m))})))
 
 (defn replace-numeric-tower-objects! []
   ;; for every clojure.lang.Numbers operation that takes Object and
@@ -593,8 +592,3 @@
 
 (ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
 (ann-method clojure.lang.Numbers 'unchecked_inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
-
-(defn to-string-ann [spec args]
-  (assoc spec :ret (c/class-spec String)))
-
-(ann-method java.lang.Object 'toString (c/cat- []) to-string-ann)

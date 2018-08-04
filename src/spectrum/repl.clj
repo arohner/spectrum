@@ -21,6 +21,18 @@
       flow/maybe-strip-meta
       ::flow/ret-spec))
 
+(defn infer-var-method [v method-index]
+  (-> v .ns str symbol check/ensure-analysis)
+  (assert (data/get-var-analysis v))
+  (-> v
+      (data/get-var-analysis)
+      (flow/infer)
+      :init
+      flow/maybe-strip-meta
+      :methods
+      (nth method-index)
+      ::flow/ret-spec))
+
 (c/load-data-readers)
 (s/check-asserts true)
 

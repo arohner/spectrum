@@ -1872,7 +1872,7 @@ will return `(instance? C x)` rather than `y`
         s (::ret-spec b)]
     (assert b)
     (assert s)
-    (infer-add-constraint a b-path call-path (c/fn-spec invoke-args (c/pred-spec #'any?) nil))))
+    (infer-add-constraint a b-path call-path (c/fn-spec {:args invoke-args :ret (c/pred-spec #'any?)}))))
 
 (s/fdef infer-invoke-constraints :args (s/cat :s c/spect? :args (s/coll-of c/spect?) :ret c/spect?))
 (defn infer-invoke-constraints
@@ -2053,7 +2053,7 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
                     (infer-fn-method-spec a (conj path :methods method-index))) a (range (count (:methods a*))))
         a* (get-in a path)
         ret-spec (c/merge-fn-specs (map ::ret-spec (:methods a*)))
-        _ (when-let [v (a-def? a path)]
+        _ (when-let [v (a-def-fn? a path)]
             ;; store the preliminary spec in case this is a mutually recursive fn
             (data/store-var-spec v ret-spec))
         a (assoc-in a (concat path [::ret-spec]) ret-spec)
