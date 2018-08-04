@@ -258,7 +258,7 @@
 (ann-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)]) ann-get)
 (ann-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object)]) ann-get)
 
-(def transducer-fn-spec (c/fn-spec nil nil nil))
+(def transducer-fn-spec (c/fn-spec {}))
 
 (ann #'identity (fn [spect args-spect]
                   (assoc spect :ret (c/first- args-spect))))
