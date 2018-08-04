@@ -105,12 +105,14 @@
 
 (defn regex? [x]
   {:post [(boolean? %)]}
-  (p/regex? x))
+  (and (satisfies? p/Regex x) (p/regex? x)))
 
 (s/fdef elements :args (s/cat :s ::spect) :ret (s/coll-of ::spect))
 (defn elements [s]
   {:post [(validate! (s/coll-of ::spect) %)]}
-  (p/elements s))
+  (if (satisfies? p/Regex s)
+    (p/elements s)
+    [s]))
 
 (defn fix-length
   "Given a regex possibly containing Seq, recursively resolve to
@@ -918,8 +920,12 @@
             nil))
         nil)))
   p/Truthyness
-  (truthyness [this]
-    :truthy)
+  (truthyness [{:keys [ps] :as this}]
+    (cond
+      (not (seq ps)) :falsey
+      (and (seq ps) (not (accept-nil? this))) :truthy
+      (accept-nil? this) :ambiguous
+      :else (assert false "missing case")))
   p/DependentSpecs
   (dependent-specs- [this]
     #{(class-spec ISeq)}))
@@ -1023,7 +1029,7 @@
         p1)))
   p/Truthyness
   (truthyness [this]
-    :truthy)
+    :ambiguous)
   p/DependentSpecs
   (dependent-specs- [this]
     #{(pred-spec #'seq?) (pred-spec #'seqable?) (class-spec clojure.lang.ISeq)}))
@@ -1769,7 +1775,7 @@
         {ands true not-ands false} (group-by and? ps)
         ps (concat (seq not-ands) (distinct (mapcat (fn [a] (:ps a)) ands)))
         {fns true not-fns false} (group-by fn-spec? ps)
-        ps (if (seq fns)
+        ps (if (> (count fns) 1)
              (conj not-fns (merge-fn-specs fns))
              ps)
         {ors true not-ors false} (group-by or? ps)
@@ -2022,6 +2028,7 @@
   [ps]
   (let [or-ps (mapcat (fn [p] (when (or? p)
                                 (:ps p))) ps)
+        ps (map parse-spec ps)
         ps (remove or? ps)
         ps (map maybe-convert-value ps)
         ps (remove bottom? ps)
@@ -2840,13 +2847,15 @@
 (defn fn-spec [{:keys [args ret f methods] :as fn-spec}]
   (when args
     (assert (every? (fn [m]
-                      (when (:args m)
-                        (valid? args (:args m)))) methods)))
-  (when ret
+                      (if (:args m)
+                        (valid? args (:args m))
+                        true)) methods)))
+  (when (and ret (conformy? ret))
     (assert (not (contains-control-flow? ret)))
     (assert (every? (fn [m]
-                      (when (:ret m)
-                        (valid? ret (:ret m)))) methods)))
+                      (if (:ret m)
+                        (valid? ret (:ret m))
+                        true)) methods)))
 
   (when methods
     (assert (every? (fn [m]

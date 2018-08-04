@@ -1029,10 +1029,6 @@ will return `(instance? C x)` rather than `y`
                                           (a-loc-str a*))))
         _ (assert test-ret-spec)
         truthyness (c/truthyness test-ret-spec)]
-    (when-not (c/spect? then-ret-spec)
-      (println "walk-if then not spect:" (:form (:then a*)) (-> a* :then ::ret-spec) (-> a* :then :op)))
-    (when-not (c/spect? else-ret-spec)
-      (println "walk-if else not spect:" (:form (:else a*)) (-> a* :else ::ret-spec) (-> a* :else :op)))
     (assoc-in-a a (conj path ::ret-spec) (condp = truthyness
                                            :truthy then-ret-spec
                                            :falsey else-ret-spec

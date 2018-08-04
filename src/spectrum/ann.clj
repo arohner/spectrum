@@ -592,3 +592,11 @@
 
 (ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
 (ann-method clojure.lang.Numbers 'unchecked_inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
+
+
+(ann-method clojure.lang.RT 'assoc (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)])
+            (fn [spect args-spect]
+              {:post [(do (println "ann assoc:" spect "=>" %) true)]}
+              (-> spect
+                  (assoc-in [:args :ps 1] (c/class-spec clojure.lang.Associative))
+                  (assoc-in [:ret] (c/class-spec clojure.lang.Associative)))))
