@@ -1252,6 +1252,12 @@ will return `(instance? C x)` rather than `y`
                        (compatible-java-method-relaxed? arg-spec (:parameter-types m))))
              (most-specific arg-spec))))
 
+(s/fdef get-conforming-java-method-spec :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret ::c/spect)
+(defn get-conforming-java-method-spec [cls method args-spec]
+  (some-> (get-conforming-java-method cls method args-spec)
+          (method->spec)))
+
+
 (s/fdef get-method! :args (s/cat :cls class? :method symbol? :spec ::c/spect) :ret j/reflect-method?)
 (defn get-method!
   ""
@@ -1509,7 +1515,7 @@ will return `(instance? C x)` rather than `y`
     (when-not m
       (println "unknown method spec:" protocol-class protocol-method params))
     (assert m)
-    (c/fn-spec {:args (c/cat- (vec (concat [(c/class-spec record)] (take (count (:parameter-types m)) (repeat (c/unknown {:message "no spec for protocol fn" protocol-class protocol-method}))))))
+    (c/fn-spec {:args (c/cat- (vec (concat [(c/class-spec record)] (take (count (:parameter-types m)) (repeat (c/pred-spec #'any?))))))
                 :ret (c/pred-spec #'any?)})))
 
 (s/fdef protocol-fn-spec* :args (s/cat :cls class? :method symbol?) :ret (s/nilable c/fn-spec?))
@@ -1553,7 +1559,7 @@ will return `(instance? C x)` rather than `y`
   "Given a deftype extending a java interface, return the spec for the method params"
   [record interface method params]
   (let [params (map (fn [p] (assoc p ::ret-spec (c/unknown {:message "any"}))) params)
-        java-spec (get-conforming-java-method interface method (analysis-args->spec params))
+        java-spec (get-conforming-java-method-spec interface method (analysis-args->spec params))
         _ (assert (c/fn-spec? java-spec))
         _ (assert (:args java-spec))]
     (update-in java-spec [:args] with-this-spec (c/class-spec record))))

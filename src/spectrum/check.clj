@@ -62,10 +62,7 @@
    (analyze-form '(string? x) {:x (c/pred-spec #'string?)})
 "
   ([form]
-   (maybe-load-clojure-builtins)
-   (let [a (analyzer/analyze form)]
-     (binding [*a* a]
-       (flow/flow a))))
+   (analyze-form form {}))
   ([form specs]
    (maybe-load-clojure-builtins)
    (let [locals (into {} (map (fn [[binding spec]]

@@ -1793,8 +1793,9 @@
 (defn and- [ps]
   {:pre [(s/assert (s/coll-of ::spect-like) ps)]}
   (let [ps (and-consolidate ps)]
-    (assert (<= (count (filter p/regex? ps)) 1))
+
     (cond
+      (> (count (filter p/regex? ps)) 1) (invalid {:message (format "can't `and` multiple regexes, got %s" (map print-str ps))})
       (>= (count ps) 2) (p/map->AndSpec {:ps ps})
       :else (first ps))))
 
@@ -2845,22 +2846,6 @@
 (s/fdef map->FnSpec :args (s/cat :m (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn])) :ret ::valid-spect)
 
 (defn fn-spec [{:keys [args ret f methods] :as fn-spec}]
-  (when args
-    (assert (every? (fn [m]
-                      (if (:args m)
-                        (valid? args (:args m))
-                        true)) methods)))
-  (when (and ret (conformy? ret))
-    (assert (not (contains-control-flow? ret)))
-    (assert (every? (fn [m]
-                      (if (:ret m)
-                        (valid? ret (:ret m))
-                        true)) methods)))
-
-  (when methods
-    (assert (every? (fn [m]
-                      (not (:methods m))) methods)))
-
   (let [invalid-args (->>
                       {:args args :ret ret :fn f}
                       (remove (fn [[k v]]
