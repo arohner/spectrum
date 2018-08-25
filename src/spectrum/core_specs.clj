@@ -10,8 +10,6 @@
 
 ;;; specs for clojure.core fns, should only be used in cases where inference can't work.
 
-(defn namespace? [x] (instance? clojure.lang.Namespace))
-
 (defn array? [x]
   (some-> x
           class

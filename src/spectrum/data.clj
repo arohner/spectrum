@@ -155,6 +155,8 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   []
   (swap! var-analysis (constantly {}))
   (swap! var-specs (constantly {}))
-  (swap! analyzed-nses (constantly #{})))
+  (swap! analyzed-nses (constantly #{}))
+  (memo/memo-clear! (ns-resolve 'spectrum.flow 'flow))
+  (memo/memo-clear! (ns-resolve 'spectrum.flow 'cached-infer)))
 
 (instrument-ns)

@@ -570,12 +570,27 @@
   (when (-> a :local :name (= name))
     (assoc (:local a) :path [:local])))
 
+(defn find-binding-env-locals [a name]
+  {:post [(s/valid? (s/nilable ::analysis) %)]}
+  (some->> a
+           :env
+           :locals
+           (vals)
+           (map-indexed (fn [i b]
+                          (assoc b :index i)))
+           (filter (fn [local]
+                     (= (:name local) name)))
+           first
+           (#(assoc % :path [:env :locals name]))))
+
 (defn find-binding- [a path name]
   (loop [path* path]
     (assert (vector? path))
     (let [a* (get-in a path*)
-          b (when (:op a*)
-              (find-binding* a* name))]
+          b (or (when (:op a*)
+                  (find-binding* a* name))
+                (when (-> a* :env :locals)
+                  (find-binding-env-locals a* name)))]
       (if b
         (assoc b :path (into path* (:path b)))
         (when (seq path*)
@@ -784,7 +799,9 @@ will return `(instance? C x)` rather than `y`
       :const {:a (-> a* :fn :val)
               :path (conj path :fn)
               :op fn-op}
+      :instance-field {:a a :path path* :op fn-op}
       :invoke (recur a (conj path :fn))
+      :keyword-invoke {:a a :path path* :op fn-op}
       :with-meta (recur a (conj path :fn :expr))
       :set {:a a :path path* :op fn-op}
       :map {:a a :path path* :op fn-op}
@@ -1115,29 +1132,31 @@ will return `(instance? C x)` rather than `y`
 (defn compatible-java-method-relaxed?
   "True if it is not legal to call. Returns truthy for unknown args"
   [arg-spec method-types]
-  (loop [arg-spec arg-spec
-         method-spec (c/cat- (mapv resolve-java-class-spec method-types))]
-    (if (and (c/first- arg-spec)
-             (c/first- method-spec))
-      (let [m (c/first- method-spec)
-            m-c (c/spec->classes m)
-            _ (assert (= 1 (count m-c)))
-            m-c (first m-c)
-            a (c/first- arg-spec)
-            a-c (c/spec->classes a)]
-        (if (and (nil? a) (nil? m))
+  (if (c/conformy? arg-spec)
+    (loop [arg-spec arg-spec
+           method-spec (c/cat- (mapv resolve-java-class-spec method-types))]
+      (if (and (c/first- arg-spec)
+               (c/first- method-spec))
+        (let [m (c/first- method-spec)
+              m-c (c/spec->classes m)
+              _ (assert (= 1 (count m-c)))
+              m-c (first m-c)
+              a (c/first- arg-spec)
+              a-c (c/spec->classes a)]
+          (if (and (nil? a) (nil? m))
+            true
+            (if (and m a (or (c/valid? m a)
+                             (when (and m-c (seq a-c))
+                               (every? (fn [a-c*]
+                                         (j/castable? m-c a-c*)) a-c))
+                             (c/unknown? a)))
+              (recur (c/rest- arg-spec) (c/rest- method-spec))
+              false)))
+        (if (and (nil? (c/first- arg-spec))
+                 (nil? (c/first- method-spec)))
           true
-          (if (and m a (or (c/valid? m a)
-                           (when (and m-c (seq a-c))
-                             (every? (fn [a-c*]
-                                       (j/castable? m-c a-c*)) a-c))
-                           (c/unknown? a)))
-            (recur (c/rest- arg-spec) (c/rest- method-spec))
-            false)))
-      (if (and (nil? (c/first- arg-spec))
-               (nil? (c/first- method-spec)))
-        true
-        false))))
+          false)))
+    false))
 
 (s/fdef compatible-java-method? :args (s/cat :v ::c/spect :method-types (s/coll-of (s/or :prim j/primitive? :sym symbol? :cls class?))) :ret boolean?)
 (defn compatible-java-method?

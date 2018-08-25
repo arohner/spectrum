@@ -19,7 +19,7 @@
                                ClassSpec
                                AndSpec
                                OrSpec)
-           [clojure.lang BigInt PersistentHashMap Ratio Seqable]))
+           [clojure.lang BigInt Keyword PersistentHashMap Ratio Seqable]))
 
 (util/instrument-in-CI)
 

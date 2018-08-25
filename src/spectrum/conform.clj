@@ -279,7 +279,10 @@
     :falsey)
   p/WillAccept
   (will-accept- [this]
-    reject))
+    reject)
+  p/Regex
+  (elements [this]
+    [this]))
 
 (defn bottom [{:keys [form a-loc message] :as args}]
   (let [a *a*
@@ -2835,9 +2838,9 @@
 
 (predicate-spec fn-spec?)
 
-(s/def :fn-spec/args (s/nilable ::valid-spect-like))
-(s/def :fn-spec/ret (s/nilable ::valid-spect-like))
-(s/def :fn-spec/fn (s/nilable ::valid-spect-like))
+(s/def :fn-spec/args (s/nilable ::spect-like))
+(s/def :fn-spec/ret (s/nilable ::spect-like))
+(s/def :fn-spec/fn (s/nilable ::spect-like))
 
 (s/def :fn-spec/method (s/keys :opt-un [:fn-spec/args :fn-spec/ret :fn-spec/fn]))
 (s/def :fn-spec/methods (s/coll-of :fn-spec/method))
