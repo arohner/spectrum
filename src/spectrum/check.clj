@@ -197,18 +197,6 @@
 
 ;; check recur values conform to bindings
 
-(defn flow-ns [ns]
-  (let [env (ana.jvm/empty-env)]
-    (mapv flow/flow (analyzer/analyze-ns-1 ns env))))
-
-(defn ensure-analysis [ns]
-  (maybe-load-clojure-builtins)
-  (when-not (data/analyzed-ns? ns)
-    (println "analyzing" ns)
-    (binding [*warn-on-reflection* false]
-      (flow-ns ns))
-    (data/mark-ns-analyzed! ns)))
-
 (defn type-of
   "Given a quoted form, returns spectrum's expected type for evaluating the form"
   ([form]

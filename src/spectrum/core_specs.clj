@@ -2,6 +2,8 @@
   (:require [clojure.core :as core]
             [clojure.spec.alpha :as s]
             [spectrum.ann :as ann]
+            [spectrum.core :as st]
+            [spectrum.conform :as c]
             [spectrum.util :refer (protocol? predicate-spec def-instance-predicate)])
   (:import (java.lang Iterable)
            (java.util Map)
@@ -34,6 +36,8 @@
 
 (def-instance-predicate deref? clojure.lang.IDeref)
 (ann/ann-instance? #'deref? clojure.lang.IDeref)
+
+(def-instance-predicate namespace? clojure.lang.Namespace)
 
 (ann/ann-instance? #'future? java.util.concurrent.Future)
 
@@ -96,9 +100,6 @@
 (s/fdef clojure.core/get :args (s/cat :m ::gettable :k any? :not-found (s/? any?)))
 (s/fdef clojure.core/get-in :args (s/cat :m ::gettable :ks (s/coll-of any?) :not-found (s/? any?)))
 
-;; FIXME this breaks all kinds of things
-;;(s/fdef clojure.core/hash-map :args (s/* (s/cat :k any? :v any?)) :ret map?)
-
 (s/fdef clojure.core/identity :args (s/cat :x any?) :ret any?)
 (s/fdef clojure.core/in-ns :args (s/cat :ns symbol?) :ret namespace?)
 (s/fdef clojure.core/inc :args (s/cat :x number?) :ret number?)
@@ -119,7 +120,6 @@
 ;; (s/fdef clojure.core/pop-thread-bindings :args (s/cat) :ret nil?)
 (s/fdef clojure.core/range :args (s/cat :start (s/? integer?) :end (s/? integer?) :step (s/? integer?)) :ret (s/coll-of integer?))
 (s/fdef clojure.core/rest :args (s/cat :x ::seq-like) :ret ::seq-like)
-;; (s/fdef clojure.core/reduce :args (s/cat :f fn? :init-val (s/? any?) :coll (s/nilable (s/coll-of any?))) :ret (s/or  :f fn? :c coll?))
 
 (s/def ::refer-rename (s/cat :r #{:rename} :m (s/map-of symbol? symbol?)))
 (s/def ::refer-exclude (s/cat :r #{:exclude} :m (s/coll-of symbol?)))
@@ -152,3 +152,7 @@
 
 (s/fdef clojure.set/union :args (s/* set?) :ret set?)
 (predicate-spec clojure.spec.alpha/spec?)
+
+(st/var-spec #'clojure.core/*ns* (c/pred-spec #'namespace?))
+(st/var-spec #'clojure.core/*file* (c/pred-spec #'string?))
+(st/var-spec #'clojure.core/*print-dup* (c/pred-spec #'boolean?))

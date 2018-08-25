@@ -1,5 +1,6 @@
 (ns spectrum.data
-  (:require [clojure.tools.analyzer.jvm :as ana.jvm]
+  (:require [clojure.core.memoize :as memo]
+            [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
             [spectrum.util :refer (print-once protocol? def-instance-predicate instrument-ns)]))
 

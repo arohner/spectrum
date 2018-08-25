@@ -111,10 +111,16 @@
   ([a path]
    (cached-infer a path)))
 
-(defn flow-ns
-  "Given the result of analyze-ns, flow all forms"
-  [as]
-  (mapv flow as))
+(defn flow-ns [ns]
+  (let [env (ana.jvm/empty-env)]
+    (mapv flow (analyzer/analyze-ns-1 ns env))))
+
+(defn ensure-analysis [ns]
+  (when-not (data/analyzed-ns? ns)
+    (data/mark-ns-analyzed! ns)
+    (println "analyzing" ns)
+    (binding [*warn-on-reflection* false]
+      (flow-ns ns))))
 
 (defn assoc-in-a [a path data]
   (if (seq path)
@@ -324,14 +330,20 @@
   "Get or infer the spec for v, appearing at [a path]"
   [v a path]
   {:post [(c/spect? %)]}
-  (let [a* (get-in a path)]
+  (let [a* (get-in a path)
+        a-ns (-> a :env :ns find-ns)
+        v-ns (.ns v)]
+    (assert (namespace? a-ns))
+    (assert (namespace? v-ns))
+    (when (not= a-ns v-ns)
+      (ensure-analysis v-ns))
     (or (c/get-var-spec v)
         (data/get-var-spec v)
-        (if-let [v-a (data/get-var-analysis v)]
+        (when-let [v-a (data/get-var-analysis v)]
           (if (recursive? a path)
             (::ret-spec (get-self-call-analysis a path))
-            (::ret-spec (infer v-a [])))
-          (c/unknown {:message (format "couldn't find spec or analysis for %s at %s" v (a-loc-str (get-in a path)))})))))
+            (::ret-spec (infer v-a []))))
+        (c/unknown {:message (format "couldn't find spec or analysis for %s at %s" v (a-loc-str (get-in a path)))}))))
 
 (defmethod flow* :def [a path]
   (let [a* (get-in a path)
