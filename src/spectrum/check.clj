@@ -40,15 +40,14 @@
 
 (declare check)
 
-;; clojure.spec isn't in the check list atm, because analyzer re-evals the protocols, which breaks e.g. (satsifies? s/Spec) checking
-
 (def builtin-nses '[clojure.core clojure.set clojure.string clojure.spec.alpha clojure.spec.gen.alpha])
 
 (defn maybe-load-clojure-builtins []
   (when-not (data/analyzed-ns? 'clojure.core)
     (println "loading clojure")
     (doseq [n builtin-nses]
-      (flow/analyze-cache-ns n))))
+      (flow/analyze-cache-ns n))
+    (flow/analyze-cache-resource "clojure/core_deftype.clj")))
 
 (s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
 
@@ -77,20 +76,14 @@
      (binding [*a* a]
        (flow/flow a)))))
 
-(defn analyze-ns-isolated [ns]
-  (classpath/eval-with-isolated-classloader (str `(do (require '[clojure.tools.analyzer.jvm]) (doall (clojure.tools.analyzer.jvm/analyze-ns (quote ~ns)))))))
-
-(defn check [ns]
+(defn check-ns [ns]
   (maybe-load-clojure-builtins)
   (println "checking " ns)
   (some->>
    (analyzer/analyze-ns-1 ns (ana.jvm/empty-env))
-   (flow/flow-ns)
+   (map flow/flow)
    (mapcat check*)
    (filter identity)))
-
-(defn check-isolated [ns]
-  (classpath/eval-with-isolated-classloader (str `(do (require '[spectrum.check]) (require '[clojure.spec.test.alpha]) (clojure.spec.test.alpha/instrument) (binding [*warn-on-reflection* false *print-level* 5 *print-length* 200] (spectrum.check/check (quote ~ns)))))))
 
 (defn check-common [a]
   (let [ret (::flow/ret-spec a)]

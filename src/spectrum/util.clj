@@ -126,4 +126,7 @@
         (vals)
         (mapv (fn [v]
                 (symbol (str (.ns v) "/" (.sym v)))))
-        (stest/instrument))))
+        (stest/instrument)
+        (dorun))))
+
+(def-instance-predicate url? java.net.URL)

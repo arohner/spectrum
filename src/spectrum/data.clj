@@ -76,6 +76,9 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 (defn mark-ns-analyzed! [ns]
   (swap! analyzed-nses conj ns))
 
+(defn mark-ns-unanalyzed! [ns]
+  (swap! analyzed-nses disj ns))
+
 (defn analyzed-ns? [ns]
   (contains? @analyzed-nses ns))
 

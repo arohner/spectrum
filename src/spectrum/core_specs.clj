@@ -156,3 +156,11 @@
 (st/var-spec #'clojure.core/*ns* (c/pred-spec #'namespace?))
 (st/var-spec #'clojure.core/*file* (c/pred-spec #'string?))
 (st/var-spec #'clojure.core/*print-dup* (c/pred-spec #'boolean?))
+(st/var-spec #'clojure.core/*unchecked-math* (c/pred-spec #'boolean?))
+(st/var-spec #'clojure.core/*agent* (c/or- [(c/class-spec clojure.lang.Agent) (c/value nil)]))
+(st/var-spec #'clojure.core/*warn-on-reflection* (c/pred-spec #'boolean?))
+
+(st/var-spec #'clojure.core/*in* (c/class-spec java.io.Reader))
+(st/var-spec #'clojure.core/*out* (c/class-spec java.io.Writer))
+
+(st/var-spec #'clojure.core/*flush-on-newline* (c/pred-spec #'boolean?))
