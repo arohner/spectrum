@@ -23,7 +23,7 @@
 
 (util/instrument-in-CI)
 
-(check/ensure-analysis 'spectrum.analyzer-spec)
+;(flow/ensure-analysis 'spectrum.analyzer-spec)
 
 (deftest instance?-transformer
   (are [c x expected] (= expected (c/invoke (c/get-var-spec #'instance?) (c/cat- [c x])))
