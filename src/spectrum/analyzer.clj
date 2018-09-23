@@ -69,7 +69,7 @@
 (defn analyze [form & opts]
   (apply ana.jvm/analyze form opts))
 
-(s/fdef analyze-resource :args (s/cat :r url?))
+(s/fdef analyze-resource :args (s/cat :r url? :env (s/? map?)))
 (defn analyze-resource
   ([res]
    (analyze-resource res (ana.jvm/empty-env)))
