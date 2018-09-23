@@ -40,7 +40,7 @@
                          'spectrum.check])
 
 (deftest test-self
-  (st/ensure-analysis 'spectrum.analyzer-spec)
+  (flow/ensure-analysis 'spectrum.analyzer-spec)
   (doseq [ns self-checking-nses]
     (testing (str "testing: " ns)
       ;; currently only testing for non-explosion. Testing for no errors is on the roadmap!

@@ -12,7 +12,7 @@
 (defn infer-var
   "infer a var return the spec"
   [^clojure.lang.Var v]
-  (-> v .ns str symbol check/ensure-analysis)
+  (-> v .ns str symbol flow/ensure-analysis)
   (assert (data/get-var-analysis v))
   (-> v
       (data/get-var-analysis)
@@ -22,7 +22,7 @@
       ::flow/ret-spec))
 
 (defn infer-var-method [v method-index]
-  (-> v .ns str symbol check/ensure-analysis)
+  (-> v .ns str symbol flow/ensure-analysis)
   (assert (data/get-var-analysis v))
   (-> v
       (data/get-var-analysis)
