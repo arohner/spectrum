@@ -8,7 +8,7 @@
             [spectrum.flow :as flow]
             [spectrum.check :as check]))
 
-(check/ensure-analysis 'spectrum.flow)
+;(flow/ensure-analysis 'spectrum.flow)
 
 ;; (spec-test/instrument)
 
@@ -115,7 +115,7 @@
       #'int? [(dummy-binding 'a)])))
 
 (deftest strip-control-flow
-  (are [in out] (= out (flow/strip-control-flow in))
+  (are [in out] (= out (c/strip-control-flow in))
     (c/or- [(c/pred-spec #'int?) (c/recur-form 'x)]) (c/or- [(c/pred-spec #'int?)])
 
     (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)]) (c/or- [(c/pred-spec #'int?) (c/pred-spec #'string?)])
@@ -171,13 +171,13 @@
 (deftest class-is-protocol
   (are [cls expected] (= expected (flow/class-is-protocol? cls))
     Integer false
-    spectrum.conform.Spect true
+    spectrum.protocols.Spect true
     spectrum.flow_test.DummyProtocol true))
 
 (deftest method-is-protocol-fn?
   (are [cls method expected] (= expected (flow/class-is-protocol? cls))
     Integer '.intValue false
-    spectrum.conform.Spect 'conform* true))
+    spectrum.protocols.Spect 'conform* true))
 
 (deftest infer-invoke
   (let [keyword-args-spec (:args (c/get-var-spec #'keyword))
