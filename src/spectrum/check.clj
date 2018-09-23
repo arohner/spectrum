@@ -1,5 +1,6 @@
 (ns spectrum.check
-  (:require [clojure.pprint :as pprint :refer (pprint)]
+  (:require [clojure.java.io :as io]
+            [clojure.pprint :as pprint :refer (pprint)]
             [clojure.reflect :as reflect]
             [clojure.string :as str]
             [clojure.spec.alpha :as s]
@@ -47,7 +48,7 @@
     (println "loading clojure")
     (doseq [n builtin-nses]
       (flow/analyze-cache-ns n))
-    (flow/analyze-cache-resource "clojure/core_deftype.clj")))
+    (flow/analyze-cache-resource (io/resource "clojure/core_deftype.clj"))))
 
 (s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
 

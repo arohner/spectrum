@@ -540,10 +540,71 @@
   (let [a* (get-in a path)]
     (c/unknown {:message (format "invoke-get-fn-spec :default. don't know how to get spec for %s %s %s" (:op a*) (:form a*) (a-loc-str a))})))
 
+(defn fn-variadic-method-requires-arg?
+  "True if this fn is variadic, and the method requires a rest
+  argument in order to be invoked because there is another method with
+  the same fixed arity"
+  [a path]
+
+  (let [a* (get-in a path)
+        _ (assert (-> a* :op (= :fn)))
+        max-fixed (:max-fixed-arity a*)]
+    (and (:variadic? a*)
+         (> (count (:methods a*)) 1)
+         (->>
+          a*
+          :methods
+          (filter (fn [m]
+                    (= max-fixed (:fixed-arity m))))
+          (count)
+          (= 2)))))
+
+(defn infer-fn-method-spec
+  "add the initial fn-spec for this fn-method.
+
+This is called inside infer :fn, so variadic args will get their internal `cat` applied"
+  [a path]
+  {:post [(every? ::ret-spec (get-in % (conj path :params)))]}
+  (let [a* (get-in a path)
+        _ (assert a*)
+        _ (assert (:op a*))
+        _ (assert (= :fn-method (:op a*)))
+        a (update-in a (conj path :params)
+                     (fn [params]
+                       (let [params (mapv (fn [p]
+                                            (let [s (cond
+                                                      ;; We would like to trust type hints, but they're not validated by the compiler,
+                                                      ;; which means they can be wrong.
+                                                      ;; (and (:tag p) (not= Object)) (c/class-spec (:tag p))
+                                                      :else (c/pred-spec #'any?))
+                                                  s (assoc s :inferred true)]
+                                              (assoc p ::ret-spec s))) params)
+                             params (if (:variadic? a*)
+                                      (let [ret-spec (if (fn-variadic-method-requires-arg? a (-> path pop pop))
+                                                       (c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))])
+                                                       (c/seq- (c/pred-spec #'any?)) ;;(c/cat- [(c/seq- (c/pred-spec #'any?))])
+                                                       )
+                                            ret-spec (assoc ret-spec :inferred true)]
+                                        (assoc-in params [(-> params count dec) ::ret-spec] ret-spec))
+                                      params)]
+                         params)))
+        args-spec (c/cat- (mapv ::ret-spec (get-in a (conj path :params))))
+        fn-spec (c/fn-spec {:args args-spec :ret (c/pred-spec #'any?)})
+        a (assoc-in a (conj path ::ret-spec) fn-spec)]
+    a))
+
+(defn infer-fn-methods
+  "Given an :fn, `infer` all methods"
+  [a path]
+  (let [a* (get-in a path)]
+    (reduce (fn [a method-index]
+              (assert (get-in a (conj path :methods method-index)))
+              (infer-fn-method-spec a (conj path :methods method-index))) a (range (count (:methods a*))))))
+
 (defmethod flow* :fn [a path]
-  (let [;;a (flow-walk a path)
-        a* (get-in a path)
+  (let [a* (get-in a path)
         v (:var a*)
+        ;; infer methods, because specialization
         ret-spec (invoke-get-fn-spec a path)
         a (assoc-in-a a (conj path ::ret-spec) ret-spec)
         a (if (:inferred ret-spec)
@@ -970,6 +1031,23 @@ will return `(instance? C x)` rather than `y`
                (assoc p ::ret-spec (c/invalid {:form (:name p) :message "destructure failed"}))) params-original))))
   ([params spec]
    (destructure-fn-params params spec false)))
+
+
+(defn ensure-methods-inferred [a path]
+  (if (-> (get-in a path) :methods seq)
+    a
+    (do
+      (println "ensure-methods-inferred: inferring" (:form (get-in a path)))
+      (infer-fn-methods a path))))
+
+(defn a-def-fn?
+  "if this node is the :fn for a `defn`, return the var"
+  [a path]
+  (and (= (get-in a (conj path :op)) :fn)
+       (or (when (= (get-in a (-> path pop (conj :op))) :def)
+             (get-in a (-> path pop (conj :var))))
+           (when (= (get-in a (-> path pop pop (conj :op))) :def)
+             (get-in a (-> path pop pop (conj :var)))))))
 
 (s/fdef call-site-specialize :args (s/cat :f-a ::analysis :path ::path :args ::c/spect) :ret ::c/spect)
 (defn call-site-specialize*
@@ -1506,9 +1584,10 @@ will return `(instance? C x)` rather than `y`
 
 (defn flow-method [a path]
   (let [a* (get-in a path)
-        fn-a* (get-in a (pop (pop path)))
+        fn-path (pop (pop path))
+        fn-a* (get-in a fn-path)
         _ (assert (= :fn (:op fn-a*)))
-        s (invoke-get-fn-spec a (pop (pop path)) nil)
+        s (invoke-get-fn-spec a fn-path)
         a (assoc-in a (conj path ::ret-spec) s)
         a (if (:args s)
             (flow-method* a path (:args s))
@@ -1934,7 +2013,7 @@ will return `(instance? C x)` rather than `y`
     (assert s)
     (infer-add-constraint a b-path call-path (c/fn-spec {:args invoke-args :ret (c/pred-spec #'any?)}))))
 
-(s/fdef infer-invoke-constraints :args (s/cat :s c/spect? :args (s/coll-of c/spect?) :ret c/spect?))
+(s/fdef infer-invoke-constraints :args (s/cat :s c/spect? :args (s/coll-of c/spect?)) :ret c/spect?)
 (defn infer-invoke-constraints
   "Given a spec (which could accept multiple type or arities), and a
   seq of partially constrained argument specs, constrain all
@@ -1942,7 +2021,7 @@ will return `(instance? C x)` rather than `y`
   that args could conform to"
   [spec args]
   {:pre [(validate! c/spect? spec)
-         (s/assert c/conformy? spec)
+         (validate! c/conformy? spec)
          (not (c/spect? args))
          (not (c/fn-spec? spec))
          (validate! (s/coll-of c/spect?) args)]
@@ -2033,59 +2112,6 @@ will return `(instance? C x)` rather than `y`
          (map :fixed-arity)
          (set))))
 
-(defn fn-variadic-method-requires-arg?
-  "True if this fn is variadic, and the method requires a rest
-  argument in order to be invoked, because there is another method
-  with the same fixed arity"
-  [a path]
-
-  (let [a* (get-in a path)
-        _ (assert (-> a* :op (= :fn)))
-        max-fixed (:max-fixed-arity a*)]
-    (and (:variadic? a*)
-         (> (count (:methods a*)) 1)
-         (->>
-          a*
-          :methods
-          (filter (fn [m]
-                    (= max-fixed (:fixed-arity m))))
-          (count)
-          (= 2)))))
-
-(defn infer-fn-method-spec
-  "add the initial fn-spec for this fn-method.
-
-This is called inside infer :fn, so variadic args will get their internal `cat` applied"
-  [a path]
-  {:post [(every? ::ret-spec (get-in % (conj path :params)))]}
-  (let [a* (get-in a path)
-        _ (assert a*)
-        _ (assert (:op a*))
-        _ (assert (= :fn-method (:op a*)))
-        a (update-in a (conj path :params)
-                     (fn [params]
-                       (let [params (mapv (fn [p]
-                                            (let [s (cond
-                                                      ;; We would like to trust type hints, but they're not validated by the compiler,
-                                                      ;; which means they can be wrong.
-                                                      ;; (and (:tag p) (not= Object)) (c/class-spec (:tag p))
-                                                      :else (c/pred-spec #'any?))
-                                                  s (assoc s :inferred true)]
-                                              (assoc p ::ret-spec s))) params)
-                             params (if (:variadic? a*)
-                                      (let [ret-spec (if (fn-variadic-method-requires-arg? a (-> path pop pop))
-                                                       (c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))])
-                                                       (c/seq- (c/pred-spec #'any?)) ;;(c/cat- [(c/seq- (c/pred-spec #'any?))])
-                                                       )
-                                            ret-spec (assoc ret-spec :inferred true)]
-                                        (assoc-in params [(-> params count dec) ::ret-spec] ret-spec))
-                                      params)]
-                         params)))
-        args-spec (c/cat- (mapv ::ret-spec (get-in a (conj path :params))))
-        fn-spec (c/fn-spec {:args args-spec :ret (c/pred-spec #'any?)})
-        a (assoc-in a (conj path ::ret-spec) fn-spec)]
-    a))
-
 (defn a-def?
   "if any parent node is a :def, return the var"
   [a path]
@@ -2096,22 +2122,12 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
         (recur a (pop path))
         nil))))
 
-(defn a-def-fn?
-  "if this node is the :fn for a `defn`, return the var"
-  [a path]
-  (and (= (get-in a (conj path :op)) :fn)
-       (or (when (= (get-in a (-> path pop (conj :op))) :def)
-             (get-in a (-> path pop (conj :var))))
-           (when (= (get-in a (-> path pop pop (conj :op))) :def)
-             (get-in a (-> path pop pop (conj :var)))))))
-
 (defmethod infer* :fn [a path]
   (let [a* (get-in a path)
         ;; before walking the fn methods, set up specs for the fn-methods in case there's any self calls
-        a (reduce (fn [a method-index]
-                    (assert (get-in a (conj path :methods method-index)))
-                    (infer-fn-method-spec a (conj path :methods method-index))) a (range (count (:methods a*))))
+        a (infer-fn-methods a path)
         a* (get-in a path)
+        _ (println "infer :fn methods:" (map :form (:methods a*)) (map ::ret-spec (:methods a*)))
         ret-spec (c/merge-fn-specs (map ::ret-spec (:methods a*)))
         _ (when-let [v (a-def-fn? a path)]
             ;; store the preliminary spec in case this is a mutually recursive fn
@@ -2417,6 +2433,7 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
 (defmethod infer* :quote [a path]
   (let [a (infer-walk a path)
         a* (get-in a path)]
+    (assert (c/spect? (-> a* :expr ::ret-spec)))
     (assoc-in a (conj path ::ret-spec) (-> a* :expr ::ret-spec))))
 
 (defmethod infer* :import [a path]

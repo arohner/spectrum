@@ -518,10 +518,12 @@
 (defn cast-method-transformer [s args]
   (let [cls (c/first- args)
         x (c/second- args)]
-    (-> s
-        (assoc
-         :args (c/cat- [(c/class-spec Class) (c/class-spec (:v cls))])
-         :ret (c/class-spec (:v cls))))))
+    (if (c/class-spec? cls)
+      (-> s
+          (assoc
+           :args (c/cat- [(c/class-spec Class) cls])
+           :ret cls))
+      s)))
 
 (ann-method java.lang.Class 'cast (c/cat- [(c/class-spec Object)]) cast-method-transformer)
 
