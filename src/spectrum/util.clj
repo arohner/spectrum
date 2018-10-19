@@ -1,7 +1,9 @@
 (ns spectrum.util
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
-            [clojure.spec.test.alpha :as stest])
+            [clojure.spec.test.alpha :as stest]
+            ;; [orchestra.spec.test :as ost]
+            )
   (:import clojure.lang.Var
            java.lang.System))
 
@@ -128,5 +130,17 @@
                 (symbol (str (.ns v) "/" (.sym v)))))
         (stest/instrument)
         (dorun))))
+
+(defn memoize-with
+  "Memoize `f`, using (keyfn args) as the cache key"
+  [keyfn f]
+  (let [mem (atom {})]
+    (fn [& args]
+      (let [k (apply keyfn args)]
+        (if-let [e (find @mem k)]
+          (val e)
+          (let [ret (apply f args)]
+            (swap! mem assoc k ret)
+            ret))))))
 
 (def-instance-predicate url? java.net.URL)

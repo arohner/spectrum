@@ -57,12 +57,21 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 (defn get-dependent-specs [s]
   (get @extra-dependent-specs s))
 
-(s/fdef store-var-analysis :args (s/cat :v var? :a ::ana.jvm/analysis))
+(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis-def))
+(defn get-var-analysis [v]
+  {:pre [(var? v)]}
+  (get @var-analysis v))
+
+(s/fdef store-var-analysis :args (s/cat :v var? :a ::ana.jvm/analysis :p vector?))
 (defn store-var-analysis
   "Store the ana.jvm/analyze result for a var. Used for future type checking"
-  [v a]
+  [v a path]
+  {:post [(get @var-analysis v)]}
   (assert (var? v))
-  (swap! var-analysis assoc v a))
+  (when-not (= :def (get-in a (conj path :op)))
+    (println "store-var-analysis:" (get-in a (conj path :op)) (:form a)))
+  (assert (= :def (get-in a (conj path :op))))
+  (swap! var-analysis assoc v {:a a :path path}))
 
 (defn store-defmethod-analysis
   [a]
@@ -95,11 +104,6 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   [v dispatch]
   (get-in (get-defmethod-analysis v dispatch) [:args 1]))
 
-(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis-def))
-(defn get-var-analysis
-  [v]
-  (get @var-analysis v))
-
 (s/fdef var-analysis? :args (s/cat :v var?) :ret boolean?)
 (defn var-analysis?
   "True if we have analysis on v"
@@ -117,13 +121,15 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 (s/fdef store-var-spec :args (s/cat :v var? :s :spectrum.conform/spect) :ret nil?)
 (defn store-var-spec [v s]
   {:pre [(var? v)]}
-  (println "storing" v "=>" s)
-  (swap! var-specs assoc v s)
+  (swap! var-specs assoc v (assoc s :var v))
   nil)
 
 (defn get-var-spec [v]
-  {:post [(do (when %
-                (:var %)) true)]}
+  {:post [(do (when (and % (not (= v (:var %))))
+                (println "get-var-spec:" v % (:var %))) true)
+          (if %
+            (= v (:var %))
+            true)]}
   (get @var-specs v))
 
 (s/def ::reflect-args (s/coll-of class? :kind vector?))

@@ -242,3 +242,11 @@
             (if (more-specific? a b)
               a
               b)) Object cls))
+
+(defn get-classloader []
+  (-> (java.lang.Thread/currentThread) .getContextClassLoader))
+
+(defn get-byte-code [cls]
+  (-> (get-classloader)
+      (.getResourceAsStream "clojure/lang/RT.class")
+      (slurp)))

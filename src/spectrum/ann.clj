@@ -1,5 +1,6 @@
 (ns spectrum.ann
-  (:require [clojure.spec.alpha :as s]
+  (:require [clojure.java.io :as io]
+            [clojure.spec.alpha :as s]
             [spectrum.conform :as c]
             [spectrum.data :as data]
             [spectrum.flow :as flow]
@@ -230,20 +231,19 @@
                  (assoc spect :ret (reduce merge-keys (:ps args-spect)))
                  spect)))
 
-
 (ann-method clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)])
- (fn [spect args-spect]
-   (let [x (-> args-spect c/first- c/maybe-convert-value)
-         y (-> args-spect c/second- c/maybe-convert-value)
-         ret (cond
-               (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
-                                                 (c/value true)
-                                                 (c/value false))
-               (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
-                    (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
-     (if ret
-       (assoc spect :ret ret)
-       spect))))
+            (fn [spect args-spect]
+              (let [x (-> args-spect c/first- c/maybe-convert-value)
+                    y (-> args-spect c/second- c/maybe-convert-value)
+                    ret (cond
+                          (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
+                                                            (c/value true)
+                                                            (c/value false))
+                          (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
+                               (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
+                (if ret
+                  (assoc spect :ret ret)
+                  spect))))
 
 (defn ann-get [spect args-spect]
   (let [coll (c/first- args-spect)

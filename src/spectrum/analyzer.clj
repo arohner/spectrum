@@ -19,10 +19,19 @@
   (:import (clojure.lang IObj RT Compiler Var)
            java.net.URL))
 
-(defn form-ns?
-  "True if the form is an (ns)"
-  [form]
-  (and (sequential? form) (-> form first (= 'ns))))
+(defn form-predicate
+  "Returns a predicate checking if the form calls a symbol `sym`"
+  [sym]
+  (fn [form]
+    (and (sequential? form) (-> form first (= sym)))))
+
+(def form-ns? (form-predicate 'ns))
+(def form-in-ns? (form-predicate 'in-ns))
+
+(defn should-eval-form? [form]
+  {:post [(do (when % (println "evaling" form)) true)]}
+  (or (form-ns? form)
+      (form-in-ns? form)))
 
 (defn analyze-file-
   "ana.jvm/analyze a file, but only eval the `ns` form, and non-eval analyze all others"
@@ -41,7 +50,7 @@
           (when-not (identical? form eof)
             (swap! env/*env* update-in [::analyzed-clj path]
                    (fnil conj [])
-                   (if (form-ns? form)
+                   (if (should-eval-form? form)
                      (ana.jvm/analyze+eval form (assoc env :ns (ns-name *ns*)) opts)
                      (ana.jvm/analyze form (assoc env :ns (ns-name *ns*)) opts)))
             (recur false)))))))

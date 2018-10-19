@@ -132,6 +132,7 @@
 
       (c/class-spec clojure.lang.IFn) (c/pred-spec #'fn?)
 
+      ;; cat
       (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])]) (c/cat- [(c/or- [(c/class-spec Double/TYPE) (c/class-spec Long/TYPE)])])
 
       (c/and- [(c/seq- (c/pred-spec #'any?)) (c/class-spec clojure.lang.ISeq)]) (c/seq- (c/pred-spec #'any?))
@@ -140,6 +141,8 @@
       (c/cat- []) (c/value nil)
       (c/cat- []) (c/value [])
 
+      (c/cat- [(c/pred-spec #'any?)]) (c/cat- [(c/seq- (c/pred-spec #'any?))])
+      (c/cat- [(c/pred-spec #'any?)]) (c/cat- [(c/or- [(c/seq- (c/pred-spec #'any?)) (c/value nil)])])
       ;; and
       (c/and- [(c/pred-spec #'any?)]) (c/pred-spec #'any?)
       (c/and- [(c/pred-spec #'int?) (c/pred-spec #'even?)]) (c/and- [(c/pred-spec #'int?) (c/pred-spec #'even?)])
@@ -551,9 +554,9 @@
 
       (c/pred-spec #'keyword?) (c/cat- [(c/pred-spec #'map?)]) (c/pred-spec #'any?)
 
-      (c/fn-spec (c/cat- [::integer]) ::integer nil) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)
+      (c/fn-spec {:args (c/cat- [::integer]) :ret ::integer}) (c/cat- [(c/pred-spec #'integer?)]) (c/pred-spec #'integer?)
 
-      (c/and- [(c/pred-spec #'fn?) (c/fn-spec (c/cat- []) (c/pred-spec #'any?) nil)]) (c/cat- []) (c/pred-spec #'any?)
+      (c/and- [(c/pred-spec #'fn?) (c/fn-spec {:args (c/cat- []) :ret (c/pred-spec #'any?)})]) (c/cat- []) (c/pred-spec #'any?)
 
       (c/class-spec clojure.lang.IFn) (c/cat- [(c/pred-spec #'any?)]) (c/pred-spec #'any?))
 
@@ -566,14 +569,14 @@
 (deftest fnspec
   (testing "truthy"
     (are [spec args] (c/valid? spec args)
-      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)
-      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) nil  nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil)
-      (c/fn-spec nil nil nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/pred-spec #'int?) nil)))
+      (c/fn-spec {:args (c/cat- [(c/pred-spec #'int?)]) :ret (c/pred-spec #'int?)}) (c/fn-spec {:args (c/cat- [(c/pred-spec #'int?)]) :ret (c/pred-spec #'int?)})
+      (c/fn-spec {:args (c/cat- [(c/pred-spec #'int?)])}) (c/fn-spec {:args (c/cat- [(c/pred-spec #'int?)]) :ret (c/cat- [(c/pred-spec #'int?)])})
+      (c/fn-spec {}) (c/fn-spec {:args (c/cat- [(c/pred-spec #'int?)]) :ret (c/pred-spec #'int?)})))
 
   (testing "falsey"
     (are [spec args] (not (c/valid? spec args))
-      (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) (c/cat- [(c/pred-spec #'int?)]) nil) (c/fn-spec (c/cat- [(c/pred-spec #'integer?)]) (c/cat- [(c/pred-spec #'integer?)]) nil)
-      (c/fn-spec nil (c/pred-spec #'int?) nil) (c/fn-spec (c/cat- [(c/pred-spec #'int?)]) nil nil))))
+      (c/fn-spec {:args (c/cat- [(c/pred-spec #'int?)]) :ret (c/cat- [(c/pred-spec #'int?)])}) (c/fn-spec {:args (c/cat- [(c/pred-spec #'integer?)]) :ret (c/cat- [(c/pred-spec #'integer?)])})
+      (c/fn-spec {:ret (c/pred-spec #'int?)}) (c/fn-spec {:args (c/cat- [(c/pred-spec #'int?)])}))))
 
 (deftest more-specific-spec
   (are [a b] (= true (c/more-specific-spec? a b))

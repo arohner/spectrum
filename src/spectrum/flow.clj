@@ -14,9 +14,10 @@
             [spectrum.analyzer :as analyzer]
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
+            [spectrum.core-specs]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j]
-            [spectrum.util :as util :refer [print-once protocol? namespace? queue validate! instrument-ns]])
+            [spectrum.util :as util :refer [print-once protocol? namespace? queue validate! instrument-ns memoize-with]])
   (:import [clojure.lang Var Namespace]))
 
 (declare find-binding)
@@ -102,20 +103,37 @@
   (cond
     (= :def (:op a)) (println "infer-result:" (-> a :var) "=>" (-> a :init maybe-strip-meta ::ret-spec))))
 
-(def cached-infer (memo/memo (fn [a path]
-                               {:post [(when a
-                                         %)]}
-                               (let [a* (infer* a path)]
-                                 (infer-result (get-in a* path))
-                                 a*))))
+(def infer-cache (atom {}))
+
+(defn infer-cache-key [a]
+  {:post [(do (println "infer-cache-key" (:form a)) true)]}
+  (assert (:form a))
+  (:form a))
+
+(s/fdef cached-infer* :args (s/cat :a ::ana.jvm/analysis) :ret ::analysis)
+(defn cached-infer* [a]
+  (let [a* (infer* a [])]
+    (infer-result a*)
+    a*))
+
+(def cached-infer (memoize-with infer-cache-key cached-infer*))
 
 (s/fdef infer :args (s/cat :a ::ana.jvm/analysis :path (s/? ::path)) :ret ::analysis)
 (defn infer
   "Given an un-spec'd analysis, return our best guess for the spec"
   ([a]
-   (infer a []))
+   {:post [(::ret-spec %)]}
+   (println "infer" (:form a))
+   (cached-infer a))
   ([a path]
-   (cached-infer a path)))
+   {:post [(::ret-spec %) (-> % (get-in path) ::ret-spec)]}
+   (if (::ret-spec a)
+     (do
+       (assert (-> a (get-in path) ::ret-spec))
+       a)
+     (if (seq path)
+       (infer* a path)
+       (cached-infer a)))))
 
 (defn analyze-cache-ns [ns]
   (let [env (ana.jvm/empty-env)
@@ -281,7 +299,7 @@
             (validate! ::c/spect-like (::ret-spec a*))
             a))
         (catch Throwable t
-          (println "walk" f " exception while walking:" (.getMessage t) (a-loc-str a*) (:op a*) (:form a*))
+          (println "walk" f " exception while walking:" (or (.getMessage t) (class t)) (a-loc-str a*) (:op a*) (:form a*))
           (throw t))))))
 
 (def flow-wrap (wrap flow*))
@@ -300,6 +318,7 @@
                   (f a new-path)))
               a)) a (get-in a (conj path :children))))
 
+(s/fdef flow-walk :args (s/cat :a ::ana.jvm/analysis :p ::path) ::ret ::analysis)
 (defn flow-walk
   "Walk the children of a*"
   [a path]
@@ -316,18 +335,9 @@
   (let [a* (get-in a path)
         v (:var a*)]
     (assert (var? v))
-    (data/store-var-analysis v a)
+    (data/store-var-analysis v a path)
     (analyze-cache-walk a path)
     a))
-
-(defn analyze-cache-ns
-  "analyze and store in var cache, but don't flow or check"
-  [ns]
-  (println "analyzing" ns)
-  (let [as (analyzer/analyze-ns ns)]
-    (doseq [a as]
-      (analyze-cache a))
-    (data/mark-ns-analyzed! ns)))
 
 (defmethod flow* :default [a path]
   (assert false (format "unhandled: %s %s" (:op (get-in a path)) (a-loc-str (get-in a path)))))
@@ -343,19 +353,17 @@
 
 (s/fdef recursive? :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret boolean?)
 (defn recursive?
-  "Given an invoke of var v at a path, return true if it's a self-call"
+  "Given usage of var v at `[a path]`, return true if v is defined within `a`"
   [a path]
+  {:post [(do (println "recursive?" (:form (get-in a path)) (:form a) "=>" %) true)]}
   (let [a* (get-in a path)
-        _ (assert (= :var (:op a*)))
-        v (:var a*)]
-    (assert (var? v))
-    (loop [path path]
-      (let [a* (get-in a path)]
-        (if (and (= :def (:op a*)) (= v (:var a*)))
-          true
-          (if (seq path)
-            (recur (pop path))
-            false))))))
+        _ (when-not (-> (:op a*) (= :var))
+            (println "recursive?:" (:op a*) (:form a*) (:form a)))
+        _ (assert (-> a* :op (= :var)))
+        v (-> a* :var)
+        _ (assert (var? v))
+        {v-a :a v-a-path :path} (data/get-var-analysis v)]
+    (= (:form v-a) (:form a))))
 
 (s/fdef get-self-call-analysis :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret (s/nilable ::ana.jvm/analysis))
 (defn get-self-call-analysis
@@ -376,7 +384,7 @@
             nil))))))
 
 (defn get-var-spec
-  "Get or infer the spec for v, appearing at [a path]"
+  "Get or infer the spec for v, which is used at [a path]"
   [v a path]
   {:post [(c/spect? %)]}
   (let [a* (get-in a path)
@@ -388,10 +396,17 @@
       (ensure-analysis v-ns))
     (or (c/get-var-spec v)
         (data/get-var-spec v)
-        (when-let [v-a (data/get-var-analysis v)]
-          (if (recursive? a path)
-            (::ret-spec (get-self-call-analysis a path))
-            (::ret-spec (infer v-a []))))
+        (when (recursive? a path)
+          (let [ret-spec (::ret-spec (get-self-call-analysis a path))]
+            (assert ret-spec)
+            ret-spec))
+        (when-let [{v-a :a v-a-path :path} (data/get-var-analysis v)]
+          (infer v-a)
+          (let [{v-a :a v-a-path :path} (data/get-var-analysis v)]
+            (assert (::ret-spec (get-in v-a v-a-path)))
+            (::ret-spec (get-in v-a v-a-path))))
+        (println "couldn't find spec or analysis for " v "at" (a-loc-str (get-in a path)))
+        (assert false)
         (c/unknown {:message (format "couldn't find spec or analysis for %s at %s" v (a-loc-str (get-in a path)))}))))
 
 (defmethod flow* :def [a path]
@@ -400,10 +415,11 @@
         a* (get-in a path)
         v (:var a*)
         _ (assert (var? v))
-        _ (data/store-var-analysis v a)
         a (flow-walk a path)
-        _ (data/store-var-analysis v a)]
-    (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
+        a (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))]
+    (assert (::ret-spec a))
+    (data/store-var-analysis v a path)
+    a))
 
 (defmethod flow* :the-var [a path]
   ;; the-var => (var foo). Returns the actual var
@@ -426,20 +442,23 @@
 
 (s/fdef invoke-get-fn-spec :args (s/cat :a ::analysis :p ::path) :ret ::c/spect)
 (defn invoke-get-fn-spec-dispatch [a path]
-  (-> (get-in a path) :op))
+  (assert (-> (get-in a path) :op (= :invoke)))
+  (-> (get-in a path) :fn :op))
 
-(defmulti invoke-get-fn-spec "Given the :fn from an :invoke a, return the spec for the thing being invoked"
+(defmulti invoke-get-fn-spec "Given an `:invoke` at `[a path]` return the spec for the thing being invoked"
   #'invoke-get-fn-spec-dispatch)
 
 (defmethod invoke-get-fn-spec :var [a path]
-  (let [a* (get-in a path)
+  (let [a* (get-in a (conj path :fn))
         v (-> a* :var)]
     (assert (var? v))
     (or (data/get-var-spec v)
         (when (recursive? a path)
           (::ret-spec (get-self-call-analysis a path)))
-        (when-let [v-a (data/get-var-analysis v)]
-          (-> v-a infer :init maybe-strip-meta ::ret-spec))
+        (when-let [{v-a :a v-a-path :path} (data/get-var-analysis v)]
+          (infer v-a)
+          (let [{v-a :a v-a-path :path} (data/get-var-analysis v)]
+            (-> (get-in v-a v-a-path) :init maybe-strip-meta ::ret-spec)))
         (do
           (println "warning: couldn't find spec or analysis for" v)
           (c/unknown {:message (format "couldn't find spec or analysis for %s" v)})))))
@@ -493,39 +512,56 @@
 
 (defmethod invoke-get-fn-spec :local [a path]
   {:post [(c/spect? %)]}
-  (let [a* (get-in a path)
+  (let [a* (get-in a (conj path :fn))
         b (find-binding a (pop path) (:name a*))
         ret (::ret-spec b)]
     ret))
 
 (defmethod invoke-get-fn-spec :fn [a path]
-  (let [a (infer a path)
-        ret-spec (::ret-spec (get-in a path))]
-    (assert ret-spec)
-    ret-spec))
+  (let [f (get-in a (conj path :fn))]
+    (if (::ret-spec f)
+      (::ret-spec f)
+      (assert false))
+    ;; (if (not (recursive? a path))
+    ;;   (let [a (infer a path)
+    ;;         ret-spec (::ret-spec (get-in a path))]
+    ;;     (assert ret-spec)
+    ;;     ret-spec)
+    ;;   (do
+    ;;     (println "invoke-get-fn-spec recursive:" (:form (get-in a path)))
+    ;;     (assert false)
+    ;;     ))
+    )
+
+  )
 
 (def keyword-invoke-spec (c/cat- [(c/pred-spec #'keyword?) (c/or- [(c/pred-spec #'map?) (c/pred-spec #'set?)]) (c/?- (c/pred-spec #'any?))]))
 
 (defmethod invoke-get-fn-spec :const [a path]
-  (let [a* (get-in a path)
+  (let [a* (get-in a (conj path :fn))
+        _ (assert (find a* :val))
         v (:val a*)]
     (c/value v)))
 
 (defmethod invoke-get-fn-spec :with-meta [a path]
-  (invoke-get-fn-spec a (conj path :expr)))
+  (invoke-get-fn-spec a (concat path [:fn :expr])))
 
 (defmethod invoke-get-fn-spec :set [a path]
-  (c/value (set (:items (get-in a path)))))
+  (let [items (-> a (get-in path) :items)]
+    (assert items)
+    (c/value (set items))))
 
 (defmethod invoke-get-fn-spec :map [a path]
-  (c/value (set (:items (get-in a path)))))
+  (assert (-> a (get-in path) :fn :items))
+  (-> a (get-in path) :fn :items set c/value))
 
 (defmethod invoke-get-fn-spec :invoke [a path]
-  (let [a* (get-in a path)]
+  (let [a* (get-in a (conj path :fn))]
     (::ret-spec a*)))
 
 (defmethod invoke-get-fn-spec :if [a path]
-  (let [a* (get-in a path)
+  (let [a* (get-in a (conj path :fn))
+        _ (assert (:test a*))
         truthyness (c/truthyness (-> a* :test ::ret-spec))]
     (cond
       (= :truthy truthyness) (-> a* :then ::ret-spec)
@@ -582,35 +618,63 @@ This is called inside infer :fn, so variadic args will get their internal `cat` 
                              params (if (:variadic? a*)
                                       (let [ret-spec (if (fn-variadic-method-requires-arg? a (-> path pop pop))
                                                        (c/cat- [(c/pred-spec #'any?) (c/seq- (c/pred-spec #'any?))])
-                                                       (c/seq- (c/pred-spec #'any?)) ;;(c/cat- [(c/seq- (c/pred-spec #'any?))])
-                                                       )
+                                                       (c/seq- (c/pred-spec #'any?)))
                                             ret-spec (assoc ret-spec :inferred true)]
                                         (assoc-in params [(-> params count dec) ::ret-spec] ret-spec))
                                       params)]
                          params)))
         args-spec (c/cat- (mapv ::ret-spec (get-in a (conj path :params))))
-        fn-spec (c/fn-spec {:args args-spec :ret (c/pred-spec #'any?)})
+        fn-spec (assoc (c/fn-spec {:args args-spec :ret (c/pred-spec #'any?)}) :inferred true)
         a (assoc-in a (conj path ::ret-spec) fn-spec)]
     a))
 
 (defn infer-fn-methods
-  "Given an :fn, `infer` all methods"
+  "Given an :fn, set up dummy specs for all methods"
   [a path]
   (let [a* (get-in a path)]
     (reduce (fn [a method-index]
-              (assert (get-in a (conj path :methods method-index)))
-              (infer-fn-method-spec a (conj path :methods method-index))) a (range (count (:methods a*))))))
+              (let [m (get-in a (conj path :methods method-index))]
+                (assert m)
+                (if-not (-> m ::ret-spec :inferred)
+                  (infer-fn-method-spec a (conj path :methods method-index))
+                  a))) a (range (count (:methods a*))))))
+
+(defn a-def-fn?
+  "if this node is the :fn for a `defn`, return the var"
+  [a path]
+  (and (= (get-in a (conj path :op)) :fn)
+       (seq path)
+       (or (when (= (get-in a (-> path pop (conj :op))) :def)
+             (get-in a (-> path pop (conj :var))))
+           (when (= (get-in a (-> path pop pop (conj :op))) :def)
+             (get-in a (-> path pop pop (conj :var)))))))
+
+(defn a-def-fn-method?
+  "if this node is an :fn-method for a `defn`, return the var"
+  [a path]
+  (and (= (get-in a (conj path :op)) :fn-method)
+       (seq path)
+       (a-def-fn? a (-> path pop pop))))
+
+(defn a-def-fn-var-spec?
+  "if this node is the :fn for a `defn` with an `s/fdef`, return the spec or nil"
+  [a path]
+  (some-> (a-def-fn? a path) data/get-var-spec))
+
+(defn a-def-fn-method-var-spec?
+  "if this node is an :fn-method for a `defn` with an `s/fdef`, return the spec"
+  [a path]
+  (some-> (a-def-fn? a path) data/get-var-spec))
 
 (defmethod flow* :fn [a path]
-  (let [a* (get-in a path)
-        v (:var a*)
-        ;; infer methods, because specialization
-        ret-spec (invoke-get-fn-spec a path)
-        a (assoc-in-a a (conj path ::ret-spec) ret-spec)
-        a (if (:inferred ret-spec)
-            a
-            (flow-walk a path))]
-    a))
+  {:post [%]}
+  (let [a* (get-in a path)]
+    (if-let [s (a-def-fn-var-spec? a path)]
+      (let [a (assoc-in a (conj path ::ret-spec) s)]
+        (flow-walk a path))
+      (do
+        (println "flow :fn inferring" (:form a*))
+        (infer a)))))
 
 (defn find-binding*-dispatch [a name]
   {:pre [(:op a) (symbol? name)]}
@@ -860,7 +924,9 @@ will return `(instance? C x)` rather than `y`
                                       :path b-path
                                       :constraint constraint})]
           (update-in a if-bindings conj binding)))
-      (update-in a (conj b-path ::ret-spec) c/add-constraint constraint))))
+      (update-in a (conj b-path ::ret-spec) (fn [s]
+                                              ;; {:post [(do (println "infer-add-constraint update:" s constraint "=>" %) true)]}
+                                              (c/add-constraint s constraint))))))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret ::c/spect)
 (defn analysis-args->spec
@@ -889,18 +955,16 @@ will return `(instance? C x)` rather than `y`
 
 (defn invoke-get-fn-analysis-var [v]
   (ensure-analysis-var v)
-  (let [v-a (data/get-var-analysis v)
-        path [:init]
-        path (if (-> (get-in v-a path) :op (= :with-meta))
-               (conj path :expr)
-               path)]
-    (when v-a
-      {:a v-a :path path :op :var})))
+  (data/get-var-analysis v))
 
 (s/def ::a ::analysis)
-;; not everything has analysis: compiler built-ins (in-ns), protocols, multimethods.
-(s/fdef invoke-get-fn-analysis :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret (s/nilable (s/keys :req-un [::a ::path])))
-(defn invoke-get-fn-analysis [a path]
+(s/def ::op keyword?)
+;; not everything has analysis: compiler built-ins (in-ns), protocols, multimethods, fn params.
+(s/fdef invoke-get-fn-analysis :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret (s/nilable (s/keys :req-un [::path ::op]
+                                                                                                        :opt-un [::a])))
+(defn invoke-get-fn-analysis
+  "Given an :invoke at `[a path]`, return the analysis of the thing being invoked"
+  [a path]
   (let [a* (get-in a path)
         f (:fn a*)
         [fn-op path*] (or (when (-> a* :fn :op)
@@ -913,7 +977,7 @@ will return `(instance? C x)` rather than `y`
               :local (let [b (find-binding a path (-> a* :fn :name))]
                        (assert b)
                        (assert (:path b))
-                       {:a (:init b)
+                       {:a (or (:init b) b)
                         :path (:path b)
                         :op fn-op})
               :const {:a (-> a* :fn :val)
@@ -931,7 +995,9 @@ will return `(instance? C x)` rather than `y`
                 (assert false (format "don't know how to find analysis for %s" fn-op))))]
     (cond
       (-> ret :a ::ret-spec) ret
-      (and ret (not (-> ret :a ::ret-spec))) (update-in ret [:a] flow)
+      (and ret (:a ret) (not (-> ret :a ::ret-spec))) (do
+                                                        (println "invoke-get-fn-analysis" fn-op (:form (get-in a path)) "no ret-spec, inferring" (-> ret :a :form))
+                                                        (update-in ret [:a] infer))
       :else nil)))
 
 (def control-flow-ops #{:case :fn-method :if :letfn :method :quote})
@@ -962,13 +1028,9 @@ will return `(instance? C x)` rather than `y`
           (if a
             (get-in % (conj path ::ret-spec))
             true)]}
-  (if (::ret-spec a)
+  (if (-> (get-in a path) ::ret-spec)
     a
-    (if-let [v (:var a)]
-      (if-let [s (c/get-var-spec v)]
-        (flow a path)
-        (infer a path))
-      (infer a path))))
+    (infer a)))
 
 (s/fdef arity-conform? :args (s/cat :spec ::c/spect :params ::ana.jvm/bindings) :ret boolean?)
 (defn arity-conform?
@@ -1032,51 +1094,33 @@ will return `(instance? C x)` rather than `y`
   ([params spec]
    (destructure-fn-params params spec false)))
 
-
-(defn ensure-methods-inferred [a path]
-  (if (-> (get-in a path) :methods seq)
-    a
-    (do
-      (println "ensure-methods-inferred: inferring" (:form (get-in a path)))
-      (infer-fn-methods a path))))
-
-(defn a-def-fn?
-  "if this node is the :fn for a `defn`, return the var"
-  [a path]
-  (and (= (get-in a (conj path :op)) :fn)
-       (or (when (= (get-in a (-> path pop (conj :op))) :def)
-             (get-in a (-> path pop (conj :var))))
-           (when (= (get-in a (-> path pop pop (conj :op))) :def)
-             (get-in a (-> path pop pop (conj :var)))))))
-
 (s/fdef call-site-specialize :args (s/cat :f-a ::analysis :path ::path :args ::c/spect) :ret ::c/spect)
 (defn call-site-specialize*
   "Given the analysis for a fn and fn args, return a call-site specialized spec for f. specialization can change the :args, e.g. `map`, so this returns a whole fn spec"
   [f-a path args-spec]
   {:pre [(c/spect? args-spec)]
-   :post [(c/fn-spec? %)]}
+   :post [(do (println (when-not (c/fn-spec? %) (println "specialize ret:" (:form (get-in f-a path)) args-spec "=>" %))) true) (c/fn-spec? %)]}
   (let [f-a* (get-in f-a path)
         f-spec (::ret-spec f-a*)
+        _ (assert f-spec)
         unspecialized-ret-spec (or (:ret f-spec) (c/unknown {:message (format "call-site-specialize: no ret-spec on %s" (print-str f-spec))} ))
-        _ (assert (c/invoke? f-spec))
-        v (:var f-a*)]
-
-    ;; there are invokable things we can't specialize, such as IFn, multimethods, etc.
+        v (a-def-fn? f-a path)]
+    ;; there are invokable things we can't specialize yet, such as java methods, multimethods, etc.
+    (println "op-fa:" (:op f-a*))
     (if (= :fn (:op f-a*))
       (if (and v (data/get-invoke-transformer v))
-        (let [s (get-var-spec v f-a path)]
-          (c/invoke s args-spec))
+        (let [_ (println "invoke-transformer, not specializing:" v)]
+          (get-var-spec v f-a path))
         (if (c/valid? (c/invoke-accept f-spec) args-spec)
-          (let [_ (when-not (c/conformy? args-spec)
-                    (println "call-site-specialize:" (:form f-a) args-spec))
-                _ (assert (c/conformy? args-spec))
-                _ (when-not (= :fn (:op f-a*))
-                    (println "specialize:" f-a path (:op f-a*)))
+          (let [_ (assert (c/conformy? args-spec))
                 _ (assert path)
                 f-a (infer-or-flow f-a path)
                 f-a* (get-in f-a path)
                 _ (assert (::ret-spec f-a*))
-                specialized-methods (->> (get-in f-a* [:methods])
+                _ (assert (= :fn (:op f-a*)))
+                _ (println "specialize input method count:" v (:form f-a*) (map ::ret-spec (:methods f-a*)))
+                _ (assert (pos? (count (:methods f-a*))))
+                specialized-methods (->> (:methods f-a*)
                                          (filterv (fn [m]
                                                     (assert (::ret-spec m))
                                                     (assert (c/fn-spec? (::ret-spec m)))
@@ -1087,18 +1131,23 @@ will return `(instance? C x)` rather than `y`
                 _ (when-not (= 1 (count specialized-methods))
                     (println "specialize method count:" (:form f-a) (map ::ret-spec (:methods f-a*)) "args" args-spec "=>" (count specialized-methods) specialized-methods))
                 _ (assert (= 1 (count specialized-methods)))
-                f-a* (assoc-in-a f-a* [:methods] specialized-methods)
-                f-a (assoc-in-a f-a path f-a*)
-                f-a (update-in f-a (conj path [:methods 0 :params]) (fn [params]
-                                                                      (destructure-fn-params params args-spec)))
+                f-a* (assoc-in-a f-a (conj path :methods) specialized-methods)
+                f-a* (update-in f-a* (concat path [:methods 0 :params]) (fn [params]
+                                                                          (assert (seq params))
+                                                                          (destructure-fn-params params args-spec)))
                 orig-spec (::ret-spec f-a)
-                f-a (flow* f-a path)
-                f-spec* (get-in f-a (conj path ::ret-spec))]
+                _ (println "form:" (:form (get-in f-a* path)))
+                f-a* (flow* f-a* path)
+                f-spec* (get-in f-a* (conj path ::ret-spec))]
             (println "specialize:" (or (:var f-a) (:form f-a)) args-spec "=>" f-spec*)
             (assert (c/spect? f-spec*))
             f-spec*)
-          f-spec))
-      f-spec)))
+          (do
+            (println "not-valid:" (c/invoke-accept f-spec) args-spec)
+            f-spec)))
+      (do
+        (println "not :fn" (:op f-a*))
+        f-spec))))
 
 (def call-site-specialize (memo/memo call-site-specialize*))
 
@@ -1116,10 +1165,6 @@ will return `(instance? C x)` rather than `y`
     (try
       (assert (c/spect? fn-spec))
       (assert (c/spect? args-spec))
-      (when (-> a* :fn :var (= #'load))
-        (println "load"))
-      (when (top-level-load? a path)
-        (println "toplevel load" (-> a* :args) "@" (a-loc-str a)))
       (if (or (and f-a (= :fn (:op f-a)) (invoke-valid-arity? f-a arg-count))
               (not f-a)
               (not= :fn (:op f-a)))
@@ -1128,7 +1173,7 @@ will return `(instance? C x)` rather than `y`
             (assert (c/spect? fn-spec))
             (assert (c/spect? args-spec))
             (assoc-in-a a (conj path ::ret-spec) ;; if f-a
-                      ;; (:ret (call-site-specialize f-a f-a-path args-spec))
+                        ;; (:ret (call-site-specialize f-a f-a-path args-spec))
                         (c/invoke fn-spec args-spec)))
           (assoc-in-a a (conj path ::ret-spec) (c/unknown {:message (format "invoke: no spec for %s" (:var (:fn a*)))})))
         (assoc-in-a a (conj path ::ret-spec) (c/invalid {:message (format "invoke: wrong number of args %s" (:form a*))})))
@@ -1378,7 +1423,8 @@ will return `(instance? C x)` rather than `y`
              (filter (fn [m]
                        (compatible-java-method-relaxed? arg-spec (:parameter-types m)))))))
 
-(s/fdef get-conforming-java-method :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) :ret (s/nilable j/reflect-method?))
+(s/fdef get-conforming-java-method :args (s/cat :cls class? :method symbol? :arg-spec ::c/spect) ;; :ret (s/nilable j/reflect-method?)
+        )
 (defn get-conforming-java-method
   "Returns the java method that conforms to arg-spec "
   [cls method arg-spec]
@@ -1564,6 +1610,7 @@ will return `(instance? C x)` rather than `y`
           (let [bindings-key (if (:bindings loop)
                                :bindings
                                :params)
+                _ (assert (get-in a (conj loop-path bindings-key)))
                 a (update-in a (conj loop-path bindings-key) (fn [bindings]
                                                                (mapv (fn [b s]
                                                                        (update-in b [::ret-spec] (fn [existing]
@@ -1587,7 +1634,8 @@ will return `(instance? C x)` rather than `y`
         fn-path (pop (pop path))
         fn-a* (get-in a fn-path)
         _ (assert (= :fn (:op fn-a*)))
-        s (invoke-get-fn-spec a fn-path)
+        s (a-def-fn-method-var-spec? a fn-path)
+        _ (assert s)
         a (assoc-in a (conj path ::ret-spec) s)
         a (if (:args s)
             (flow-method* a path (:args s))
@@ -1884,7 +1932,7 @@ will return `(instance? C x)` rather than `y`
 (defn var-fn?
   "True if this var holds a fn"
   [v]
-  (if-let [a (data/get-var-analysis v)]
+  (if-let [{:keys [a path]} (data/get-var-analysis v)]
     (boolean
      (or (some-> a :init maybe-strip-meta :op (= :fn))
          (a-multimethod? a)))
@@ -1940,7 +1988,12 @@ will return `(instance? C x)` rather than `y`
 (defn a->java-static-method-name [a]
   (str (:class a) "/" (:method a)))
 
-(def infer-wrap (wrap infer))
+(defn wrap-assert-ret-spec [f]
+  (fn [a path]
+    {:post [(-> (get-in % path) ::ret-spec)]}
+    (f a path)))
+
+(def infer-wrap (wrap (wrap-assert-ret-spec infer*)))
 
 (defn infer-walk
   ([a path]
@@ -1976,15 +2029,19 @@ will return `(instance? C x)` rather than `y`
   (let [a* (get-in a path)
         a (assoc-in-a a path (maybe-assoc-var-name a*))
         v (:var a*)
-        _ (data/store-var-analysis v a)
+        a (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))
+        _ (println "infer def storing var analysis:" v path (get-in a (conj path ::ret-spec)))
+        _ (data/store-var-analysis v a path)
         a (infer-walk a path)
         a* (get-in a path)]
-    (data/store-var-analysis v a)
+    (data/store-var-analysis v a path)
+    (assert (::ret-spec a))
     (when (-> a* :init)
       (let [s (-> a* :init ::ret-spec)]
         (assert (c/spect? s))
+        (println "infer def store var spec" v)
         (data/store-var-spec v s)))
-    (assoc-in a (conj path ::ret-spec) (c/pred-spec #'var?))))
+    a))
 
 (defmethod infer* :var [a path]
   ;; :var => the value the var holds
@@ -2007,6 +2064,8 @@ will return `(instance? C x)` rather than `y`
 (defn infer-fn-invoke-add-constraint
   "Given an invoke to the fn at binding b with args, update b's spec to support the call"
   [a b-path call-path invoke-args]
+  {:post [;; (do (println "infer-fn-invoke-add-constraint:" (get-in a (conj b-path ::ret-spec)) (get-in a (conj call-path :form)) invoke-args "=>" (get-in % (conj b-path ::ret-spec))) true)
+          ]}
   (let [b (get-in a b-path)
         s (::ret-spec b)]
     (assert b)
@@ -2049,6 +2108,7 @@ will return `(instance? C x)` rather than `y`
             (println "invoke: bad args" (:form a*) (mapv (fn [arg] (::ret-spec arg)) (:args a*))))
         _ (assert (every? c/conformy? (:ps invoke-args)))
         invoke-var? (boolean (get-in a (concat path [:fn :var])))
+        v (get-in a (concat path [:fn :var]))
         local-inferred-fn? (and (contains? #{:binding :local} (-> a* :fn :op)))
         a (if local-inferred-fn?
             (let [fn-name (-> a* :fn :name)
@@ -2059,15 +2119,28 @@ will return `(instance? C x)` rather than `y`
                   (infer-add-constraint (:path b) path (c/pred-spec #'ifn?))
                   (infer-fn-invoke-add-constraint (:path b) path invoke-args)))
             a)
-        s (invoke-get-fn-spec a (conj path :fn) invoke-args)
-        {f-a :a f-a-path :path f-a-op :op} (invoke-get-fn-analysis a path)]
+        {f-a :a f-a-path :path f-a-op :op} (invoke-get-fn-analysis a path)
+        f-a (when f-a
+              (invoke-get-fn-analysis a path))
+        s (or (when v
+                (get-var-spec v a (conj path :fn)))
+              (when f-a
+                (-> (get-in f-a f-a-path) ::ret-spec))
+              (when f-a
+                (invoke-get-fn-spec a path))
+              (println "infer invoke couldn't find spec for" (:form a*)))
+        _ (assert s)
+        _ (println "infer* :invoke" (:form a*) ":" (:form f-a) f-a-path s)
+        _ (println "infer* :invoke 1:" (:form a*) "local-inferred?" local-inferred-fn? s)]
     (if (and s (not (c/unknown? s)) (not (c/invalid? s)) (or (c/invoke? s) local-inferred-fn?))
-      (let [s-args (if (c/valid? (c/invoke-accept s) invoke-args)
+      (let [_ (println "infer invoke valid args? pre" (c/invoke-accept s) invoke-args)
+            s-args (if (c/valid? (c/invoke-accept s) invoke-args)
                      (let [spec* (c/maybe-transform s invoke-args)]
                        (if (:args spec*)
                          (:args spec*)
                          (c/invoke-accept s)))
                      (c/invoke-accept s))
+            _ (println "infer invoke valid args? post" s-args)
             s-args (infer-invoke-constraints s-args (c/elements invoke-args))
             s-args (c/all-possible-values-length-n s-args (c/min-length s-args))]
         (if (c/conformy? s-args)
@@ -2079,17 +2152,28 @@ will return `(instance? C x)` rather than `y`
                                                     (infer-add-constraint a (:path b) path s-arg))
                                 a)) a args)
                     a)
-                ;;if (and f-a (= :var f-a-op) (c/fn-spec? s) (not (recursive? a (conj path :fn))))
-                ;;(:ret (call-site-specialize f-a f-a-path invoke-args))
-                ret-spec (c/invoke s (if (c/valid? (c/invoke-accept s) invoke-args)
-                                       invoke-args
-                                       (c/invoke-accept s)))]
+                invoke-args (if (c/valid? (c/invoke-accept s) invoke-args)
+                              invoke-args
+                              (c/invoke-accept s))
+                _ (println "invoke-args:" invoke-args)
+                _ (println "infer :invoke: f-a ret-spec" (::ret-spec f-a) "s:" s)
+                ret-spec (if (and f-a (= :var f-a-op) (c/fn-spec? s) (not (recursive? a (conj path :fn))))
+                           (:ret (call-site-specialize f-a f-a-path invoke-args))
+                           (c/invoke s invoke-args))
+                _ (println "infer* :invoke:" (:form a*) s s-args invoke-args "=>" ret-spec)]
+            (when-not (c/conformy? ret-spec)
+              (println "infer invoke non-conformy:" (:form a*) (a-loc-str a*) s invoke-args "=>" ret-spec)
+              ;; (assert false)
+              )
             (assert ret-spec)
             (assoc-in a (conj path ::ret-spec) ret-spec))
-          (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s with %s" (print-str s-args) (print-str invoke-args))}))))
+          (do
+            (println "infer invoke invalid: can't invoke" s "var:" (get-in a (concat path [:fn :var])) s-args "with" invoke-args)
+            ;; (assert false)
+            (assoc-in a (conj path ::ret-spec) (c/invalid {:message (format "infer invoke: can't invoke %s with %s" (print-str s-args) (print-str invoke-args))})))))
       (do
         (println "infer invoke unknown spec:" (:form a*) s)
-        (assert false "unknown spec")
+        ;; (assert false "unknown spec")
         (assoc-in a (conj path ::ret-spec) (c/unknown {:message (format "infer invoke: unknown spec or invalid spec: %s" s)}))))))
 
 (defmethod infer* :local [a path]
@@ -2124,14 +2208,11 @@ will return `(instance? C x)` rather than `y`
 
 (defmethod infer* :fn [a path]
   (let [a* (get-in a path)
-        ;; before walking the fn methods, set up specs for the fn-methods in case there's any self calls
+        ;; before walking the fn methods, set up specs for the
+        ;; fn-methods in case there's any self calls
         a (infer-fn-methods a path)
         a* (get-in a path)
-        _ (println "infer :fn methods:" (map :form (:methods a*)) (map ::ret-spec (:methods a*)))
         ret-spec (c/merge-fn-specs (map ::ret-spec (:methods a*)))
-        _ (when-let [v (a-def-fn? a path)]
-            ;; store the preliminary spec in case this is a mutually recursive fn
-            (data/store-var-spec v ret-spec))
         a (assoc-in a (concat path [::ret-spec]) ret-spec)
         _ (assert (c/fn-spec? ret-spec))
         a (if (:local a*)
@@ -2258,6 +2339,8 @@ will return `(instance? C x)` rather than `y`
                                              [m (assoc s :args args)]))))
                                   (filter identity)
                                   (map (fn [[m s]]
+                                         {:pre [(do (println "infer-java-call" m s) true)]
+                                          :post [(do (println "infer-java-call" m s "=>" %) true)]}
                                          (c/maybe-transform-method m s (if (c/valid? (:args s) invoke-args)
                                                                          invoke-args
                                                                          (c/invoke-accept s)))))
@@ -2390,9 +2473,7 @@ will return `(instance? C x)` rather than `y`
                                           (let [other-bindings (get-in bindings-map [other-branch b-path])
                                                 other-constraints (c/and- (map :constraint other-bindings))]
                                             (cond
-                                              (and other-constraints (= predicted-branch :ambiguous)) (infer-add-constraint a b-path
-                                                                                                                         path
-                                                                                                                         (c/or- [this-constraints other-constraints]))
+                                              (and other-constraints (= predicted-branch :ambiguous)) (infer-add-constraint a b-path path (c/or- [this-constraints other-constraints]))
                                               (or (= predicted-branch this-branch) (not other-constraints)) (reduce (fn [a {:keys [call-path constraint] :as binding}]
                                                                                                                       (if (c/valid? test-this-constraint constraint)
                                                                                                                         a

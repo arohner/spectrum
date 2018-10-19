@@ -1410,7 +1410,12 @@
         (or (= #'keyword? pred) (= #'symbol? pred)) (cat- [(pred-spec #'any?) (?- (pred-spec #'any?))])
         (or (= #'ifn? pred) (= #'fn? pred)) (seq- (pred-spec #'any?))
         (= #'any? pred) (pred-spec #'any?)
-        :else (invalid {:message (format "FnSpec: can't invoke-accept %s" (print-str this))})))))
+        :else (invalid {:message (format "FnSpec: can't invoke-accept %s" (print-str this))}))))
+  p/FirstRest
+  (first- [this]
+    (value nil))
+  (rest- [this]
+    (value nil)))
 
 (defn maybe-map-equivalence-hack [c]
  ;;; hack for the godawful clojure.lang.MapEquivalence
@@ -1704,7 +1709,12 @@
       (condp = t
         :ambiguous :ambiguous
         :truthy :falsey
-        :falsey :truthy))))
+        :falsey :truthy)))
+  p/FirstRest
+  (first- [this]
+    (pred-spec #'any?))
+  (rest- [this]
+    (pred-spec #'any?)))
 
 (extend-regex NotSpec)
 
@@ -1823,8 +1833,6 @@
 (defn add-constraint
   "Given a spec s, update it to also conform to spec `constraint`"
   [s constraint]
-  {:pre [(do (when-not (spect? s) (println "add constraint:" s constraint)) true) (spect? s) (spect? constraint)]
-   :post [(spect? %)]}
   (cond
     (value? s) (if (valid? constraint s)
                  s ;; can't make values more specific
@@ -2943,7 +2951,6 @@
 (defn get-fn-method
   "Given an fn-spec, return the method that will be invoked, or the fn-spec"
   [fn-spec invoke-args]
-  {:post [(fn-spec? %)]}
   (if (:methods fn-spec)
     (if-let [m (->> (:methods fn-spec)
                     (filter (fn [m]
@@ -2974,7 +2981,7 @@
         (if (every-known? invoke-args)
           (if (every-valid? invoke-args)
             (do
-              (println "invoke-fn-spec" v spec invoke-args)
+              (println "invoke-fn-spec" (or v "") spec invoke-args)
               (invalid {:message (format "invoke-fn-spec can't invoke %s %s with %s => %s" (if v v "") (print-str args) (print-str invoke-args) (print-str (conform args invoke-args)))}))
             (invalid {:message (format "invoke with invalid args %s" (print-str invoke-args))}))
           (unknown {:message (format "invoke %s w/ unknown args %s" v (print-str invoke-args))})))

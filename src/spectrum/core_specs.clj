@@ -1,14 +1,13 @@
 (ns spectrum.core-specs
   (:require [clojure.core :as core]
             [clojure.spec.alpha :as s]
-            [spectrum.ann :as ann]
             [spectrum.core :as st]
             [spectrum.conform :as c]
             [spectrum.util :refer [def-instance-predicate]]))
 
 ;;; specs for clojure.core fns, should only be used in cases where
-;;; inference can't work, i.e. mostly on things that are built in, but
-;;; not defined in clojure source
+;;; inference can't work, i.e. mostly on things that are built in,
+;;; i.e. not defined in clojure source.
 (def-instance-predicate namespace? clojure.lang.Namespace)
 
 (s/fdef clojure.core/in-ns :args (s/cat :ns symbol?) :ret namespace?)
