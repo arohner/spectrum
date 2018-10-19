@@ -615,3 +615,8 @@
               (-> spect
                   (assoc-in [:args :ps 1] (c/class-spec clojure.lang.Associative))
                   (assoc-in [:ret] (c/class-spec clojure.lang.Associative)))))
+
+(ann-method clojure.lang.RT 'booleanCast (c/cat- [(c/class-spec Object)])
+            (fn [spect args-spect]
+              (-> spect
+                  (assoc-in [:ret] (c/pred-spec #'boolean?)))))
