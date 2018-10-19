@@ -636,6 +636,10 @@
 
     (c/class-spec Object) (c/class-spec Long) (c/class-spec Long)))
 
+(deftest coll-items
+  (are [s expected] (= expected (c/coll-items s))
+    (c/cat- []) #{}))
+
 ;; (deftest specs-generate
 ;;   (binding [s/*recursion-limit* 2]
 ;;     (is (doall (gen/sample (s/gen ::c/spect))))))

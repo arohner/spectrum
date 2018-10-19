@@ -2494,7 +2494,7 @@
          s s]
     (if (first-rest? s)
       (let [v (first- s)]
-        (if (conformy? v)
+        (if (and v (conformy? v))
           (let [ret (conj ret v)]
             (if (and (not (infinite? s)) (rest- s))
               (recur ret (rest- s))
