@@ -339,6 +339,59 @@
     (analyze-cache-walk a path)
     a))
 
+(def control-flow-ops #{:case :fn-method :if :letfn :method :quote})
+
+(defn top-level-expression?
+  "True if this expression is at the top level, or is not blocked by control-flow"
+  [a path]
+  (if (nil? (seq path))
+    true
+    (let [a* (get-in a path)]
+      (if (not (contains? control-flow-ops (:op a*)))
+        (recur a (pop path))
+        false))))
+
+(defn top-level-load?
+  "True if this expression invokes clojure.core/load from the top level"
+  [a path]
+  (let [a* (get-in a path)]
+    (and
+     (top-level-expression? a path)
+     (-> a* :op (= :invoke))
+     (-> a* :fn :var (= #'load)))))
+
+(defn get-load-path-resource
+  "Given a `load` occurring in `ns`, return the resource path to the
+  source file, or nil"
+  [ns load]
+  (let [path (if (.startsWith load "/")
+               load
+               (str (#'clojure.core/root-directory (ns-name ns)) \/ load))
+        [_ path] (re-find #"^/(.*)" path)
+        path (str path ".clj")]
+    (io/resource path)))
+
+(defn ensure-analysis-load
+  "Given the path to a `load` invoke, resolve the ns and `ensure-analysis` it"
+  [a path]
+  (assert (-> a :env :ns))
+  (let [a* (get-in a path)
+        load-arg (-> a* :args first)
+        load-path (-> load-arg :val)
+        can-load? (and (-> load-arg :op (= :const))
+                       (-> load-arg :val string?))]
+    (if can-load?
+      (when-let [r (get-load-path-resource (-> a :env :ns) load-path)]
+        (println "analyzing" r)
+        (analyzer/analyze-resource r))
+      (println "warning dynamic load:" (:form a*)))))
+
+(defmethod analyze-cache* :invoke [a path]
+  (analyze-cache-walk a path)
+  (when (top-level-load? a path)
+    (ensure-analysis-load a path))
+  a)
+
 (defmethod flow* :default [a path]
   (assert false (format "unhandled: %s %s" (:op (get-in a path)) (a-loc-str (get-in a path)))))
 
@@ -999,27 +1052,6 @@ will return `(instance? C x)` rather than `y`
                                                         (println "invoke-get-fn-analysis" fn-op (:form (get-in a path)) "no ret-spec, inferring" (-> ret :a :form))
                                                         (update-in ret [:a] infer))
       :else nil)))
-
-(def control-flow-ops #{:case :fn-method :if :letfn :method :quote})
-
-(defn top-level-expression?
-  "True if this expression is guaranteed to be invoked when the file is loaded, i.e. no control flow blocking it"
-  [a path]
-  (if (nil? (seq path))
-    true
-    (let [a* (get-in a path)]
-      (if (not (contains? control-flow-ops (:op a*)))
-        (recur a (pop path))
-        false))))
-
-(defn top-level-load?
-  "True if this expression invokes clojure.core/load from the top level"
-  [a path]
-  (let [a* (get-in a path)]
-    (and
-     (-> a* :op (= :invoke))
-     (-> a* :fn :var (= #'load))
-     (top-level-expression? a path))))
 
 (defn infer-or-flow
   "Given analysis flow or infer as appropriate. Return the updated analysis"

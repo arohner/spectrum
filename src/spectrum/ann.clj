@@ -10,6 +10,19 @@
   (:import (clojure.lang BigInt
                          Ratio)))
 
+
+;;; Annotations are hooks into the typing process. an `ann` is a
+;;; function that gets called when a fn invoke happens, it is passed
+;;; the invoke spec, and the callsite arguments. The ann function
+;;; should update the invoke spec, either :args or :ret or both.
+
+;;; `ann-method` works the same way, with java methods.
+
+;;; In general, prefer using `ann` and `ann-method` only on the base
+;;; clojure implementation. Needing to use `ann` on 'userspace' code
+;;; typically means our type inference isn't working as well as we'd
+;;; like
+
 (s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
 
 (s/fdef ann :args (s/cat :v var? :f ::transformer) :ret any?)
