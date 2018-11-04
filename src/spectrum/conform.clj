@@ -1516,6 +1516,7 @@
 (defn protocol-spec? [x]
   (instance? ProtocolSpec x))
 
+;;; represents an object that implements Protocol p
 (extend-type ProtocolSpec
   p/Spect
   (conform* [this x]

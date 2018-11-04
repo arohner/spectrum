@@ -22,5 +22,6 @@
 
 (st/var-spec #'clojure.core/*in* (c/class-spec java.io.Reader))
 (st/var-spec #'clojure.core/*out* (c/class-spec java.io.Writer))
+(st/var-spec #'clojure.core/*err* (c/class-spec java.io.Writer))
 
 (st/var-spec #'clojure.core/*flush-on-newline* (c/pred-spec #'boolean?))

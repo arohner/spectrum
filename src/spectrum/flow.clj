@@ -96,8 +96,59 @@
 
 (defmulti analyze-cache* #'analyze-cache-dispatch)
 
+(defn var-macro?
+  "True if this var holds a macro"
+  [v]
+  (-> v meta :macro))
+
+(defn walk-macro-dispatch [v a path]
+  v)
+
+(defmulti walk-macro-pre* #'walk-macro-dispatch)
+(defmulti walk-macro-post* #'walk-macro-dispatch)
+
+;; we can't fdef `macroexpansion-vars` in case we try to analyze the
+;; clojure.spec.analyze/Specize macro, which passes `::s/invalid` as a
+;; value.
+
+;;(s/fdef macroexpansion-vars :args (s/cat :a ::ana.jvm/analysis) :ret (s/coll-of var? :kind set?))
+(defn macroexpansion-vars
+  "If the analysis node is a macroexpansion, return the set of vars in the expansion or nil"
+  [a]
+  (->> a
+       :raw-forms
+       (map (fn [f]
+              (-> f  meta :clojure.tools.analyzer/resolved-op)))
+       (filter var-macro?)
+       set))
+
+(s/fdef walk-macro :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret ::ana.jvm/analysis)
+(defn walk-macro-pre
+  [a path]
+  (if-let [vs (seq (macroexpansion-vars (get-in a path)))]
+    (reduce (fn [a v]
+              (walk-macro-pre* v a path)) a vs)
+    a))
+
+(s/fdef walk-macro-post :args (s/cat :a ::analysis :path ::path) :ret ::analysis)
+(defn walk-macro-post
+  [a path]
+  (if-let [vs (seq (macroexpansion-vars (get-in a path)))]
+    (reduce (fn [a v]
+              (walk-macro-post* v a path)) a vs)
+    a))
+
+(defn analyze-cache-wrap [a path]
+  (let [a (walk-macro-pre a path)
+        a* (get-in a path)
+        _ (assert a*)
+        a (analyze-cache* a path)
+        a (walk-macro-post a path)
+        a* (get-in a path)]
+    a))
+
 (defn analyze-cache [a]
-  (analyze-cache* a []))
+  (analyze-cache-wrap a []))
 
 (defn infer-result [a]
   (cond
@@ -210,28 +261,6 @@
   [a]
   (contains? variable-bindings (:op a)))
 
-(defn var-macro?
-  "True if this var holds a macro"
-  [v]
-  (-> v meta :macro))
-
-(s/fdef macroexpansion-vars :args (s/cat :a ::ana.jvm/analysis) :ret (s/coll-of var? :kind set?))
-(defn macroexpansion-vars
-  "If the analysis node is a macroexpansion, return the set of vars in the expansion or nil"
-  [a]
-  (->> a
-       :raw-forms
-       (map (fn [f]
-              (-> f  meta :clojure.tools.analyzer/resolved-op)))
-       (filter var-macro?)
-       set))
-
-(defn walk-macro-dispatch [v a path]
-  v)
-
-(defmulti walk-macro-pre* #'walk-macro-dispatch)
-(defmulti walk-macro-post* #'walk-macro-dispatch)
-
 (defmethod walk-macro-pre* :default [v a path]
   a)
 
@@ -259,26 +288,103 @@
                                                    (assoc ::ret-spec (c/class-spec clojure.lang.IChunk)
                                                           :skip? true))))))
 
+(s/def :protocol/name symbol?)
+(s/def :protocol-method/args (s/coll-of symbol?))
+(s/def :protocol/docstring string?)
+
+(s/def :protocol/method (s/keys :req-un [:protocol/name :protocol-method/args]
+                                 :opt-un [:protocol/docstring]))
+
+(s/def :protocol/methods (s/coll-of :protocol/method))
+
+(s/fdef parse-protocol-method :args (s/cat :form any?) :ret :protocol/method)
+(defn parse-defprotocol-method [method-form]
+  (let [[name args doc?] method-form]
+    {:name name
+     :args args
+     :docstring doc?}))
+
+(s/def :protocol/parse (s/keys :req-un [:protocol/name :protocol/methods]
+                               :opt-un [:protocol/docstring]))
+(defn parse-defprotocol-form
+  "Given the `:form` of a defprotocol, parse and return a map describing the protocol"
+  [form]
+  (let [[defp-form name doc? & methods] form
+        [doc? methods] (if (string? doc?)
+                         [doc? methods]
+                         [nil (vec (concat [doc?] methods))])
+        methods (mapv parse-defprotocol-method methods)]
+    {:name name
+     :docstring doc?
+     :methods methods}))
+
+(s/fdef protocol-method-args-bindings :args (s/cat :v var? :a :protocol-method/args) :ret (s/coll-of ::ana.jvm/binding))
+(defn protocol-method-args-bindings
+  "Given the seq of :args from a protocol :method, return dummy bindings for the analysis"
+  [protocol-var args]
+  (->> (concat [{:op :binding
+                 :form 'this
+                 :name 'this
+                 :local :fn
+                 ::ret-spec (c/protocol- protocol-var)}]
+               (map (fn [a]
+                      {:op :binding
+                       :form a
+                       :name a
+                       :local :fn
+                       ::ret-spec (c/pred-spec #'any?)}) args))
+       vec))
+
+(s/fdef protocol-method-dummy-analysis :ret ::analysis)
+(defn protocol-method-dummy-analysis
+  "Given a defprotocol method, return dummy analysis for a :fn definition"
+  [protocol-var protocol-method]
+  (let [arg-count (-> protocol-method :args count inc)
+        params (protocol-method-args-bindings protocol-var (:args protocol-method))
+        ret-spec (c/fn-spec {:args (map ::ret-spec params) :ret (c/pred-spec #'any?)})]
+    {:op :def
+     :name (:name protocol-method)
+     :var protocol-var
+     :init {:op :fn
+            :variadic? false
+            :max-fixed-arity arg-count
+            :once false
+            :var protocol-var
+            ::ret-spec ret-spec
+            :methods [{:op :fn-method
+                       :form nil
+                       :variadic? false
+                       :params params
+                       ::ret-spec ret-spec
+                       :fixed-arity arg-count
+                       :body nil}]}}))
+
+(defn intern-defprotocol-vars
+  "Given the form to a macroexpanded `defprotocol` analysis, intern
+  dummy analysis and specs for protocol methods"
+  [a path]
+
+  (let [a* (get-in a path)
+        protocol (parse-defprotocol-form (-> a* :raw-forms first))
+        ns (-> a :env :ns find-ns)
+        _ (println "intern-defprotocol-vars:" protocol)
+        m-as (mapv (fn [m]
+                     (let [method-var (ns-resolve (-> a :env :ns) (-> m :name))]
+                       (protocol-method-dummy-analysis method-var m))) (:methods protocol))
+        a (assoc-in a (conj path ::protocol) protocol)
+        a (assoc-in a (conj path ::protocol-analysis :methods) m-as)]
+    (assert (pos? (count (get-in a (conj path ::protocol-analysis :methods)))))
+    (doseq [i (range (count (get-in a (conj path ::protocol-analysis :methods))))
+            :let [m-path (conj path ::protocol-analysis :methods i)
+                  m (get-in a m-path)]]
+      (assert (var? (:var m)))
+      (println "store protocol var" m (::ret-spec m))
+      (data/store-var-analysis (:var m) a m-path))))
+
 (defmethod walk-macro-post* #'defprotocol [v a path]
   (let [a* (get-in a path)]
-    (println "defprotocol:" (:op a*) (:form a*) (macroexpansion-vars a)))
+    (intern-defprotocol-vars a path))
   a)
-
-(s/fdef walk-macro :args (s/cat :a ::ana.jvm/analysis :path ::path) :ret ::ana.jvm/analysis)
-(defn walk-macro-pre
-  [a path]
-  (if-let [vs (seq (macroexpansion-vars (get-in a path)))]
-    (reduce (fn [a v]
-              (walk-macro-pre* v a path)) a vs)
-    a))
-
-(s/fdef walk-macro-post :args (s/cat :a ::analysis :path ::path) :ret ::analysis)
-(defn walk-macro-post
-  [a path]
-  (if-let [vs (seq (macroexpansion-vars (get-in a path)))]
-    (reduce (fn [a v]
-              (walk-macro-post* v a path)) a vs)
-    a))
 
 (defn wrap [f]
   (fn [a path]
@@ -325,7 +431,7 @@
   (walk-a flow-wrap a path))
 
 (defn analyze-cache-walk [a path]
-  (walk-a analyze-cache* a path))
+  (walk-a analyze-cache-wrap a path))
 
 (defmethod analyze-cache* :default [a path]
   (analyze-cache-walk a path)
@@ -1128,7 +1234,9 @@ will return `(instance? C x)` rather than `y`
 
 (s/fdef call-site-specialize :args (s/cat :f-a ::analysis :path ::path :args ::c/spect) :ret ::c/spect)
 (defn call-site-specialize*
-  "Given the analysis for a fn and fn args, return a call-site specialized spec for f. specialization can change the :args, e.g. `map`, so this returns a whole fn spec"
+  "Given the analysis for a fn and fn args, return a call-site
+  specialized spec for f. specialization can change the :args,
+  e.g. `map`, so this returns a whole fn spec"
   [f-a path args-spec]
   {:pre [(c/spect? args-spec)]
    :post [(do (println (when-not (c/fn-spec? %) (println "specialize ret:" (:form (get-in f-a path)) args-spec "=>" %))) true) (c/fn-spec? %)]}
@@ -2066,8 +2174,8 @@ will return `(instance? C x)` rather than `y`
         _ (data/store-var-analysis v a path)
         a (infer-walk a path)
         a* (get-in a path)]
+    (assert (::ret-spec a*))
     (data/store-var-analysis v a path)
-    (assert (::ret-spec a))
     (when (-> a* :init)
       (let [s (-> a* :init ::ret-spec)]
         (assert (c/spect? s))
@@ -2088,6 +2196,7 @@ will return `(instance? C x)` rather than `y`
   ;; the-var => (var foo). Returns the actual var
   (let [a (infer-walk a path)
         a* (get-in a path)]
+    (assert (:var a*))
     (assoc-in a (conj path ::ret-spec) (c/value (:var a*)))))
 
 (defn update-fn [s f & args])
