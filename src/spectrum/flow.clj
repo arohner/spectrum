@@ -345,6 +345,7 @@
     {:op :def
      :name (:name protocol-method)
      :var protocol-var
+     ::ret-spec (c/pred-spec #'var?)
      :init {:op :fn
             :variadic? false
             :max-fixed-arity arg-count
@@ -1055,7 +1056,7 @@ will return `(instance? C x)` rather than `y`
   (reduce (fn [a [b-path spec]]
             (update-in a (conj b-path ::ret-spec) c/add-constraint spec)) a constraints))
 
-(defn maybe-if-bindings
+(defn nearest-if-binding
   "Given a path, walk upwards to the nearest :if-binding, or nil"
   [a path]
   (loop [path path]
@@ -1071,21 +1072,12 @@ will return `(instance? C x)` rather than `y`
   [a b-path call-path constraint]
   (let [binding (get-in a b-path)
         _ (assert binding)
-        if-bindings (maybe-if-bindings a call-path)
+        if-bindings (nearest-if-binding a call-path)
         b-spec (::ret-spec binding)]
     (assert binding (format "binding not found: %s %s" (:form a) b-path))
     (assert b-path)
-    (if if-bindings
-      (if (= :if-bindings (last b-path))
-        (assert false "TODO: update an if-binding")
-        (let [binding (update-in binding [::ret-spec] c/add-constraint constraint)
-              binding (merge binding {:call-path call-path
-                                      :path b-path
-                                      :constraint constraint})]
-          (update-in a if-bindings conj binding)))
-      (update-in a (conj b-path ::ret-spec) (fn [s]
-                                              ;; {:post [(do (println "infer-add-constraint update:" s constraint "=>" %) true)]}
-                                              (c/add-constraint s constraint))))))
+    (assert b-spec)
+    (update-in a (conj b-path ::ret-spec) c/add-constraint constraint)))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret ::c/spect)
 (defn analysis-args->spec

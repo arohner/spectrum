@@ -2,7 +2,7 @@
   (:require [clojure.core.memoize :as memo]
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
-            [spectrum.util :refer (print-once protocol? def-instance-predicate instrument-ns)]))
+            [spectrum.util :refer (print-once protocol? namespace? def-instance-predicate instrument-ns)]))
 
 (defonce var-analysis
   ;; var => ana.jvm/analysis cache
