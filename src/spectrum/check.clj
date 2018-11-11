@@ -44,7 +44,7 @@
 (def builtin-nses '[clojure.core clojure.set clojure.string clojure.spec.alpha clojure.spec.gen.alpha])
 
 (defn maybe-load-clojure-builtins []
-  (when-not (data/analyzed-ns? 'clojure.core)
+  (when-not (data/analyzed-ns? (find-ns 'clojure.core))
     (println "loading clojure")
     (doseq [n builtin-nses]
       (flow/analyze-cache-ns n))

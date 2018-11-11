@@ -82,12 +82,15 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
     (assert dispatch-val)
     (swap! defmethod-analysis assoc [v dispatch-val] a)))
 
+(s/fdef mark-ns-analyzed! :args (s/cat :ns namespace?))
 (defn mark-ns-analyzed! [ns]
   (swap! analyzed-nses conj ns))
 
+(s/fdef mark-ns-analyzed! :args (s/cat :ns namespace?))
 (defn mark-ns-unanalyzed! [ns]
   (swap! analyzed-nses disj ns))
 
+(s/fdef analyzed-ns? :args (s/cat :ns namespace?) :ret boolean?)
 (defn analyzed-ns? [ns]
   (contains? @analyzed-nses ns))
 

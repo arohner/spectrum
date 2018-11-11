@@ -144,3 +144,4 @@
             ret))))))
 
 (def-instance-predicate url? java.net.URL)
+(def-instance-predicate namespace? clojure.lang.Namespace)
