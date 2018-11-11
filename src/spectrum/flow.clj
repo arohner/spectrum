@@ -157,7 +157,6 @@
 (def infer-cache (atom {}))
 
 (defn infer-cache-key [a]
-  {:post [(do (println "infer-cache-key" (:form a)) true)]}
   (assert (:form a))
   (:form a))
 
@@ -368,7 +367,6 @@
   (let [a* (get-in a path)
         protocol (parse-defprotocol-form (-> a* :raw-forms first))
         ns (-> a :env :ns find-ns)
-        _ (println "intern-defprotocol-vars:" protocol)
         m-as (mapv (fn [m]
                      (let [method-var (ns-resolve (-> a :env :ns) (-> m :name))]
                        (protocol-method-dummy-analysis method-var m))) (:methods protocol))
@@ -379,7 +377,7 @@
             :let [m-path (conj path ::protocol-analysis :methods i)
                   m (get-in a m-path)]]
       (assert (var? (:var m)))
-      (println "store protocol var" m (::ret-spec m))
+      (assert (::ret-spec (get-in a m-path)))
       (data/store-var-analysis (:var m) a m-path))))
 
 (defmethod walk-macro-post* #'defprotocol [v a path]
@@ -2362,7 +2360,6 @@ will return `(instance? C x)` rather than `y`
         _ (assert (every? ::ret-spec (get-in a (conj path :params))))
         a (infer-walk a path)
         params (get-in a (conj path :params))
-
         a* (get-in a path)
         params-spec (c/cat- (mapv ::ret-spec params))
         body-ret-spec (-> a* :body ::ret-spec c/strip-control-flow)
@@ -2472,8 +2469,6 @@ will return `(instance? C x)` rather than `y`
                                              [m (assoc s :args args)]))))
                                   (filter identity)
                                   (map (fn [[m s]]
-                                         {:pre [(do (println "infer-java-call" m s) true)]
-                                          :post [(do (println "infer-java-call" m s "=>" %) true)]}
                                          (c/maybe-transform-method m s (if (c/valid? (:args s) invoke-args)
                                                                          invoke-args
                                                                          (c/invoke-accept s)))))
