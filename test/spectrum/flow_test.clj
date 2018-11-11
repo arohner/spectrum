@@ -199,6 +199,7 @@
   [v]
   (-> v
       (data/get-var-analysis)
+      :a
       (flow/flow)
       :init
       flow/maybe-strip-meta
