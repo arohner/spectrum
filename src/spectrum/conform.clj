@@ -281,8 +281,16 @@
   (will-accept- [this]
     reject)
   p/Regex
+  (derivative [this x]
+    reject)
+  (empty-regex [this]
+    reject)
   (elements [this]
-    [this]))
+    [this])
+  (accept-nil? [this]
+    false)
+  (regex? [this]
+    false))
 
 (defn bottom [{:keys [form a-loc message] :as args}]
   (let [a *a*
