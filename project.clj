@@ -9,10 +9,12 @@
                  [org.clojure/core.memoize "0.5.8"]
                  [org.clojure/math.combinatorics "0.1.4"]
                  [com.cognitect/transit-clj "0.8.300"]
-                 [org.clojure/core.match "0.3.0-alpha4"]]
+                 [org.clojure/core.match "0.3.0-alpha4"]
+                 [org.clojure/core.unify "0.5.7"]]
 
   :profiles
   {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]
+                        [orchestra "2018.08.19-1"]
                         [arohner/repl-utils "0.1.0"]]
          :repl-options {:init-ns spectrum.repl
                         :init (do

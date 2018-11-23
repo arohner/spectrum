@@ -16,14 +16,15 @@
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword IFn ISeq)
            java.io.Writer
-           (spectrum.protocols Accept Reject Invalid Unknown Bottom ThrowForm RecurForm RegexCat RegexSeq RegexAlt Value AndSpec NotSpec OrSpec TupleSpec SpecSpec PredSpec ClassSpec ProtocolSpec KeysSpec CollOfSpec ArrayOf MapOf FnSpec MultiSpec)))
+           (spectrum.protocols Accept Reject Invalid Unknown Bottom ThrowForm RecurForm RegexCat RegexSeq RegexAlt Value AndSpec NotSpec OrSpec TupleSpec SpecSpec PredSpec ClassSpec ProtocolSpec KeysSpec CollOfSpec ArrayOf MapOf FnSpec MultiSpec Logic)))
 
 (declare conform)
 (declare valid?)
 (declare parse-spec)
 (declare value)
 
-
+(declare logic-spec?)
+(declare logic-spec)
 (declare class-spec?)
 (declare pred-spec?)
 (declare or?)
@@ -179,7 +180,9 @@
 (s/fdef will-accept :args (s/cat :s ::spect) :ret ::spect)
 (defn will-accept [s]
   {:post [(do (when-not (s/valid? ::will-accept-ret %) (println "invalid will-accept:" s "=>" %)) true) (s/valid? ::will-accept-ret %)]}
-  (p/will-accept- s))
+  (if (satisfies? p/WillAccept s)
+    (p/will-accept- s)
+    reject))
 
 (s/fdef accept-nil? :args (s/cat :s (s/nilable ::spect)) :ret boolean?)
 (defn accept-nil? [s]
@@ -292,6 +295,12 @@
   (regex? [this]
     false))
 
+(defn new-logic [name]
+  (p/map->Logic {:name name}))
+
+(defn logic? [x]
+  (instance? Logic x))
+
 (defn bottom [{:keys [form a-loc message] :as args}]
   (let [a *a*
         form (if (find args form)
@@ -348,9 +357,6 @@
 
 (s/fdef invoke :args (s/cat :s ::spect :args ::spect) :ret ::spect)
 (defn invoke [s args]
-  {:pre [(validate! ::spect s)
-         (validate! ::spect args)]
-   :post [(validate! ::spect %)]}
   (if (invoke? s)
     (p/invoke- s args)
     (invalid {:message (format "invoke: %s doesn't implement Invoke" (print-str s))})))
@@ -543,6 +549,16 @@
     (accept x)
     reject))
 
+(extend-type Logic
+  p/Spect
+  (conform* [this x]
+    (or (and (logic? x)
+             (-> x :name (= (:name this)))
+             x)
+        (and (pred-spec? x)
+             (-> x :p (= #'any?))
+             x))))
+
 (extend-type Object
   p/Regex
   (return- [this]
@@ -550,7 +566,9 @@
   (regex? [this]
     false)
   (accept-nil? [this]
-    false))
+    false)
+  (elements [this]
+    [this]))
 
 (def spect-regex-impl
   {:derivative spec-dx
@@ -1382,14 +1400,7 @@
       (cond
         (any-? spec) x
         (and (pred-spec? x) (= pred (:pred x))) x
-        (and (= #'class? pred) (class-spec? x)) x
-
-        ;; calling the pred should always be last resort
-        ;; TODO remove this, or restrict to only using w/ pure functions. Not technically 'static' analysis.
-        ;; (and (conform-pred-args? spec (cat- [x])) (valuey? x)) (do
-        ;;                                                          (when (pred (get-value x))
-        ;;                                                            x))
-        )))
+        (and (= #'class? pred) (class-spec? x)) x)))
   (explain* [spec path via in x]
     (when (not (valid? spec x))
       [{:path path :pred (:form spec) :val x :via via :in in}]))
@@ -2905,16 +2916,22 @@
   [v]
   (boolean (re-find #"\?$" (name (.sym ^Var v)))))
 
+(defn spec-predicate?
+  "True if this spec looks like a predicate"
+  [s]
+  {:post [(do (println "spec-predicate?" s "=>" %) true)]}
+  (if s
+    (and (fn-spec? s)
+         (valid? (cat- [(pred-spec #'any?)]) (:args s))
+         (valid? (pred-spec #'boolean?) (:ret s)))
+    false))
+
 (s/fdef var-predicate? :args (s/cat :v var?) :ret boolean?)
 (defn var-predicate?-
   [v]
+  {:post [(do (println "c/var-predicate?" v (get-var-spec v) "=>" %) true)]}
   (let [s (get-var-spec v)]
-    (if s
-      (and (-> s :args cat?)
-           (-> s :args :ps count (= 1))
-           (-> s :ret (= (pred-spec #'boolean?)))
-           (var-named-predicate? v))
-      false)))
+    (spec-predicate? s)))
 
 (def var-predicate? (memo/memo var-predicate?-))
 
@@ -3552,6 +3569,10 @@
        (apply concat)
        (vec)
        (#(print-method % w))))
+
+(defmethod print-method Logic [s ^Writer w]
+  (.write w "#?t")
+  (print-method (:name s) w))
 
 (defmethod print-method KeysSpec [spec ^Writer w]
   (.write w "#keys{")

@@ -239,12 +239,11 @@
   "True if the analysis is invoking a predicate"
   [a]
   (and (-> a :op (= :invoke))
-       (-> a :fn :op (= :var))
-       (-> a :args count (= 1))
-       (some-> a :fn :var c/var-predicate?)))
+       (-> a :fn ::ret-spec)
+       (-> a :fn ::ret-spec c/spec-predicate?)))
 
 (defn invoke-nil?
-  "True if the analysis is invoking the inlined version of #'nil?, which is a :static-call to clojure.lang.Util/identical"
+  "True if the analysis is invoking the inlined version of #'nil?, which is a `:static-call` to `(clojure.lang.Util/identical x nil)`"
   [a]
   (and (-> a :op (= :static-call))
        (-> a :class (= clojure.lang.Util))
