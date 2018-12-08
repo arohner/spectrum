@@ -7,14 +7,14 @@
 
 (declare unify)
 
+(defn logic? [x]
+  (or (c/logic? x)
+      (and (symbol? x) (= \? (-> x name first)))))
+
 (defn composite? [x]
   (cond
     (logic? x) false
     (coll? x) true))
-
-(defn logic? [x]
-  (or (c/logic? x)
-      (and (symbol? x) (= \? (-> x name first)))))
 
 (defn occurs?
   "Does v occur anywhere inside typ"
@@ -28,8 +28,7 @@
     :else false))
 
 (defn unify-variable [v typ subst]
-  {:pre [(logic? v)]
-   :post [(do (println "unify-variable:" v typ "=>" %) true)]}
+  {:pre [(logic? v)]}
   (cond
     (get subst v) (unify (get subst v) typ subst)
     (and (logic? typ) (get subst typ)) (unify v (get subst typ) subst)
@@ -45,10 +44,17 @@
   ([x y]
    (unify x y {}))
   ([x y subst]
-   {:post [(do (when (not %)
+   {:post [(do (when-not %
                  (println "unify fail:" x y)) true)]}
    (cond
      (nil? subst) nil
      (= x y) subst
-     (c/logic? x) (unify-variable x y subst)
-     (c/logic? y) (unify-variable y x subst))))
+     (logic? x) (unify-variable x y subst)
+     (logic? y) (unify-variable y x subst)
+     (and (c/spect? x) (c/spect? y) (not (logic? x)) (not (logic? y)) (c/valid? x y)) subst
+     (every? composite? [x y]) (do
+                                 (when (c/spect? x)
+                                   (println "unify fail" x y "x logic?" (logic? x)))
+                                 (assert (not (c/spect? x)))
+                                 (assert (not (c/spect? y)))
+                                 (unify (rest x) (rest y) (unify (first x) (first y) subst))))))

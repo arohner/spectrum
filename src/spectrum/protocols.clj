@@ -66,13 +66,15 @@ seq of concrete specs that don't contain choices")
 
 (defrecord Value [v type])
 
+(defrecord Logic [name])
+
 (defprotocol FirstRest
   (first- [this])
   (rest- [this]
     "Return a spect or nil.
 
-    Returns nil if it's legal to call rest on this, but there are no
-    items. Return invalid if it's not legal to call rest,
+    Returns nil if it's legal to call `rest` on this, but there are no
+    items. Return `invalid` if it's not legal to call rest,
     i.e. (value :foo)"))
 
 (defprotocol Truthyness
