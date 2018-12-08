@@ -1,5 +1,6 @@
 (ns spectrum.unify-test
   (:require [clojure.test :refer :all]
+            [spectrum.conform :as c]
             [spectrum.unify :as u]))
 
 (deftest unifier-works
@@ -8,6 +9,8 @@
       '?x 3
       ['?x] [1]
       '?x 1
+      nil nil
+      (c/pred-spec #'nil?) (c/value nil)
       '(map-of ?x ?y) '(map-of ?t string?)
       (c/map-of (c/new-logic 'x) (c/new-logic 'y)) (c/map-of (c/pred-spec #'int?) (c/pred-spec #'string?)))
 
