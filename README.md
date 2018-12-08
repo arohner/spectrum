@@ -17,7 +17,8 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 
 ## Current Status
 
-Developer Preview, not yet ready for production use.
+Developer Preview, not yet ready for any kind of use. `master` may not
+compile. Tests definitely won't pass.
 
 Current development is working towards making spectrum self-check.
 
