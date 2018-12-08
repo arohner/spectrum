@@ -1,6 +1,7 @@
 (ns spectrum.data
   (:require [clojure.core.memoize :as memo]
             [clojure.tools.analyzer.jvm :as ana.jvm]
+            [spectrum.analyzer-spec]
             [clojure.spec.alpha :as s]
             [spectrum.util :refer (print-once protocol? namespace? def-instance-predicate instrument-ns)]))
 
@@ -10,6 +11,10 @@
 
 (defonce var-specs
   ;; var => spec
+  (atom {}))
+
+(defonce var-dependencies
+  ;; var => vars
   (atom {}))
 
 (defonce defmethod-analysis
@@ -57,7 +62,10 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 (defn get-dependent-specs [s]
   (get @extra-dependent-specs s))
 
-(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis-def))
+(s/def ::a ::ana.jvm/analysis)
+(s/def ::path vector?)
+
+(s/fdef get-var-analysis :args (s/cat :v var?) :ret (s/nilable (s/keys :req-un [::a ::path])))
 (defn get-var-analysis [v]
   {:pre [(var? v)]}
   (get @var-analysis v))
@@ -72,6 +80,14 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
     (println "store-var-analysis:" (get-in a (conj path :op)) (:form a)))
   (assert (= :def (get-in a (conj path :op))))
   (swap! var-analysis assoc v {:a a :path path}))
+
+(s/fdef store-var-dependencies :args (s/cat :v var? :deps (s/coll-of var?)))
+(defn store-var-dependencies [v deps]
+  (swap! var-dependencies assoc v deps)
+  nil)
+
+(defn get-var-dependencies []
+  @var-dependencies)
 
 (defn store-defmethod-analysis
   [a]

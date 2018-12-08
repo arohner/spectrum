@@ -23,8 +23,6 @@
 (declare parse-spec)
 (declare value)
 
-(declare logic-spec?)
-(declare logic-spec)
 (declare class-spec?)
 (declare pred-spec?)
 (declare or?)
@@ -53,6 +51,9 @@
 
 (defn fn-spec? [x]
   (instance? spectrum.protocols.FnSpec x))
+
+(defn or-spec? [x]
+  (instance? OrSpec x))
 
 (predicate-spec cat?)
 (defn cat? [x]
@@ -108,12 +109,11 @@
   {:post [(boolean? %)]}
   (and (satisfies? p/Regex x) (p/regex? x)))
 
-(s/fdef elements :args (s/cat :s ::spect) :ret (s/coll-of ::spect))
+(s/fdef elements :args (s/cat :s ::spect) :ret (s/nilable (s/coll-of ::spect)))
 (defn elements [s]
-  {:post [(validate! (s/coll-of ::spect) %)]}
   (if (satisfies? p/Regex s)
     (p/elements s)
-    [s]))
+    nil))
 
 (defn fix-length
   "Given a regex possibly containing Seq, recursively resolve to
@@ -552,13 +552,14 @@
 (extend-type Logic
   p/Spect
   (conform* [this x]
-    (or (and (logic? x)
-             (-> x :name (= (:name this)))
-             x)
-        (and (pred-spec? x)
-             (-> x :p (= #'any?))
-             x))))
+    (or (when (and (logic? x)
+                   (-> x :name (= (:name this))))
+          x)
+        (when (and (pred-spec? x)
+                   (-> x :p (= #'any?)))
+          x))))
 
+;; TODO is this necessary?
 (extend-type Object
   p/Regex
   (return- [this]
@@ -568,6 +569,10 @@
   (accept-nil? [this]
     false)
   (elements [this]
+    [this])
+  (disentangle [this]
+    [this])
+  (fix-length [this n]
     [this]))
 
 (def spect-regex-impl
@@ -587,7 +592,7 @@
    :fix-length (fn [this n]
                  [this])
    :elements (fn [this]
-               [this])})
+               nil)})
 
 (defn extend-regex
   "extends the Regex protocol to a non-regex Spect"
@@ -731,6 +736,24 @@
       (#(filter value? %))
       first
       (or x)))
+
+(s/fdef simplify :args (s/cat :s ::spect) :ret ::spect)
+(defn simplify
+  "Given a spec, convert it to it's most precise version"
+  [x]
+  (let [ds (dependent-specs x)]
+    (or (->> ds
+             (filter value?)
+             first)
+        (->> ds
+             (filter class-spec?)
+             first)
+        (->> ds
+             (filter (fn [s]
+                       (and (or-spec? s)
+                            (every? class-spec? (elements s)))))
+             first)
+        x)))
 
 (s/fdef recursive-dependent-specs :args (s/cat :s (s/nilable ::spect)) :ret ::dependent-specs)
 (defn recursive-dependent-specs
@@ -1447,7 +1470,7 @@
 
 (s/fdef class-spec :args (s/cat :c class?) :ret ::spect)
 (defn class-spec [c]
-  (assert (class? c) (format "not class?: %s %s" c (class c)))
+  (assert (or (class? c) (logic? c)) (format "not class?: %s %s" c (class c)))
   (p/map->ClassSpec {:cls c}))
 
 (predicate-spec class-spec?)
@@ -1709,7 +1732,7 @@
 
 (s/fdef not- :args (s/cat :s ::spect) :ret ::spect)
 (defn not- [s]
-  (let [s (maybe-convert-value s)]
+  (let [s (simplify s)]
     (cond
       (not? s) (-> s :s)
       :else (p/map->NotSpec {:s s}))))
@@ -1744,6 +1767,7 @@
     x))
 
 (predicate-spec and?)
+
 (defn and? [x]
   (instance? spectrum.protocols.AndSpec x))
 
@@ -1773,6 +1797,16 @@
           false)
         true))))
 
+(defn and-or-compatible?
+  "True if the `or`s in the and's ps are compatible"
+  [ps]
+  {:post [(do (println "and-or-compatible?" ps "=>" %) true)]}
+  (->> (p/map->AndSpec {:ps ps})
+       (disentangle)
+       (filter conformy?)
+       (seq)
+       (boolean)))
+
 (defn and-not-contradiction?
   "True if ps contains x and (not- x)"
   [ps]
@@ -1800,7 +1834,7 @@
   {:post [(s/assert (s/coll-of ::spect-like) %)]}
   (let [ps-orig ps
         ps (distinct ps)
-        ps (map maybe-convert-value ps)
+        ps (map simplify ps)
         {values true not-values false} (group-by value? ps)
         ps (if (seq values)
              values
@@ -1811,22 +1845,24 @@
         ps (if (> (count fns) 1)
              (conj not-fns (merge-fn-specs fns))
              ps)
-        {ors true not-ors false} (group-by or? ps)
-        ors (mapcat (fn [o] (:ps o)) ors)
-        ps (filter identity (concat (seq not-ors) [(when (seq ors)
-                                                     (or- ors))]))
         ps (distinct ps)
         {anys true not-anys false} (group-by any-? ps)
         ps (if (seq not-anys)
              not-anys
-             (take 1 anys))]
+             (take 1 anys))
+        {ors true not-ors false} (group-by or-spec? ps)
+        ps (if (and (seq ors) (and-or-compatible? ps))
+             ps
+             [(invalid {:message (format "and: or specs incompatible: %s" ps)})])
+        ps (if (and-classes-compatible? ps)
+             ps
+             [(invalid {:message (format "and classes incompatible: %s" ps)})])]
     ps))
 
 (s/fdef and- :args (s/cat :forms (s/coll-of ::spect-like :gen-max 5)) :ret ::spect)
 (defn and- [ps]
   {:pre [(s/assert (s/coll-of ::spect-like) ps)]}
   (let [ps (and-consolidate ps)]
-
     (cond
       (> (count (filter p/regex? ps)) 1) (invalid {:message (format "can't `and` multiple regexes, got %s" (map print-str ps))})
       (>= (count ps) 2) (p/map->AndSpec {:ps ps})
@@ -2062,7 +2098,7 @@
                                 (:ps p))) ps)
         ps (map parse-spec ps)
         ps (remove or? ps)
-        ps (map maybe-convert-value ps)
+        ps (map simplify ps)
         ps (remove bottom? ps)
         ps (concat ps or-ps)
         ps (join-not-pairs ps)
@@ -2078,6 +2114,7 @@
 
 (s/def ::or-args (s/coll-of (s/nilable ::spect-like) :gen-max 5))
 (s/def ::or-ret (s/nilable ::spect))
+
 (s/fdef or- :args (s/cat :ps ::or-args) :ret ::or-ret)
 (defn or- [ps]
   {:pre [(validate! ::or-args ps)]
@@ -2907,7 +2944,9 @@
      (invalid {:message (format "can't merge fn-specs: %s" (mapv print-str fn-specs))}))))
 
 (s/fdef get-var-spec :args (s/cat :v var?) :ret (s/nilable ::spect))
-(defn get-var-spec [v]
+(defn get-var-spec
+  "parse and return the s/def spec attached to var v."
+  [v]
   (when-let [s (s/get-spec v)]
     (assoc (parse-spec s) :var v)))
 
@@ -2919,7 +2958,6 @@
 (defn spec-predicate?
   "True if this spec looks like a predicate"
   [s]
-  {:post [(do (println "spec-predicate?" s "=>" %) true)]}
   (if s
     (and (fn-spec? s)
          (valid? (cat- [(pred-spec #'any?)]) (:args s))
@@ -3449,7 +3487,9 @@
 (def ^:dynamic *conform-in-progress* #{})
 
 (defn conform-bfs [spec args]
-  (let [args-orig args]
+  (let [args-orig args
+        spec (simplify spec)
+        args (simplify args)]
     (if (contains? *conform-in-progress* [spec args])
       (invalid {:message (format "%s does not conform to %s" (print-str args-orig) (print-str spec))})
       (binding [*conform-in-progress* (conj *conform-in-progress* [spec args])]
@@ -3547,7 +3587,7 @@
 (defn class-name [c])
 (defmethod print-method spectrum.protocols.ClassSpec [v ^Writer w]
   (.write w "#class ")
-  (.write w (.getCanonicalName ^Class (:cls v))))
+  (print-method (:cls v) w))
 
 (defmethod print-method AndSpec [v ^Writer w]
   (.write w "#and")
@@ -3612,9 +3652,13 @@
 (defn read-cat [ps]
   (cat- ps))
 
+(def class-map {'long Long/TYPE
+                'double Double/TYPE})
+
 (defn read-class [p]
   (assert (symbol? p))
-  (class-spec (resolve p)))
+  (let [c (get class-map p (resolve p))]
+    (class-spec c)))
 
 (defn read-not [p]
   (not- p))

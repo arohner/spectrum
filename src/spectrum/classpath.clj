@@ -1,7 +1,6 @@
 (ns spectrum.classpath
   (:require [clojure.java.io :as io]
-            [clojure.string :as string]
-            [cognitect.transit :as t])
+            [clojure.string :as string])
   (:import [java.net URL URLClassLoader]
            [java.io ByteArrayOutputStream PipedInputStream PipedOutputStream]))
 

@@ -8,11 +8,12 @@
             [spectrum.analyzer-spec]
             [spectrum.conform :as c]
             [spectrum.core-specs]
-            [spectrum.ann :as ann]
+            ;; [spectrum.ann :as ann]
             [spectrum.analyzer :as analyzer]
             [spectrum.classpath :as classpath]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.flow :as flow]
+            [spectrum.flow2 :as flow2]
             [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
 
 (defrecord CheckError [message file line column end-column])
