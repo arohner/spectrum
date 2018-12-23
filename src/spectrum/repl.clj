@@ -5,7 +5,7 @@
             [clojure.test.check.generators :as gen]
             [spectrum.protocols :as p]
             [spectrum.check :as check]
-            [spectrum.conform :as c]
+            [spectrum.conform2 :as c]
             [spectrum.data :as data]
             [spectrum.flow :as flow]))
 

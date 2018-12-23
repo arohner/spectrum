@@ -1,9 +1,8 @@
 (ns spectrum.util
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
-            [clojure.spec.test.alpha :as stest]
-            ;; [orchestra.spec.test :as ost]
-            )
+            ;;[clojure.spec.test.alpha :as stest]
+            [orchestra.spec.test :as ost])
   (:import clojure.lang.Var
            java.lang.System))
 

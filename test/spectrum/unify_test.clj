@@ -10,12 +10,24 @@
       ['?x] [1]
       '?x 1
       nil nil
-      (c/pred-spec #'nil?) (c/value nil)
-      '(map-of ?x ?y) '(map-of ?t string?)
-      (c/map-of (c/new-logic 'x) (c/new-logic 'y)) (c/map-of (c/pred-spec #'int?) (c/pred-spec #'string?)))
+      '_ '?x
+      #{:foo :bar} #{:foo :bar}
+      (u/contains #{:foo :bar}) :foo
+      (u/contains [:foo :bar]) :foo
+      (u/contains #{:foo '?x}) '?x
+      :foo (u/contains #{:foo '?x})
+      (u/submap {:foo '?x}) {:foo '?x :bar '?y}
+      (u/submap {'?x :bar}) {:foo :bar}
+      #{:foo} #{'?x}
+      #{} #{}
+      '(map-of ?x ?y) '(map-of ?t string?))
 
   (testing "falsey"
     (are [a b] (= nil (u/unify a b))
       1 2
       [1] [2]
-      ['?x] [1 2]))))
+      ['?x] [1 2]
+      #{} []
+      #{:foo} :bar
+      :bar #{:foo}
+      #{:foo :bar} '#{?x}))))
