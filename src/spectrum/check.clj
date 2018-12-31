@@ -6,7 +6,7 @@
             [clojure.spec.alpha :as s]
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.analyzer-spec]
-            [spectrum.conform :as c]
+            [spectrum.conform2 :as c]
             [spectrum.core-specs]
             ;; [spectrum.ann :as ann]
             [spectrum.analyzer :as analyzer]

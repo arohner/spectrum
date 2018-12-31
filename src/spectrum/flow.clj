@@ -992,8 +992,10 @@ will return `(instance? C x)` rather than `y`
           :path))))
 
 (defn binding-update-if-specs
-  "Given a :binding, walk up the analysis update the binding's ::ret-spec to reflect
-  `if` branches taken. Returns the updated binding"
+  "Given use of a :binding at `:path`, walk up the analysis, and add
+  constraints to the binding's ::ret-spec based on `if` branches
+  taken (`:if` nodes between path and binding source). Returns the
+  updated binding"
   [a path binding]
   {:pre [(map? binding)]}
   (loop [path path
@@ -1054,14 +1056,32 @@ will return `(instance? C x)` rather than `y`
             (update-in a (conj b-path ::ret-spec) c/add-constraint spec)) a constraints))
 
 (defn nearest-if-binding
-  "Given a path, walk upwards to the nearest :if-binding, or nil"
-  [a path]
-  (loop [path path]
-    (if (-> (get-in a path) :if-bindings)
-      (conj path :if-bindings)
-      (if (not= [] path)
-        (recur (pop path))
-        nil))))
+  "Given use of a `:binding` at path, walk upwards to find the nearest
+  relevant if-binding for binding, or nil"
+  [a path name]
+  {:post [(do (println "nearest-if" path name "=>" %) true)]}
+  (let [b (find-binding a path name)
+        b-path (:path b)]
+    (assert b)
+    (assert b-path)
+    (loop [path path]
+      (println "nearest loop:" path "=>" (:op (get-in a path)))
+      (println "if-bindings?" (-> (get-in a path) :if-bindings))
+      (when (= :if (:op (get-in a path)))
+        (println "if-test type" (if-test-type a path))
+        (println "if-test binding" (if-test-binding a path) "vs." b-path)
+        (println "if-bindings exist?" (-> (get-in a path) :if-bindings))
+        ;;; TODO START here. fix the test here, consider (if (integer?
+        ;;; x) (let [] (inc x). Need to find all ifs between binding
+        ;;; and call path, and call if-test-binding on them
+        )
+
+
+      (if (and (= :if (:op (get-in a path))) (-> (get-in a path) :if-bindings) (= b-path (if-test-binding a path)))
+        (conj path :if-bindings)
+        (if (>= (count path) (count b-path))
+          (recur (pop path))
+          nil)))))
 
 (s/fdef infer-add-constraint :args (s/cat :a ::analysis :b-path ::path :call-path ::path :constraint c/spect?) :ret ::analysis)
 (defn infer-add-constraint
@@ -1069,11 +1089,14 @@ will return `(instance? C x)` rather than `y`
   [a b-path call-path constraint]
   (let [binding (get-in a b-path)
         _ (assert binding)
-        if-bindings (nearest-if-binding a call-path)
+        _ (assert (:name binding))
+        if-binding-path (nearest-if-binding a call-path (:name binding))
+        b-path (or if-binding-path b-path)
         b-spec (::ret-spec binding)]
     (assert binding (format "binding not found: %s %s" (:form a) b-path))
     (assert b-path)
     (assert b-spec)
+    (println "infer-add-constraint" call-path b-path constraint)
     (update-in a (conj b-path ::ret-spec) c/add-constraint constraint)))
 
 (s/fdef analysis-args->spec :args (s/cat :a ::ana.jvm/analyses) :ret ::c/spect)
@@ -1479,6 +1502,7 @@ will return `(instance? C x)` rather than `y`
             (j/more-specific? b a) 1
             :else (recur as bs))))
       (do
+        (println "more-specific: assert" a b)
         (assert (and (not a) (not b)))
         0))))
 
@@ -2194,8 +2218,6 @@ will return `(instance? C x)` rather than `y`
 (defn infer-fn-invoke-add-constraint
   "Given an invoke to the fn at binding b with args, update b's spec to support the call"
   [a b-path call-path invoke-args]
-  {:post [;; (do (println "infer-fn-invoke-add-constraint:" (get-in a (conj b-path ::ret-spec)) (get-in a (conj call-path :form)) invoke-args "=>" (get-in % (conj b-path ::ret-spec))) true)
-          ]}
   (let [b (get-in a b-path)
         s (::ret-spec b)]
     (assert b)
@@ -2807,4 +2829,6 @@ will return `(instance? C x)` rather than `y`
         (print-walk node*))
       (print-walk node))))
 
-(instrument-ns)
+;; (instrument-ns)
+
+;; (u/unify [1 2 3 '?b] [1 2 '?a '?c] {'?c 4 '?b '?c})

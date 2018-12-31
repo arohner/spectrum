@@ -12,6 +12,12 @@
       nil nil
       '_ '?x
       #{:foo :bar} #{:foo :bar}
+      {:a :b} {:a :b}
+      {:a :b} {:a '?b}
+      {:a '?b} {:a :b}
+      {:a '?b} {:a '?b}
+      {'?a '?b} {:a '?b}
+
       (u/contains #{:foo :bar}) :foo
       (u/contains [:foo :bar]) :foo
       (u/contains #{:foo '?x}) '?x

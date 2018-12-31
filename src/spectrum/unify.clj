@@ -100,33 +100,58 @@
               subst))))
 
 (defprotocol IUnifyTerms
-  (unify-terms [u v subst]
+  (unify-terms* [u v subst]
     "extensible unification"))
 
+(defn unify-terms [u v subst]
+  ;; {:post [(do (when-not %
+  ;;               (println "unify-terms" u v "failed")) true)]}
+  (unify-terms* u v subst))
+
 (extend-protocol IUnifyTerms
-  Object (unify-terms [u v subst] nil)
-  nil    (unify-terms [u v subst] nil))
+  Object (unify-terms* [u v subst] nil)
+  nil    (unify-terms* [u v subst] nil))
 
 (extend-protocol IUnifyTerms
   clojure.lang.Sequential
-  (unify-terms [x y subst]
+  (unify-terms* [x y subst]
     (when (and (seqable? y) (seq y))
       (->> subst
            (unify (first x) (first y))
            (unify (rest x) (rest y)))))
   clojure.lang.IPersistentSet
-  (unify-terms [x y subst]
+  (unify-terms* [x y subst]
     (when (and (set? y))
       (->> subst
            (unify (first x) (first y))
-           (unify (rest x) (rest y))))))
+           (unify (rest x) (rest y)))))
+  clojure.lang.IPersistentMap
+  (unify-terms* [x y subst]
+    (let [[x-k x-v] (->> x (sort-by (fn [[k v]] (logic? k))) first)]
+      ;; (println "unify map" x-k x-v (contains? y x-k) (logic? x-k))
+      (cond
+        (and (= {} x) (= {} y)) subst
+        (contains? y x-k) (->> subst
+                               (unify x-v (get y x-k))
+                               (unify (dissoc x x-k) (dissoc y x-k)))
+        (map? y) (->> (keys y)
+                      (map (fn [y-k]
+                             (when-let [subst (->> subst
+                                                   (unify x-k y-k)
+                                                   (unify (get x x-k) (get y y-k)))]
+                               [x-k y-k subst])))
+                      (filter identity)
+                      (first)
+                      ((fn [[x-k y-k subst]]
+                         (->> subst
+                              (unify (dissoc x x-k) (dissoc y y-k))))))))))
 
 (defn contains
   "Custom unifier goal, unifies if x is a collection, and y is an
   element in the collection"
   [coll]
   (reify IUnifyTerms
-    (unify-terms [x y subst]
+    (unify-terms* [x y subst]
       (when (c/contains? (set coll) y)
         subst))))
 
@@ -136,7 +161,7 @@
   [m]
   (assert (map? m))
   (reify IUnifyTerms
-    (unify-terms [x y subst]
+    (unify-terms* [x y subst]
       (let [[x-k x-v] (->> m (sort-by (fn [[k v]] (logic? k))) first)]
         (cond
           (and (= {} m) (map? y)) subst
@@ -171,6 +196,7 @@
   ([x y]
    (unify x y {}))
   ([x y subst]
+   ;; {:post [(do (println "unify" x y subst "=>" %) true)]}
    (cond
      (nil? subst) nil
      (= x y) subst

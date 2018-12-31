@@ -1,7 +1,7 @@
 (ns spectrum.util
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
-            ;;[clojure.spec.test.alpha :as stest]
+            [clojure.spec.test.alpha :as stest]
             [orchestra.spec.test :as ost])
   (:import clojure.lang.Var
            java.lang.System))
@@ -98,13 +98,13 @@
        (instance? ~cls x#))
      (predicate-spec ~name)))
 
-(defn validate! [s args]
+(defn validate! [s args & [extra-data]]
   (or
    (s/valid? s args)
    (throw (ex-info (s/explain-str s args)
                    {:spec s
                     :args args
-                    :data (s/explain-data s args)}))))
+                    :data (merge extra-data (s/explain-data s args))}))))
 
 (defn multimethod-dispatch-values
   "Returns the seq of allowed dispatch values in the multimethod"
@@ -114,7 +114,7 @@
 
 (defn instrument-in-CI []
   (when (System/getenv "CI")
-    (clojure.spec.test.alpha/instrument)))
+    (stest/instrument)))
 
 (defn instrument-ns
   "Instrument all vars in ns, or *ns*"
@@ -127,7 +127,7 @@
         (vals)
         (mapv (fn [v]
                 (symbol (str (.ns v) "/" (.sym v)))))
-        (stest/instrument)
+        (ost/instrument)
         (dorun))))
 
 (defn memoize-with

@@ -250,3 +250,15 @@
   (-> (get-classloader)
       (.getResourceAsStream "clojure/lang/RT.class")
       (slurp)))
+
+(defn get-java-field
+  [class field & [{:keys [static?]}]]
+  (some->> (reflect/reflect class)
+           :members
+           (filterv (fn [m]
+                      (and (instance? clojure.reflect.Field m)
+                           (if static?
+                             (contains? (:flags m) :static)
+                             true)
+                           (= field (:name m)))))
+           first))

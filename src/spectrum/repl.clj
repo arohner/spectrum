@@ -4,37 +4,13 @@
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.test.check.generators :as gen]
             [spectrum.protocols :as p]
-            [spectrum.check :as check]
+            ;; [spectrum.check :as check]
             [spectrum.conform2 :as c]
             [spectrum.data :as data]
-            [spectrum.flow :as flow]))
+            [spectrum.flow2 :as f]))
 
-(defn infer-var
-  "infer a var return the spec"
-  [^clojure.lang.Var v]
-  (-> v .ns str symbol flow/ensure-analysis)
-  (assert (data/get-var-analysis v))
-  (-> v
-      (data/get-var-analysis)
-      (flow/infer)
-      :init
-      flow/maybe-strip-meta
-      ::flow/ret-spec))
-
-(defn infer-var-method [v method-index]
-  (-> v .ns str symbol flow/ensure-analysis)
-  (assert (data/get-var-analysis v))
-  (-> v
-      (data/get-var-analysis)
-      (flow/infer)
-      :init
-      flow/maybe-strip-meta
-      :methods
-      (nth method-index)
-      ::flow/ret-spec))
-
-(c/load-data-readers)
-(s/check-asserts true)
+;; (c/load-data-readers)
+;; (s/check-asserts true)
 
 (in-ns 'clojure.core)
 

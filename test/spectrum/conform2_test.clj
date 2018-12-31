@@ -24,48 +24,95 @@
     (c/coll-of #'a?) (c/vector-of #'a?)
 
     ;; or
-    (c/or #'a?) #'a?
-    (c/or #'a? #'b?) #'a?
-    (c/or #'a? #'b?) (c/or #'a? #'b?)
-    (c/or #'a? '?x) #'a?
-    (c/or #'a? '?x) '?x
+    (c/or-t #{'?a}) '?a
+    (c/or-t #{#'a? #'b?}) #'a?
+    (c/or-t #{#'a? #'b?}) (c/or-t #{#'a? #'b?})
+    (c/or-t #{#'a? '?x}) #'a?
+    (c/or-t #{#'a? '?x}) '?x
 
     ;; cat
-    (c/cat []) (c/cat [])
-    (c/cat [#'a?]) (c/cat [#'a?])
-    (c/cat [#'a? #'a?]) (c/cat [#'a? #'a?])
-    (c/seq-of #'a?) (c/cat [#'a? #'a?])
+    (c/cat-t []) (c/cat-t [])
+    (c/cat-t [#'a?]) (c/cat-t [#'a?])
+    (c/cat-t [#'a? #'a?]) (c/cat-t [#'a? #'a?])
+
+    (c/cat-t ['?x]) (c/cat-t ['?x])
+    (c/cat-t [(c/* '?x)]) (c/cat-t ['?x])
+    (c/cat-t [(c/+ '?x)]) (c/cat-t ['?x])
+    (c/seq-of #'a?) (c/cat-t [#'a? #'a?])
 
     ;; ?
-    (c/cat [(c/? #'b?)]) (c/cat [#'b?])
-    (c/cat [#'a? (c/? #'b?) #'a?]) (c/cat [#'a? #'a?])
-    (c/cat [#'a? (c/? #'b?) #'a?]) (c/cat [#'a? #'b? #'a?])
+    (c/cat-t [(c/? #'b?)]) (c/cat-t [#'b?])
+    (c/cat-t [#'a? (c/? #'b?) #'a?]) (c/cat-t [#'a? #'a?])
+    (c/cat-t [#'a? (c/? #'b?) #'a?]) (c/cat-t [#'a? #'b? #'a?])
 
     ;; seq-of
-    (c/seq-of #'a?) (c/cat [])
-    (c/seq-of #'a?) (c/cat [#'a?])
-    (c/seq-of #'a?) (c/cat [#'a? #'a?])
+    (c/seq-of #'a?) (c/cat-t [])
+    (c/seq-of #'a?) (c/cat-t [#'a?])
+    (c/seq-of #'a?) (c/cat-t [#'a? #'a?])
 
-    (c/cat [(c/seq-of #'a?) #'b?]) (c/cat [#'b?])
-    (c/cat [(c/seq-of #'a?) #'b?]) (c/cat [#'a? #'b?])
-    (c/cat [(c/seq-of #'a?) #'b?]) (c/cat [#'a? #'a? #'b?])))
+    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'b?])
+    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'b?])
+    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'a? #'b?])))
 
 (deftest valid-falsey
   (are [x y] (= false (c/valid? x y))
     #'a? #'b?
     (c/vector-of '?x) (c/seq-of '?x)
     (c/coll-of #'a?) (c/vector-of #'b?)
-    #'a? (c/or #'a? #'b?)
+    #'a? (c/or-t #{#'a? #'b?})
 
     ;; or
-    (c/or #'a? #'b?) #'c?
+    (c/or-t #{#'a? #'b?}) #'c?
     ;; cat
-    (c/cat [#'b?]) (c/cat [#'a?])
-    (c/cat [#'b?]) (c/cat [#'b? #'b?])
-    (c/cat [#'a? #'a?]) (c/seq-of #'a?)
+    (c/cat-t [#'b?]) (c/cat-t [#'a?])
+    (c/cat-t [#'b?]) (c/cat-t [#'b? #'b?])
+    (c/cat-t [#'a? #'a?]) (c/seq-of #'a?)
     ;; ?
 
     ;; seq
-    (c/seq-of #'b?) (c/cat [#'a?])
+    (c/seq-of #'b?) (c/cat-t [#'a?])
 
-    (c/cat [(c/seq-of #'a?) #'b?]) (c/cat [#'a? #'a?])))
+    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'a?])))
+
+(deftest and-logic
+  (are [ts ret] (= ret (c/and-t ts))
+    ['?x] '?x
+    ['?x '?y] ['and #{'?x '?y}]
+    [['maybe '?y]] '?y
+    ['?x ['maybe '?y]] ['or #{'?x '?y}]
+    [#'int? #'any?] #'int?
+    [#'any?] #'any?
+    ['?x '?y ['maybe '?z]] ['or #{['and #{'?x '?y}] '?z}]))
+
+(deftest or-logic
+  (are [ts ret] (= ret (c/or-t ts))
+    ['?x] '?x
+    ['?x '?y] ['or #{'?x '?y}]
+    ['?x ['or #{'?y '?z}]] ['or #{'?x '?y '?z}]
+    ['?x ['maybe '?y]] ['or #{'?x '?y}]
+    [['maybe '?y]] '?y))
+
+(deftest fix-length
+  (are [t n ret] (= ret (c/fix-length t n))
+    (c/* '?t) 2 [(c/cat-t []) (c/cat-t ['?t]) (c/cat-t ['?t '?t])]
+
+    (c/cat-t []) 2 [(c/cat-t [])]
+    (c/cat-t ['?t]) 2 [(c/cat-t ['?t])]
+    (c/cat-t [(c/* '?a) '?b]) 2 [(c/cat-t ['?b]) (c/cat-t ['?a '?b])]))
+
+(deftest disentangle
+  (are [t ret] (= ret (c/disentangle t))
+    (cat [(c/? '?t1) '?t2]) [(c/cat-t ['?t1 '?t2]) (c/cat-t ['?t2])]))
+
+(deftest all-possible-values
+  (are [t n ret] (= ret (c/all-possible-values t 2))
+    (c/cat-t [(c/* '?a) (c/* '?b) (c/? '?c)]) 2 #{(c/cat-t [])
+                                                (c/cat-t ['?a])
+                                                (c/cat-t ['?b])
+                                                (c/cat-t ['?c])
+                                                (c/cat-t ['?a '?a])
+                                                (c/cat-t ['?a '?b])
+                                                (c/cat-t ['?a '?c])
+                                                (c/cat-t ['?b '?b])
+                                                (c/cat-t ['?b '?c])}
+    (c/cat-t []) 0 #{(c/cat-t [])}))

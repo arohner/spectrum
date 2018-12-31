@@ -87,7 +87,9 @@ seq of concrete specs that don't contain choices")
   (invoke-accept- [s]
     "Return the most general spec this spec can be invoked with. Should probably return a regex.
 
- invariant: (invoke s (invoke-accept s)) => truthy"))
+ invariant: (invoke s (invoke-accept s)) => truthy")
+  (invoke-equations [s args ret]
+    "Given the logic variables for the args and return, return the  seq of equations"))
 
 (defprotocol KeywordInvoke
   (keyword-invoke- [s args]

@@ -137,17 +137,22 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
            :init
            :expr))
 
-(s/fdef store-var-spec :args (s/cat :v var? :s :spectrum.conform/spect) :ret nil?)
-(defn store-var-spec [v s]
+(defn with-meta? [x]
+  (instance? clojure.lang.IObj x))
+
+(s/fdef store-var-spec :args (s/cat :v var? :s :spectrum.conform2/type) :ret nil?)
+(defn store-var-spec [v t]
   {:pre [(var? v)]}
-  (swap! var-specs assoc v (assoc s :var v))
+  (swap! var-specs assoc v (if (with-meta? t)
+                             (with-meta t {:var v})
+                             t))
   nil)
 
 (defn get-var-spec [v]
   {:post [(do (when (and % (not (= v (:var %))))
                 (println "get-var-spec:" v % (:var %))) true)
           (if %
-            (= v (:var %))
+            (-> % meta :var (= v))
             true)]}
   (get @var-specs v))
 
