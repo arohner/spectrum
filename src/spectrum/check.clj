@@ -24,8 +24,6 @@
 (defn check-error? [x]
   (instance? CheckError x))
 
-(ann/ann #'check-error? (ann/instance-or [CheckError]))
-
 (s/fdef map->CheckError :args (s/cat :m (s/keys :req-un [::message])) :ret check-error?)
 
 (s/fdef new-error :args (s/cat :data (s/keys :req-un [::message]) :a ::flow/analysis) :ret check-error?)
@@ -83,7 +81,7 @@
   (println "checking " ns)
   (some->>
    (analyzer/analyze-ns-1 ns (ana.jvm/empty-env))
-   (map flow/flow)
+   (map flow2/infer)
    (mapcat check*)
    (filter identity)))
 

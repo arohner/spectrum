@@ -14,8 +14,9 @@
 
 (s/def ::ana.jvm/children (s/coll-of keyword? :into []))
 
-(s/def ::ana.jvm/analysis-common (s/keys :req-un [::ana.jvm/op ::ana.jvm/form ::ana.jvm/env]
-                                         :opt-un [::ana.jvm/children]))
+(s/def ::ana.jvm/analysis-common (s/keys :req-un [::ana.jvm/op ::ana.jvm/form]
+                                         :opt-un [::ana.jvm/children
+                                                  ::ana.jvm/env]))
 
 (defmulti analysis-type :op)
 
