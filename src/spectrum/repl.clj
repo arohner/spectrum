@@ -5,9 +5,9 @@
             [clojure.test.check.generators :as gen]
             [spectrum.protocols :as p]
             ;; [spectrum.check :as check]
-            [spectrum.conform2 :as c]
+            [spectrum.conform :as c]
             [spectrum.data :as data]
-            [spectrum.flow2 :as f]))
+            [spectrum.flow :as f]))
 
 ;; (c/load-data-readers)
 ;; (s/check-asserts true)

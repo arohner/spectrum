@@ -7,10 +7,7 @@
                  [org.clojure/tools.analyzer.jvm "0.7.2"]
                  [org.clojure/test.check "0.9.0"]
                  [org.clojure/core.memoize "0.5.8"]
-                 [org.clojure/math.combinatorics "0.1.4"]
-                 [org.clojure/core.logic "0.8.11"]
-                 [org.clojure/core.match "0.3.0-alpha4"]
-                 [org.clojure/core.unify "0.5.7"]]
+                 [org.clojure/math.combinatorics "0.1.4"]]
 
   :profiles
   {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]

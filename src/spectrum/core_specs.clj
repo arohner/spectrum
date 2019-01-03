@@ -2,7 +2,7 @@
   (:require [clojure.core :as core]
             [clojure.spec.alpha :as s]
             [spectrum.core :as st]
-            [spectrum.conform2 :as c]
+            [spectrum.conform :as c]
             [spectrum.util :refer [def-instance-predicate]]))
 
 ;;; specs for clojure.core fns, should only be used in cases where

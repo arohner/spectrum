@@ -1,6 +1,6 @@
 (ns spectrum.core
   (:require [clojure.spec.alpha :as s]
-            [spectrum.conform2 :as c]
+            [spectrum.conform :as c]
             [spectrum.java :as j]
             [spectrum.data :as data]
             [spectrum.util :refer [validate!]])
