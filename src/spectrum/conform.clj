@@ -89,10 +89,12 @@
 (s/fdef vector-of :args (s/cat :x ::type) :ret ::type)
 (defn-tagged-type vector-of 'vector-of)
 
-(s/def :keys/req (s/coll-of ::type))
-(s/def :keys/req-un (s/coll-of ::type))
-(s/def :keys/opt (s/coll-of ::type))
-(s/def :keys/opt-un (s/coll-of ::type))
+(s/def :keys/key-class (s/map-of keyword? ::type))
+
+(s/def :keys/req :keys/key-class)
+(s/def :keys/req-un :keys/key-class)
+(s/def :keys/opt :keys/key-class)
+(s/def :keys/opt-un :keys/key-class)
 (s/fdef keys-t :args (s/cat :k (s/keys :opt-un [:keys/req :keys/req-un :keys/opt :keys/opt-un])))
 (defn-tagged-type keys-t 'keys)
 
