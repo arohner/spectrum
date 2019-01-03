@@ -1,78 +1,114 @@
 (ns spectrum.conform2-test
   (:require [clojure.test :refer :all]
-            [spectrum.conform2 :as c]
-            [spectrum.unify :as u]))
+            [spectrum.conform2 :as c]))
 
 (def a?)
 (def b?)
 (def c?)
 
-(deftest valid-truthy
-  (are [x y] (= true (c/valid? x y))
-    #'any? #'a?
-    #'any? (c/seq-of '?x)
-    #'any? #'integer?
-    #'integer? #'int?
-    #'number? #'even?
-    '?x '?x
-    '?y '?y
+(deftest unify
+  (testing "truthy"
+    (are [x y subst] (= (set subst) (set (c/unify x y)))
+      ;; or
+      (c/or-t ['?a '?b]) '?a '[{} {?a ?b}]
+      (c/or-t ['?a '?b]) '?x '[{?x ?a} {?x ?b}]
+      (c/or-t [#'int?]) '?x [{'?x #'int?}]
 
-    (c/seq-of '?x) (c/seq-of '?x)
-    (c/seq-of '?z) (c/seq-of '?z)
-    #'seqable? (c/seq-of '?x)
-    (c/coll-of '?x) (c/vector-of '?x)
-    (c/coll-of #'a?) (c/vector-of #'a?)
+      (c/or-t ['?a '?b]) #'int? [{'?a #'int?}
+                                 {'?b #'int?}]
 
-    ;; or
-    (c/or-t #{'?a}) '?a
-    (c/or-t #{#'a? #'b?}) #'a?
-    (c/or-t #{#'a? #'b?}) (c/or-t #{#'a? #'b?})
-    (c/or-t #{#'a? '?x}) #'a?
-    (c/or-t #{#'a? '?x}) '?x
+      (c/or-t ['?a '?b]) (c/or-t [#'int? #'string?]) [{'?a #'int? '?b #'string?}
+                                                      {'?a #'string? '?b #'int?}]
 
-    ;; cat
-    (c/cat-t []) (c/cat-t [])
-    (c/cat-t [#'a?]) (c/cat-t [#'a?])
-    (c/cat-t [#'a? #'a?]) (c/cat-t [#'a? #'a?])
+      (c/or-t ['?x '?y '?z]) (c/or-t ['?a '?b]) '[{?a ?x, ?b ?x}
+                                                  {?a ?y, ?b ?x}
+                                                  {?a ?z, ?b ?x}
+                                                  {?a ?x, ?b ?y}
+                                                  {?a ?y, ?b ?y}
+                                                  {?a ?z, ?b ?y}
+                                                  {?a ?x, ?b ?z}
+                                                  {?a ?y, ?b ?z}
+                                                  {?a ?z, ?b ?z}]
 
-    (c/cat-t ['?x]) (c/cat-t ['?x])
-    (c/cat-t [(c/* '?x)]) (c/cat-t ['?x])
-    (c/cat-t [(c/+ '?x)]) (c/cat-t ['?x])
-    (c/seq-of #'a?) (c/cat-t [#'a? #'a?])
+      ;; cat
+      (c/cat-t [(c/? '?a)]) (c/cat-t [(c/? #'int?)]) [{'?a #'int?}
+                                                      {'?a nil}
+                                                      {}]
 
-    ;; ?
-    (c/cat-t [(c/? #'b?)]) (c/cat-t [#'b?])
-    (c/cat-t [#'a? (c/? #'b?) #'a?]) (c/cat-t [#'a? #'a?])
-    (c/cat-t [#'a? (c/? #'b?) #'a?]) (c/cat-t [#'a? #'b? #'a?])
+      ;; alt
+      (c/alt-t ['?a]) (c/alt-t [#'int?]) []
+      (c/alt-t ['?a]) (c/alt-t ['?b]) {'?a '?b}
+      (c/alt-t ['?a]) (c/alt-t ['?a '?b]) {'?b '?a}))
 
-    ;; seq-of
-    (c/seq-of #'a?) (c/cat-t [])
-    (c/seq-of #'a?) (c/cat-t [#'a?])
-    (c/seq-of #'a?) (c/cat-t [#'a? #'a?])
+  (testing "falsey"
+    (are [x y] (nil? (c/unify x y))
+      (c/or-t [#'int? #'string?]) #'keyword?)))
 
-    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'b?])
-    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'b?])
-    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'a? #'b?])))
+(deftest valid?
+  (testing "truthy"
+    (are [x y] (= true (c/valid? x y))
+      #'any? #'a?
+      #'any? (c/seq-of '?x)
+      #'any? #'integer?
+      #'integer? #'int?
+      #'number? #'even?
+      '?x '?x
+      '?y '?y
 
-(deftest valid-falsey
-  (are [x y] (= false (c/valid? x y))
-    #'a? #'b?
-    (c/vector-of '?x) (c/seq-of '?x)
-    (c/coll-of #'a?) (c/vector-of #'b?)
-    #'a? (c/or-t #{#'a? #'b?})
+      (c/seq-of '?x) (c/seq-of '?x)
+      (c/seq-of '?z) (c/seq-of '?z)
+      #'seqable? (c/seq-of '?x)
+      (c/coll-of '?x) (c/vector-of '?x)
+      (c/coll-of #'a?) (c/vector-of #'a?)
 
-    ;; or
-    (c/or-t #{#'a? #'b?}) #'c?
-    ;; cat
-    (c/cat-t [#'b?]) (c/cat-t [#'a?])
-    (c/cat-t [#'b?]) (c/cat-t [#'b? #'b?])
-    (c/cat-t [#'a? #'a?]) (c/seq-of #'a?)
-    ;; ?
+      ;; or
+      (c/or-t #{'?a}) '?a
+      (c/or-t #{#'a? #'b?}) #'a?
+      (c/or-t #{#'a? #'b?}) (c/or-t #{#'a? #'b?})
+      (c/or-t #{#'a? '?x}) #'a?
+      (c/or-t #{#'a? '?x}) '?x
 
-    ;; seq
-    (c/seq-of #'b?) (c/cat-t [#'a?])
+      ;; cat
+      (c/cat-t []) (c/cat-t [])
+      (c/cat-t [#'a?]) (c/cat-t [#'a?])
+      (c/cat-t [#'a? #'a?]) (c/cat-t [#'a? #'a?])
 
-    (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'a?])))
+      (c/cat-t ['?x]) (c/cat-t ['?x])
+      (c/cat-t [(c/* '?x)]) (c/cat-t ['?x])
+      (c/cat-t [(c/+ '?x)]) (c/cat-t ['?x])
+      (c/seq-of #'a?) (c/cat-t [#'a? #'a?])
+
+      ;; ?
+      (c/cat-t [(c/? #'b?)]) (c/cat-t [#'b?])
+      (c/cat-t [#'a? (c/? #'b?) #'a?]) (c/cat-t [#'a? #'a?])
+      (c/cat-t [#'a? (c/? #'b?) #'a?]) (c/cat-t [#'a? #'b? #'a?])
+
+      ;; seq-of
+      (c/seq-of #'a?) (c/cat-t [])
+      (c/seq-of #'a?) (c/cat-t [#'a?])
+      (c/seq-of #'a?) (c/cat-t [#'a? #'a?])
+
+      (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'b?])
+      (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'b?])
+      (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'a? #'b?])))
+  (testing "falsey"
+    (are [x y] (= false (c/valid? x y))
+      #'a? #'b?
+      (c/vector-of '?x) (c/seq-of '?x)
+      (c/coll-of #'a?) (c/vector-of #'b?)
+      #'a? (c/or-t #{#'a? #'b?})
+
+      ;; or
+      (c/or-t #{#'a? #'b?}) #'c?
+      ;; cat
+      (c/cat-t [#'b?]) (c/cat-t [#'a?])
+      (c/cat-t [#'b?]) (c/cat-t [#'b? #'b?])
+      (c/cat-t [#'a? #'a?]) (c/seq-of #'a?)
+      ;; ?
+
+      ;; seq
+      (c/seq-of #'b?) (c/cat-t [#'a?])
+      (c/cat-t [(c/seq-of #'a?) #'b?]) (c/cat-t [#'a? #'a?]))))
 
 (deftest and-logic
   (are [ts ret] (= ret (c/and-t ts))
@@ -116,3 +152,9 @@
                                                 (c/cat-t ['?b '?b])
                                                 (c/cat-t ['?b '?c])}
     (c/cat-t []) 0 #{(c/cat-t [])}))
+
+(deftest value-preds
+  (are [x y] (seq (c/unify x y))
+    (c/value-t nil) #'nil?
+    #'nil? (c/value-t nil)
+    (c/value-t true) #'true?))

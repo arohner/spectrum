@@ -4,13 +4,9 @@
             [clojure.spec.alpha :as s]
             [clojure.zip :as zip]
             [clojure.walk :as walk]
-            [spectrum.util :refer [instrument-ns]]))
-
-;; based on https://eli.thegreenplace.net/2018/unification/
-;; https://github.com/clojure/core.unify
-;; http://mullr.github.io/micrologic/literate.html
-
-(declare unify)
+            [spectrum.type :as t]
+            [spectrum.util :refer [instrument-ns]])
+  (:import [clojure.lang IPersistentMap IPersistentSet Sequential]))
 
 (defn ignore? [sym] (= '_ sym))
 
@@ -74,10 +70,6 @@
     (logic? x) false
     (coll? x) true))
 
-(defn wildcard? [form]
-  (and (composite? form)
-       (= '& (first form))))
-
 (defn occurs?
   "Does v occur anywhere inside typ"
   [v typ subst]
@@ -87,6 +79,22 @@
     (and (logic? typ) (get subst typ)) (recur v (get subst typ) subst)
     (composite? typ) (some (fn [e] (occurs? v e subst)) (seq typ))
     :else false))
+
+(defn unify-term-value [x]
+  (cond
+    (t/logic? x) ::logic
+    (t/tagged? x) (t/type-tag x)
+    (var? x) x
+    :else (class x)))
+
+(defn unify-terms-dispatch [u v subst]
+  [(unify-term-value u) (unify-term-value v)])
+
+(defmulti unify-terms "" #'unify-terms-dispatch)
+
+(defmethod unify-terms [Object Object] [x y subst]
+  {:post [(do (println "unify any? any?" x y "=>" %) true)]}
+  nil)
 
 (defn unify-variable [v typ subst]
   {:pre [(logic? v)]}
@@ -99,93 +107,46 @@
               (assoc subst v typ)
               subst))))
 
-(defprotocol IUnifyTerms
-  (unify-terms* [u v subst]
-    "extensible unification"))
+(defmethod unify-terms [::logic Object] [x y subst]
+  (unify-variable x y subst))
 
-(defn unify-terms [u v subst]
-  ;; {:post [(do (when-not %
-  ;;               (println "unify-terms" u v "failed")) true)]}
-  (unify-terms* u v subst))
+(defmethod unify-terms [Object ::logic] [x y subst]
+  (unify-variable y x subst))
 
-(extend-protocol IUnifyTerms
-  Object (unify-terms* [u v subst] nil)
-  nil    (unify-terms* [u v subst] nil))
+(defmethod unify-terms [::logic ::logic] [x y subst]
+  (unify-variable x y subst))
 
-(extend-protocol IUnifyTerms
-  clojure.lang.Sequential
-  (unify-terms* [x y subst]
-    (when (and (seqable? y) (seq y))
-      (->> subst
-           (unify (first x) (first y))
-           (unify (rest x) (rest y)))))
-  clojure.lang.IPersistentSet
-  (unify-terms* [x y subst]
-    (when (and (set? y))
-      (->> subst
-           (unify (first x) (first y))
-           (unify (rest x) (rest y)))))
-  clojure.lang.IPersistentMap
-  (unify-terms* [x y subst]
-    (let [[x-k x-v] (->> x (sort-by (fn [[k v]] (logic? k))) first)]
-      ;; (println "unify map" x-k x-v (contains? y x-k) (logic? x-k))
-      (cond
-        (and (= {} x) (= {} y)) subst
-        (contains? y x-k) (->> subst
-                               (unify x-v (get y x-k))
-                               (unify (dissoc x x-k) (dissoc y x-k)))
-        (map? y) (->> (keys y)
-                      (map (fn [y-k]
-                             (when-let [subst (->> subst
-                                                   (unify x-k y-k)
-                                                   (unify (get x x-k) (get y y-k)))]
-                               [x-k y-k subst])))
-                      (filter identity)
-                      (first)
-                      ((fn [[x-k y-k subst]]
-                         (->> subst
-                              (unify (dissoc x x-k) (dissoc y y-k))))))))))
+(defmethod unify-terms [Sequential Object] [x y subst]
+  (when (and (seqable? y) (seq y))
+    (->> subst
+         (unify (first x) (first y))
+         (unify (rest x) (rest y)))))
 
-(defn contains
-  "Custom unifier goal, unifies if x is a collection, and y is an
-  element in the collection"
-  [coll]
-  (reify IUnifyTerms
-    (unify-terms* [x y subst]
-      (when (c/contains? (set coll) y)
-        subst))))
+(defmethod unify-terms [IPersistentSet Object] [x y subst]
+  (when (and (seqable? y) (seq y))
+    (->> subst
+         (unify (first x) (first y))
+         (unify (rest x) (rest y)))))
 
-(defn submap
-  "custom unifier. Unify when x is a submap, y is a map, and all keys
-  and values present in x unify with their keys in y"
-  [m]
-  (assert (map? m))
-  (reify IUnifyTerms
-    (unify-terms* [x y subst]
-      (let [[x-k x-v] (->> m (sort-by (fn [[k v]] (logic? k))) first)]
-        (cond
-          (and (= {} m) (map? y)) subst
-          (contains? y x-k) (->> subst
-                                 (unify x-v (get y x-k))
-                                 (unify (submap (dissoc m x-k)) (dissoc y x-k)))
-          (logic? x-k) (->> (keys y)
-                            (map (fn [y-k]
-                                   (when-let [subst (->> subst
-                                                         (unify x-k y-k)
-                                                         (unify (get m x-k) (get y y-k)))]
-                                     [x-k y-k subst])))
-                            (filter identity)
-                            (first)
-                            ((fn [[x-k y-k subst]]
-                               (->> subst
-                                    (unify (submap (dissoc m x-k)) (dissoc y y-k)))))))))))
-
-(defmacro with-subst
-  "Given"
-  [subst-keys & body]
-  `(fn [subst#]
-     (let [{:keys []}]
-       ~@body)))
+(defmethod unify-terms [IPersistentMap IPersistentMap] [x y subst]
+  (let [[x-k x-v] (->> x (sort-by (fn [[k v]] (logic? k))) first)]
+    ;; (println "unify map" x-k x-v (contains? y x-k) (logic? x-k))
+    (cond
+      (and (= {} x) (= {} y)) subst
+      (contains? y x-k) (->> subst
+                             (unify x-v (get y x-k))
+                             (unify (dissoc x x-k) (dissoc y x-k)))
+      (map? y) (->> (keys y)
+                    (map (fn [y-k]
+                           (when-let [subst (->> subst
+                                                 (unify x-k y-k)
+                                                 (unify (get x x-k) (get y y-k)))]
+                             [x-k y-k subst])))
+                    (filter identity)
+                    (first)
+                    ((fn [[x-k y-k subst]]
+                       (->> subst
+                            (unify (dissoc x x-k) (dissoc y y-k)))))))))
 
 (s/fdef unify :ret (s/nilable map?))
 (defn unify
@@ -200,11 +161,13 @@
    (cond
      (nil? subst) nil
      (= x y) subst
-     (logic? x) (unify-variable x y subst)
-     (logic? y) (unify-variable y x subst)
-     (wildcard? x) (unify-variable (second x) (seq y) subst)
-     (wildcard? y) (unify-variable (second y) (seq x) subst)
-     :else (or (unify-terms x y subst)
-               (unify-terms y x subst)))))
+     :else (unify-terms x y subst)
+     ;; (logic? x) (unify-variable x y subst)
+     ;; (logic? y) (unify-variable y x subst)
+     ;; (wildcard? x) (unify-variable (second x) (seq y) subst)
+     ;; (wildcard? y) (unify-variable (second y) (seq x) subst)
+     ;; :else (or (unify-terms x y subst)
+     ;;           (unify-terms y x subst))
+     )))
 
 (instrument-ns)

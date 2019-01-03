@@ -17,8 +17,7 @@
             [spectrum.protocols :as p]
             [spectrum.queue :as q]
             [spectrum.topo-sort :as topo-sort]
-            [spectrum.util :as util :refer [print-once protocol? namespace? queue validate! instrument-ns memoize-with]]
-            [spectrum.unify :as u])
+            [spectrum.util :as util :refer [print-once protocol? namespace? queue validate! instrument-ns memoize-with]])
   (:import [clojure.lang Var Namespace]))
 
 (s/def ::a ::ana.jvm/analysis)
@@ -149,17 +148,9 @@
 (defn get-equations-dispatch [context a path]
   (:op (get-in a path)))
 
-(s/def ::equation* (s/tuple ::c/type ::c/type))
+;;; equations are vectors of two types. [x y] expresses a constraint that (valid? x y) should be true.
 
-(defn well-formed-equation? [x]
-  (let [[a b] (s/unform ::equation* x)]
-    (if (or (c/logic? a)
-              (c/logic? b))
-      (c/logic? a)
-      true)))
-
-(s/def ::equation (s/and ::equation*
-                         well-formed-equation?))
+(s/def ::equation (s/tuple ::c/type ::c/type))
 (s/def ::equations (s/coll-of ::equation))
 
 (defmulti get-equations* #'get-equations-dispatch)
@@ -425,9 +416,9 @@
                           (filter (fn [t]
                                     (c/fn-method-unifying t invoke-args)))
                           (c/merge-fns))
-            args-cat (-> method-t (c/fn-args) (c/all-possible-values-length-n (c/cat-length invoke-args)))
+            fn-args (-> method-t (c/fn-args) (c/all-possible-values-length-n (c/cat-length invoke-args)))
             eqs (if method-t
-                  (conj (make-equations invoke-args args-cat)
+                  (conj (make-equations fn-args invoke-args)
                         [ret-t (c/fn-ret method-t)])
                   [])]
         eqs)
@@ -578,8 +569,8 @@
 
     (assert f)
     (assert ret-t)
-    (conj (make-equations invoke-args fn-args-t)
-          [t ret-t])))
+    (conj (make-equations fn-args-t invoke-args)
+          [ret-t t])))
 
 (defn self-var-call?
   "True if the invoke at [a path] is a call to a var defined in a. Returns the path to the :def or nil"
@@ -603,7 +594,7 @@
   (let [t (get-type! context a path)
         var-path (self-var-call? a path)
         var-fn-ret-path (-> var-path (conj :init) (#(maybe-with-meta a %)) (conj :ret))]
-    [[t (get-type! context a var-fn-ret-path)]]))
+    [[(get-type! context a var-fn-ret-path) t]]))
 
 (defmethod get-equations* :invoke [context a path]
   (let [a* (get-in a path)
@@ -748,31 +739,31 @@
     (let [[_ n] (re-find #"(\d+)$" (name v))]
       (Long/parseLong n))))
 
-(defn compare-variables [v1 v2]
-  (if (and (c/logic? v1) (c/logic? v2))
-    (compare (logic-n v1) (logic-n v2))
-    0))
+;; (defn compare-variables [v1 v2]
+;;   (if (and (c/logic? v1) (c/logic? v2))
+;;     (compare (logic-n v1) (logic-n v2))
+;;     0))
 
-(defn compare-equations [e1 e2]
-  "sort such that lower number variables are first"
-  [e1 e2]
-  (let [[l1 r1] e1
-        [l2 r2] e2]
-    (compare-variables l1 l2)))
+;; (defn compare-equations [e1 e2]
+;;   "sort such that lower number variables are first"
+;;   [e1 e2]
+;;   (let [[l1 r1] e1
+;;         [l2 r2] e2]
+;;     (compare-variables l1 l2)))
 
-(defn sort-equations [eqs]
-  (sort compare-equations eqs))
+;; (defn sort-equations [eqs]
+;;   (sort compare-equations eqs))
 
 (defn unify-all-equations [eqs]
-  (let [subst {}]
-    (reduce (fn [{:keys [subst fail] :as state} eq]
+  (let [substs [{}]]
+    (reduce (fn [{:keys [substs fail] :as state} eq]
               (if fail
                 state
                 (let [[l r] eq]
-                  (let [subst* (u/unify l r subst)]
-                    (if subst*
-                      (assoc state :subst subst*)
-                      (assoc state :fail eq)))))) {:subst subst :fail nil} eqs)))
+                  (let [substs* (seq (c/unify l r substs))]
+                    (if substs*
+                      (assoc state :substs substs*)
+                      (assoc state :fail eq)))))) {:substs substs :fail nil} eqs)))
 
 (defn store-var-inference-results [context a subst]
   (->> (a-def-paths a)
@@ -878,10 +869,14 @@
 
 (defn debug-failure
   "Given a unify failure, print relevant debugging"
-  [context a eqs subst fail]
+  [context a eqs substs fail]
+  (when (> (count substs) 1)
+    (println "multiple substs:" substs))
   (let [[l r] fail
+        subst (first substs)
         l-meta (get-type-meta context l)
-        existing-l (c/resolve-type l subst)]
+        existing-l (c/resolve-type l subst)
+        existing-r (c/resolve-type r subst)]
     (debug-all-types context)
     (println "infer failed" (:form a) "fail:" fail)
     (println "fail" fail " meta:" (-> fail meta))
@@ -889,10 +884,10 @@
 
     (println "expected" l (::form l-meta) "=>" (c/resolve-type r subst))
     (when existing-l
-      (println "could not unify" l ":" (::form l-meta) "at" (::loc l-meta)  ":" (c/resolve-type r subst)  "with" existing-l))
-    (doseq [lv (u/get-lvars fail)]
+      (println "could not unify" fail ":" (::form l-meta) "at" (::loc l-meta) "with" existing-l existing-r))
+    (doseq [lv (c/get-lvars fail)]
       (println lv "=>" (c/resolve-type lv subst)))
-    (doseq [lv (u/get-lvars existing-l)]
+    (doseq [lv (c/get-lvars existing-l)]
       (println lv "=>" (c/resolve-type lv subst)))))
 
 (defn valid-subst?
@@ -910,14 +905,16 @@
       (infer-dependencies a))
     (assign-typenames context a)
     (let [eq (get-equations context a)
-          eq (consolidate-equations eq)
-          eq (sort-equations eq)
-          {:keys [subst fail]} (unify-all-equations eq)
+          {:keys [substs fail]} (unify-all-equations eq)
+          _ (println "infer" (count substs) "possible solutions")
+          substs (->> substs (filter valid-subst?))
           t (get-type! context a [])]
       (if fail
-        (debug-failure context a eq subst fail)
-        (if (valid-subst? subst)
-          (do
+        (debug-failure context a eq substs fail)
+        (if (seq substs)
+          (let [subst (first substs)]
+            (when (> (count substs) 1)
+              (println "multiple solutions:" substs))
             (store-var-inference-results context a subst)
             (c/resolve-type t subst)))))))
 

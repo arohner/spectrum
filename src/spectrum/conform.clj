@@ -13,6 +13,7 @@
             [spectrum.protocols :as p]
             [spectrum.util :refer [fn-literal? print-once strip-namespace var-name queue queue? predicate-spec validate! conj-seq multimethod-dispatch-values protocol? instrument-ns]]
             [spectrum.data :as data :refer (*a*)]
+            [spectrum.equations :as eq]
             [spectrum.java :as j])
   (:import (clojure.lang Var Keyword IFn ISeq)
            java.io.Writer
@@ -736,24 +737,6 @@
       (#(filter value? %))
       first
       (or x)))
-
-(s/fdef simplify :args (s/cat :s ::spect) :ret ::spect)
-(defn simplify
-  "Given a spec, convert it to it's most precise version"
-  [x]
-  (let [ds (dependent-specs x)]
-    (or (->> ds
-             (filter value?)
-             first)
-        (->> ds
-             (filter class-spec?)
-             first)
-        (->> ds
-             (filter (fn [s]
-                       (and (or-spec? s)
-                            (every? class-spec? (elements s)))))
-             first)
-        x)))
 
 (s/fdef recursive-dependent-specs :args (s/cat :s (s/nilable ::spect)) :ret ::dependent-specs)
 (defn recursive-dependent-specs
@@ -1826,38 +1809,6 @@
                          (every? (fn [s]
                                    (valid? s v)) non-values)) values)))
       false)))
-
-(s/fdef and-consolidate :args (s/cat :ps (s/coll-of ::spect-like)) :ret (s/coll-of ::spect))
-(defn and-consolidate
-  "Given the :ps for an `and`, simplify and consolidate forms"
-  [ps]
-  {:post [(s/assert (s/coll-of ::spect-like) %)]}
-  (let [ps-orig ps
-        ps (distinct ps)
-        ps (map simplify ps)
-        {values true not-values false} (group-by value? ps)
-        ps (if (seq values)
-             values
-             not-values)
-        {ands true not-ands false} (group-by and? ps)
-        ps (concat (seq not-ands) (distinct (mapcat (fn [a] (:ps a)) ands)))
-        {fns true not-fns false} (group-by fn-spec? ps)
-        ps (if (> (count fns) 1)
-             (conj not-fns (merge-fn-specs fns))
-             ps)
-        ps (distinct ps)
-        {anys true not-anys false} (group-by any-? ps)
-        ps (if (seq not-anys)
-             not-anys
-             (take 1 anys))
-        {ors true not-ors false} (group-by or-spec? ps)
-        ps (if (and (seq ors) (and-or-compatible? ps))
-             ps
-             [(invalid {:message (format "and: or specs incompatible: %s" ps)})])
-        ps (if (and-classes-compatible? ps)
-             ps
-             [(invalid {:message (format "and classes incompatible: %s" ps)})])]
-    ps))
 
 (s/fdef and- :args (s/cat :forms (s/coll-of ::spect-like :gen-max 5)) :ret ::spect)
 (defn and- [ps]
@@ -3051,6 +3002,25 @@
           (unknown {:message (format "invoke %s w/ unknown args %s" v (print-str invoke-args))})))
       (unknown {:message (format "invoke %s no :args spec" spec)}))))
 
+(s/fdef invoke-fn-spec-equations :args (s/cat :s spect? :ret spect? :args (s/* spect?)) :ret ::eq/equations)
+(defn invoke-fn-spec-equations
+  "Given a fn spec, and the logic variables representing an invoke,
+  use the fn spec to return equations constraining the logic
+  variables"
+  [s args ret]
+  {:pre [(fn-spec? s)]}
+  (->> (concat
+        (when-let [args-s (:args s)]
+          (let [args-options (all-possible-values-length-n args-s (count args))]
+            (if (conformy? args-options)
+              (mapcat (fn [args-s]
+                        (mapcat (fn [as arg]
+                                  [(eq/maybe arg as)]) args-s args)) args-options)
+              [(eq/reject ret)])))
+        (when-let [ret-s (:ret s)]
+          [(eq/eq ret ret-s)]))
+       (filterv identity)))
+
 (extend-type FnSpec
   p/Spect
   (conform* [this x]
@@ -3096,6 +3066,8 @@
     (if (:args this)
       (:args this)
       (unknown {:message (format "no :args spec on %s" this)})))
+  (invoke-equations [this args ret]
+    (invoke-fn-spec-equations this args ret))
   p/Truthyness
   (truthyness [this]
     :truthy))
@@ -3326,7 +3298,9 @@
                 (if (conformy? dp)
                   (if (and (first-rest? dp) (infinite? dp) (accept-nil? dp) (first-rest? (rest- data)) (infinite? (rest- data)))
                     (return dp)
-                    (recur dp (rest- data)))
+                    (if (first-rest? data)
+                      (recur dp (rest- data))
+                      (invalid {:message (format "%s is not sequential" (print-str data))})))
                   (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
                 (invalid {:message (format "%s does not conform to %s" (print-str data) (print-str spec))}))
               ))))
@@ -3742,5 +3716,5 @@
 
 (s/def ::spect (s/with-gen spect? simple-spec-gen))
 
-(instrument-ns)
+;; (instrument-ns)
 nil
