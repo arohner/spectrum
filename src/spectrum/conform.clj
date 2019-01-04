@@ -490,7 +490,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                   ts)) (set ts) nots)
       ts)))
 
-(s/fdef class-value :args (s/cat :t class-t?) :ret (c/or :c class? :t ::type))
+(s/fdef class-value :args (s/cat :t class-t?) :ret (s/or :c class? :t ::type))
 (def class-value type-value)
 
 (s/fdef simplify :args (s/cat :t ::type) :ret ::type)
@@ -855,6 +855,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   (let [x (seq-value a)
         y (seq-value b)]
     (unify x y subst)))
+
+(defmethod unify-terms ['seq-of #'any?] [a b subst]
+  (let [x (seq-value a)]
+    (unify x b subst)))
+
+(prefer-method unify-terms ['seq-of #'any?] [#'any? #'logic?])
 
 (defmethod unify-terms ['coll-of 'coll-of] [a b subst]
   (let [x (type-value a)

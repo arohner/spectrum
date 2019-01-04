@@ -149,7 +149,7 @@
 
 (deftest disentangle
   (are [t ret] (= ret (c/disentangle t))
-    (cat [(c/? '?t1) '?t2]) [(c/cat-t ['?t1 '?t2]) (c/cat-t ['?t2])]))
+    (c/cat-t [(c/? '?t1) '?t2]) [(c/cat-t ['?t1 '?t2]) (c/cat-t ['?t2])]))
 
 (deftest all-possible-values
   (are [t n ret] (= ret (c/all-possible-values t 2))
