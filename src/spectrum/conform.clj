@@ -45,7 +45,7 @@
   (and (vector? x)
        (= name (first x))))
 
-(defmacro def-type-pred [name tag]
+(defmacro defn-type-pred [name tag]
   `(defn ~name [x#]
      (tagged-type? ~tag x#)))
 
@@ -55,35 +55,36 @@
   `(defn ~name [& args#]
      (apply conj [~tag] args#)))
 
-(def-type-pred class-t? 'class)
+(defn-type-pred class-t? 'class)
 
 (defn-tagged-type accept-t 'accept)
-(def-type-pred accept-t? 'accept)
+(defn-type-pred accept-t? 'accept)
 (defn-tagged-type invalid 'invalid)
-(def-type-pred invalid? 'invalid)
+(defn-type-pred invalid? 'invalid)
 
 (defn-tagged-type value-t 'value)
-(def-type-pred value-t? 'value)
+(defn-type-pred value-t? 'value)
+
 
 (defn-tagged-type throw-t 'throw)
 (defn-tagged-type recur-t 'recur)
 
 (defn-tagged-type protocol-t 'protocol)
 
-(def-type-pred and-t? 'and)
-(def-type-pred or-t? 'or)
-(def-type-pred not-t? 'not)
+(defn-type-pred and-t? 'and)
+(defn-type-pred or-t? 'or)
+(defn-type-pred not-t? 'not)
 
 (defn-tagged-type not-t 'not)
 
-(def-type-pred cat-t? 'cat)
-(def-type-pred alt-t? 'alt)
+(defn-type-pred cat-t? 'cat)
+(defn-type-pred alt-t? 'alt)
 
 (defn-tagged-type seq-of 'seq-of)
-(def-type-pred seq-t? 'seq-of)
+(defn-type-pred seq-t? 'seq-of)
 
 (defn-tagged-type maybe-t 'maybe)
-(def-type-pred maybe-t? 'maybe)
+(defn-type-pred maybe-t? 'maybe)
 
 (s/fdef map-entry :args (s/cat :x ::type :y ::type) :ret ::type)
 (defn-tagged-type map-entry 'map-entry)
@@ -106,7 +107,7 @@
 
 (s/fdef fn-t :args (s/cat :f ::fn-args) :ret ::fn-t)
 (defn-tagged-type fn-t 'fn)
-(def-type-pred fn-t? 'fn)
+(defn-type-pred fn-t? 'fn)
 
 (defn any-t? [t]
   (= #'any? t))
