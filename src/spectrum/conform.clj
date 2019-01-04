@@ -78,7 +78,9 @@
 
 (def-type-pred cat-t? 'cat)
 (def-type-pred alt-t? 'alt)
+
 (defn-tagged-type seq-of 'seq-of)
+(def-type-pred seq-t? 'seq-of)
 
 (defn-tagged-type maybe-t 'maybe)
 (def-type-pred maybe-t? 'maybe)
@@ -212,10 +214,16 @@
      substs)
    (when (isa? @types-hierarchy y x)
      substs)
+   (when (tagged? y)
+     (when-let [ancestors (ancestors @types-hierarchy (type-tag y))]
+       (->> ancestors
+            (some (fn [a]
+                    (unify x a substs))))))
    (when-let [ancestors (ancestors @types-hierarchy y)]
-     (->> ancestors
-          (some (fn [a]
-                  (unify x a substs)))))
+       (->> ancestors
+            (some (fn [a]
+                    (unify x a substs)))))
+
    nil))
 
 (defmethod unify-terms [#'any? #'any?] [x y subst]
@@ -784,21 +792,53 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                 (invalid {:message (format "no possible value of length %s: %s %s" n (print-str t) n)}))))))
     t))
 
+(defn dx-dispatch [x y substs]
+  (type-tag x))
+
+(defmulti dx
+  #'dx-dispatch)
+
+(defmethod dx 'cat [cat-x y substs]
+  (let [[x & xr :as xs] (cat-types cat-x)]
+    (if (regex? x)
+      (dx x y substs)
+      (let [subst (unify x y substs)]
+        {:state (when (seq xr)
+                  (cat-t xr)) :substs substs}))))
+
+(defmethod dx 'seq-of [seq-x y subst]
+  (let [x (seq-value seq-x)]
+    (when-let [subst (unify x y subst)]
+      {:state seq-x :substs subst})))
+
+(defmethod dx 'alt [alt-x y subst]
+  (when-let [subst (unify alt-x y subst)]
+    {:state nil :substs subst}))
+
 (defmethod unify-terms ['cat 'cat] [cat-x cat-y substs]
+  ;; {:post [(do (println "unify cat cat" cat-x cat-y "=>" %) true)]}
   (let [[x & xr :as xs] (cat-types cat-x)
         [y & yr :as ys] (cat-types cat-y)]
     (->>
      (apply concat
-            [(when (and (= 0 (count xs)) (accept-nil? cat-y))
+            [(when (and (accept-nil? cat-x) (accept-nil? cat-y))
                substs)
-             (when-let [substs (seq (unify x y substs))]
-               (unify (cat-t xr) (cat-t yr)) substs)
+             (if (and (regex? x) y)
+               (let [{:keys [state substs]} (dx x y substs)
+                     new-y (when (seq yr)
+                             (cat-t yr))]
+                 (if state
+                   (unify (cat-t (concat [state] xr)) (cat-t yr) substs)
+                   (unify (cat-t xr) (cat-t yr) substs)))
+               (when-let [substs (seq (unify x y substs))]
+                 (unify (cat-t xr) (cat-t yr) substs)))
              (when (accept-nil? x)
                (unify (cat-t xr) cat-y substs))
              (when (accept-nil? y)
                (unify cat-x (cat-t yr) substs))])
      (filter identity)
-     (distinct))))
+     (distinct)
+     (seq))))
 
 (defmethod unify-terms ['seq-of 'cat] [seq-of cat substs]
   (let [x (seq-value seq-of)
@@ -881,11 +921,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defmethod resolve-type* :default [t subst]
   nil)
 
-;; (extend-protocol u/IUnifyTerms
-;;   clojure.lang.Var
-;;   (unify-terms* [x y subst]
-;;     (unify-var x y subst)))
-
 (s/fdef resolve-type :args (s/cat :t (s/nilable ::type) :s map?) :ret (s/nilable ::type))
 (defn resolve-type [t subst]
   (let [t* (get subst t t)]
@@ -946,7 +981,10 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (derive-type #'number? #'double?)
 (derive-type #'integer? #'int?)
 (derive-type #'int? #'even?)
+(derive-type #'seqable? 'seq-of)
 (derive-type #'seqable? 'coll-of)
+(derive-type 'coll-of 'vector-of)
+
 
 (unify-term-value-pred nil #'nil?)
 (unify-term-value-pred true #'true?)

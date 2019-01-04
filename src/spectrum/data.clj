@@ -150,7 +150,7 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 
 (defn get-var-spec [v]
   {:post [(do (when (and % (not (= v (:var %))))
-                (println "get-var-spec:" v % (:var %))) true)
+                (println "get-var-spec:" v %)) true)
           (if %
             (-> % meta :var (= v))
             true)]}
