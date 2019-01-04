@@ -145,7 +145,8 @@
 
     (c/cat-t []) 2 [(c/cat-t [])]
     (c/cat-t ['?t]) 2 [(c/cat-t ['?t])]
-    (c/cat-t [(c/* '?a) '?b]) 2 [(c/cat-t ['?b]) (c/cat-t ['?a '?b])]))
+    ;; (c/cat-t [(c/* '?a) '?b]) 2 [(c/cat-t ['?b]) (c/cat-t ['?a '?b])]
+    ))
 
 (deftest disentangle
   (are [t ret] (= ret (c/disentangle t))
