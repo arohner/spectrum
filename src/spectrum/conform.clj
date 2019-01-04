@@ -5,6 +5,7 @@
             [clojure.set :as set]
             [clojure.spec.alpha :as s]
             [clojure.walk :as walk]
+            [spectrum.data :as data]
             [spectrum.java :as j]
             [spectrum.util :refer [instrument-ns validate!]])
   (:import [clojure.lang IPersistentMap IPersistentSet Sequential]))
@@ -109,15 +110,25 @@
 (defn-tagged-type fn-t 'fn)
 (defn-type-pred fn-t? 'fn)
 
+(s/def ::invokeable (s/or :v var? :k keyword? :t tagged?))
+(s/fdef invoke-t :args (s/cat :f ::invokeable :args cat-t?) :ret ::type)
+(defn-tagged-type invoke-t 'invoke)
+(defn-type-pred invoke-t? 'invoke)
+
 (defn any-t? [t]
   (= #'any? t))
 
 (defn object-t? [t]
   (and (class-t? t) (-> t second (= Object))))
 
+(s/fdef type-value :args (s/cat :t tagged?) :ret any?)
 (defn type-value [t]
   (when (and (vector? t) (> (count t) 1))
     (nth t 1)))
+
+(s/fdef type-values :args (s/cat :t tagged?) :ret any?)
+(defn type-values [t]
+  (vec (rest t)))
 
 (def value-value type-value)
 
@@ -972,6 +983,54 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (defmethod unify-terms [#'number? #'integer?] [x y subst]
   subst)
+
+(defn apply-invoke-dispatch [it subst]
+  (let [f (type-value it)]
+    (cond
+      (tagged? f) (type-tag f)
+      (keyword? f) :keyword
+      (var? f) #'var?)))
+
+(defmulti apply-invoke #'apply-invoke-dispatch)
+
+(defmethod apply-invoke :default [it subst]
+  (invalid {:message (format "can't invoke %s" it)
+            :data {:it it}}))
+
+(defmethod apply-invoke 'fn [it subst]
+  (let [[f invoke-args] (type-values it)]
+    (->> f
+         (second)
+         (map (fn [[f-args f-ret]]
+                (when-let [subst (unify f-args invoke-args subst)]
+                  [f-ret subst])))
+         (filter identity))))
+
+(defmethod apply-invoke 'map-of [it subst]
+  (assert false "TODO"))
+
+(defmethod apply-invoke 'keys [it subst]
+  (assert false "TODO"))
+
+(defmethod apply-invoke :keyword [it subst]
+  (assert false "TODO"))
+
+(defmethod apply-invoke #'var? [it subst]
+  (let [v (nth it 1)
+        _ (assert (var? v))
+        s (data/get-var-spec v)]
+    (assert (fn-t? s))
+    (apply-invoke (update it 1 s) subst)))
+
+(defmethod unify-terms [#'any? 'invoke-t] [x invoke-y subst]
+  (->> (apply-invoke invoke-y subst)
+       (map (fn [[y subst]]
+              (unify x y subst)))))
+
+(defmethod unify-terms ['invoke-t #'any?] [invoke-x y subst]
+  (->> (apply-invoke invoke-x subst)
+       (map (fn [[x subst]]
+              (unify x y subst)))))
 
 (s/fdef unify-terms-value-pred :args (s/cat :v any? :p var?))
 (defn unify-term-value-pred

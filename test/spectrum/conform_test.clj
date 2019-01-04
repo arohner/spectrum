@@ -170,3 +170,15 @@
     (c/value-t nil) #'nil?
     #'nil? (c/value-t nil)
     (c/value-t true) #'true?))
+
+(deftest apply-invoke
+  (let [s (c/fn-t {(c/cat-t [#'nil?]) #'nil?
+                   (c/cat-t [#'string?]) #'symbol?
+                   (c/cat-t [#'keyword?]) #'keyword?})]
+    (testing "truthy"
+      (are [f args ret] (= ret (c/apply-invoke (c/invoke-t f (c/cat-t args)) [{}]))
+        s [#'string?] [[#'symbol? [{}]]]))
+    (testing "falsey"
+      (are [f args] (nil? (seq (c/apply-invoke (c/invoke-t f (c/cat-t args)) [{}])))
+        s [#'int?]
+        s [#'string? #'string?]))))
