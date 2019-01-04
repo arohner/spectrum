@@ -383,7 +383,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (def seq-value type-value)
 
-(s/fdef cat :args (s/cat :t (s/nilable ::types)) :ret ::type)
+(s/fdef cat-t :args (s/cat :t (s/nilable ::types)) :ret ::type)
 (defn cat-t [ts]
   (->> ts
        (map (fn [t]
@@ -482,7 +482,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                   ts)) (set ts) nots)
       ts)))
 
-(s/fdef class-value :args (s/cat :t class-t?) :ret ::type)
+(s/fdef class-value :args (s/cat :t class-t?) :ret (c/or :c class? :t ::type))
 (def class-value type-value)
 
 (s/fdef simplify :args (s/cat :t ::type) :ret ::type)
