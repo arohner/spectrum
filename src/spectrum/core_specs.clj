@@ -2,7 +2,7 @@
   (:require [clojure.core :as core]
             [clojure.spec.alpha :as s]
             [spectrum.core :as st]
-            [spectrum.conform :as c]
+            [spectrum.types :as t]
             [spectrum.util :refer [def-instance-predicate]]))
 
 ;;; specs for clojure.core fns, should only be used in cases where
@@ -17,11 +17,11 @@
 (st/var-spec #'clojure.core/*file* #'string?)
 (st/var-spec #'clojure.core/*print-dup* #'boolean?)
 (st/var-spec #'clojure.core/*unchecked-math* #'boolean?)
-(st/var-spec #'clojure.core/*agent* (c/or-t [(c/class-t clojure.lang.Agent) (c/value-t nil)]))
+(st/var-spec #'clojure.core/*agent* (t/or-t [(t/class-t clojure.lang.Agent) (t/value-t nil)]))
 (st/var-spec #'clojure.core/*warn-on-reflection* #'boolean?)
 
-(st/var-spec #'clojure.core/*in* (c/class-t java.io.Reader))
-(st/var-spec #'clojure.core/*out* (c/class-t java.io.Writer))
-(st/var-spec #'clojure.core/*err* (c/class-t java.io.Writer))
+(st/var-spec #'clojure.core/*in* (t/class-t java.io.Reader))
+(st/var-spec #'clojure.core/*out* (t/class-t java.io.Writer))
+(st/var-spec #'clojure.core/*err* (t/class-t java.io.Writer))
 
 (st/var-spec #'clojure.core/*flush-on-newline* #'boolean?)

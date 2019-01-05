@@ -3,7 +3,6 @@
             [clojure.set :as set]
             [clojure.reflect :as reflect]
             [clojure.string :as str]
-            [spectrum.data :as data]
             [spectrum.util :refer (predicate-spec)]))
 
 (def symbol->primitive- {'boolean Boolean/TYPE
@@ -262,3 +261,13 @@
                              true)
                            (= field (:name m)))))
            first))
+
+(s/fdef get-java-method :args (s/cat :cls class? :method symbol?) :ret (s/coll-of reflect-method?))
+(defn get-java-method
+  "Return all arities"
+  [cls method]
+  (some->> (reflect/reflect cls)
+           :members
+           (filterv (fn [m]
+                      (and (instance? clojure.reflect.Method m)
+                           (= method (:name m)))))))

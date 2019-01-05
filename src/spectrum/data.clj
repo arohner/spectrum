@@ -3,6 +3,7 @@
             [clojure.tools.analyzer.jvm :as ana.jvm]
             [spectrum.analyzer-spec]
             [clojure.spec.alpha :as s]
+            [spectrum.types :as t]
             [spectrum.util :refer (print-once protocol? namespace? def-instance-predicate instrument-ns)]))
 
 (defonce var-analysis
@@ -140,7 +141,7 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
 (defn with-meta? [x]
   (instance? clojure.lang.IObj x))
 
-(s/fdef store-var-spec :args (s/cat :v var? :s :spectrum.conform/type) :ret nil?)
+(s/fdef store-var-spec :args (s/cat :v var? :s ::t/type) :ret nil?)
 (defn store-var-spec [v t]
   {:pre [(var? v)]}
   (swap! var-specs assoc v (if (with-meta? t)

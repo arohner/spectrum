@@ -1,110 +1,45 @@
 (ns spectrum.ann
   (:require [clojure.java.io :as io]
             [clojure.spec.alpha :as s]
-            [spectrum.conform :as c]
-            [spectrum.data :as data]
-            [spectrum.flow :as flow]
             [spectrum.java :as j]
-            [spectrum.protocols :as p]
+            [spectrum.types :as t]
             [spectrum.util :refer (print-once validate!)])
   (:import (clojure.lang BigInt
-                         Ratio)))
+                         Ratio
+                         Seqable)
+           (java.util Map)))
 
+(def annotations (atom {}))
 
-;;; Annotations are hooks into the typing process. an `ann` is a
-;;; function that gets called when a fn invoke happens, it is passed
-;;; the invoke spec, and the callsite arguments. The ann function
-;;; should update the invoke spec, either :args or :ret or both.
-
-;;; `ann-method` works the same way, with java methods.
-
-;;; In general, prefer using `ann` and `ann-method` only on the base
-;;; clojure implementation. Needing to use `ann` on 'userspace' code
-;;; typically means our type inference isn't working as well as we'd
-;;; like
-
-(s/def ::transformer (s/fspec :args (s/cat :spec ::c/spect :args-spec ::c/spect) :ret ::c/spect))
-
-(s/fdef ann :args (s/cat :v var? :f ::transformer) :ret any?)
+(s/fdef ann :args (s/cat :v var? :m (s/tuple [class? symbol?]) :t ::t/type))
 (defn ann
-  "Register a spec transformer. Takes a var or clojure.reflect.Method, and a transformer function
-
-  transformer function: a function taking 2 args: the function's declared spect,
-  and the Spect for the fn args at this callsite. Returns an updated
-  spec. This is typically used to make :args or :ret more specific.
-
-  The args must pass the original spect before transforming, so this can't
-  be used to make the spec less specific.
-  "
-  [v f]
-  (data/add-invoke-transformer v f)
+  "Define a more specific type for the var. `ann` types are preferred
+  over explicit specs or inferred types, and if an `ann` exists for a
+  var, only it will be consulted"
+  [v t]
+  (swap! annotations assoc v t)
   nil)
 
-(ann #'instance? (fn [spect args-spect]
-                   (let [c (c/first- args-spect)
-                         x (c/second- args-spect)]
-                     (if (and (c/known? c) (c/known? x))
-                       (let [cs (c/spec->classes c)
-                             xs (c/spec->classes x)
-                             rets (for [c cs
-                                        x xs]
-                                    (c/conform (c/class-spec c) (c/class-spec x)))]
-                         (if (every? c/conformy? rets)
-                           (let [truth (set (map c/truthyness rets))
-                                 ret (cond
-                                       (contains? truth :ambiguous) (c/pred-spec #'boolean?)
-                                       (> (count truth) 1) (c/pred-spec #'boolean?)
-                                       (and (= 1 (count truth)) (= :truthy (first truth))) (c/value true)
-                                       (and (= 1 (count truth)) (= :falsey (first truth))) (c/value false)
-                                       :else (assert false "unreachable"))]
-                             (assoc spect :ret ret))
-                           (assoc spect :ret (c/value false))))
-                       spect))))
+(s/fdef get-ann :args (s/cat :x (s/or :v var? :m (s/tuple [class? symbol?]))) :ret (s/nilable ::t/type))
+(defn get-ann [x]
+  (get @annotations x))
 
-(ann #'into (fn [spect args-spect]
-              (let [to (c/first- args-spect)
-                    from (c/second- args-spect)]
-                (if (c/known? to)
-                  (assoc spect :ret to)
-                  spect))))
+(s/fdef ann-instance? :args (s/cat :v var? :c class?))
+(defn ann-instance?
+  "Annotates var-predicate v as just a simple instanceof? check
 
-(s/fdef instance-or :args (s/cat :cls (s/coll-of class?)) :ret ::transformer)
-(defn instance-or
-  "spec-transformer for (or (instance? a) (instance? b)...) case. classes is a seq of classes."
-  [classes]
-  (fn [spect args-spect]
-    (if (c/first-rest? args-spect)
-      (let [spect* (c/or- (map c/class-spec classes))
-            arg-spect (c/first- args-spect)
-            conform-ret (c/conform spect* arg-spect)
-            possible (c/conform arg-spect spect*)]
-        (if (c/conformy? conform-ret)
-          (let [truth (c/truthyness conform-ret)
-                ret (condp = truth
-                      :truthy (c/value true)
-                      :falsey (c/value false)
-                      (c/pred-spec #'boolean?))]
-            (assoc spect :ret ret))
-          (if (c/conformy? possible)
-            (assoc spect :ret (c/pred-spec #'boolean?))
-            (assoc spect :ret (c/value false)))))
-      (c/invalid {:message "args must support first-rest"}))))
+   (ann-instance #'string? java.lang.String)
+ "
+  [v cls]
+  (ann v (t/fn-t {[(t/class-t cls)] (t/value-t true)
+                  [#'any?] (t/value-t false)})))
 
-(s/fdef instance-transformer :args (s/cat :c class?) :ret ::transformer)
-(defn instance-transformer [cls]
-  (instance-or [cls]))
-
-(s/fdef protocol-transformer :args (s/cat :p any?) :ret ::transformer)
-(defn protocol-transformer [protocol]
-  (fn [spect args-spect]
-    (let [arg (if (satisfies? p/FirstRest args-spect)
-                (c/first- args-spect)
-                args-spect)]
-      (if arg
-        (if (satisfies? protocol arg)
-          (assoc spect :ret (c/value true))
-          (assoc spect :ret (c/value false)))
-        spect))))
+(defn ann-instance-or?
+  "Ann var-predicate v as (some #(instance? c x) clses)"
+  [v clses]
+  (ann v (t/fn-t {(mapv t/class-t clses) (t/value-t true)
+                  [#'any?] (t/value-t false)})))
+;;;
 
 (def pred->class
   {#'associative? clojure.lang.Associative
@@ -148,475 +83,31 @@
    #'volatile? clojure.lang.Volatile
    })
 
-(defn ann-instance?
-  "Annotates var-predicate p as just a simple instanceof? check
-
-   (ann-instance #'string? java.lang.String)
- "
-  [v cls]
-  (ann v (instance-or [cls]))
-  (data/register-dependent-spec (c/pred-spec v) (c/class-spec cls))
-  (data/register-dependent-spec (c/class-spec cls) (c/pred-spec v)))
-
 (doseq [[v cls] pred->class]
   (ann-instance? v cls))
 
-(defn ann-protocol?
-  "Annotates var-predicate p as just a simple satisfies? check
+(ann-instance-or? #'float? [Float Double])
+(ann-instance-or? #'int? [Long Integer Short Byte])
+(ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
+(ann-instance-or? #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
 
-   (ann-protocol #'spect? Spect)
- "
-  [v proto]
-  (ann v (protocol-transformer proto))
-  (data/register-dependent-spec (c/pred-spec v) (c/protocol- proto)))
-
-(s/fdef ann-instance-or :args (s/cat :v var? :classes (s/coll-of class?)))
-(defn ann-instance-or [v classes]
-  (ann v (instance-or classes))
-  (data/register-dependent-spec (c/pred-spec v) (c/or- (mapv c/class-spec classes)))
-  (doseq [c classes]
-    (data/register-dependent-spec (c/class-spec c) (c/pred-spec v))))
-
-(ann-instance-or #'float? [Float Double])
-(ann-instance-or #'int? [Long Integer Short Byte])
-(ann-instance-or #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
-(ann-instance-or #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
-
-(defn ann-nil-false [val]
-  (fn [spect args-spect]
-    (let [x (c/first- args-spect)
-          truthyness (c/truthyness x)]
-      (if (not= :ambiguous truthyness)
-        (let [x (c/maybe-convert-value x)]
-          (assoc spect :ret (cond
-                              (= :truthy truthyness) (c/value false)
-                              (c/value? x) (if (= val (:v x))
-                                             (c/value true)
-                                             (c/value false))
-                              :else (:ret spect))))
-        spect))))
-
-(ann #'false? (ann-nil-false false))
-
-(ann #'nil? (ann-nil-false nil))
-
-(ann #'not (fn [spect args-spec]
-             (let [x (c/first- args-spec)]
-               (c/not- x))))
-
-(defn get-cat-vals
-  "Given a Cat of Value, return the raw vals"
-  [c]
-  (mapv :v c))
-
-(ann #'select-keys (fn [spect args-spect]
-                     (let [m (c/first- args-spect)
-                           select (c/second- args-spect)]
-                       (if (and (c/keys-spec? m)
-                                (c/value? select)
-                                (coll? (:v select))
-                                (every? (fn [v] (c/conform (c/pred-spec #'keyword?) v)) (:v select)))
-                         (let [vals (get-cat-vals (:v select))]
-                           (let [ret (c/keys-spec (select-keys (:req m) vals)
-                                                  (select-keys (:req-un m) vals)
-                                                  (select-keys (:opt m) vals)
-                                                  (select-keys (:opt-un m) vals))]
-                             (assoc spect :ret ret)))
-                         spect))))
-
-(s/fdef ann-method :args (s/cat :cls class? :method symbol? :args c/spect? :xfer fn?) :ret any?)
-
+(s/fdef ann-method :args (s/cat :c class? :n symbol? :t ::type))
 (defn ann-method
-  "Ann a java method"
-  [cls method-name args transformer]
-  (let [method (flow/get-conforming-java-method cls method-name args)]
-    (assert method (format "couldn't find method: %s %s %s" cls method-name (print-str args)))
-    (ann method transformer)))
+  "Annotate a java method. This replaces all arities, so t should cover all signatures of the method"
+  [cls method t]
+  (assert (seq (j/get-java-method cls method)))
+  (ann [cls method] t))
 
-(s/fdef merge-keys :args (s/cat :m1 c/keys-spec? :m2 c/keys-spec?) :ret c/keys-spec?)
-(defn merge-keys [m1 m2]
-  (apply c/keys-spec (for [k [:req :req-un :opt :opt-un]]
-                       (merge (get m1 k) (get m2 k)))))
+(ann #'seq (t/fn-t {[(t/class-t Iterable)] (t/seq-of '?x)
+                    [(t/class-t CharSequence)] (t/seq-of (t/class-t Character))
+                    [(t/class-t Map)] (t/seq-of (t/cat-t ['?k '?v]))
+                    [(t/map-of '?x '?y)] (t/seq-of (t/cat-t ['?x '?y]))
+                    ;; todo array-of
+                    [(t/class-t Seqable)] (t/seq-of '?x)}))
 
-(ann #'merge (fn [spect args-spect]
-               (assert (c/cat? args-spect))
-               (if (every? c/keys-spec? (:ps args-spect))
-                 (assoc spect :ret (reduce merge-keys (:ps args-spect)))
-                 spect)))
+(ann #'first (t/fn-t {[(t/seq-of '?a)] (t/or-t ['?a #'nil?])
+                      [#'seqable?] (t/invoke-t #'first (t/cat-t [(t/invoke-t #'seq (t/cat-t ['?x]))]))
+                      [#'any?] #'nil?}))
 
-(ann-method clojure.lang.Util 'identical (c/cat- [(c/class-spec Object) (c/class-spec Object)])
-            (fn [spect args-spect]
-              (let [x (-> args-spect c/first- c/maybe-convert-value)
-                    y (-> args-spect c/second- c/maybe-convert-value)
-                    ret (cond
-                          (and (c/value? x) (c/value? y)) (if (= (:v x) (:v y))
-                                                            (c/value true)
-                                                            (c/value false))
-                          (and (not= :ambiguous (c/truthyness x)) (not= :ambiguous (c/truthyness y))
-                               (not= (c/truthyness x) (c/truthyness y))) (c/value false))]
-                (if ret
-                  (assoc spect :ret ret)
-                  spect))))
-
-(defn ann-get [spect args-spect]
-  (let [coll (c/first- args-spect)
-        key (c/second- args-spect)
-        not-found (or (c/nth* args-spect 2) (c/value nil))
-        ret (cond
-              (and (c/value? key) (keyword? (:v key))) (or (c/keys-get coll (c/get-value key)) not-found)
-              :else (:ret spect))]
-    (validate! ::c/spect-like ret)
-    (assoc spect :ret ret)))
-
-(ann-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)]) ann-get)
-(ann-method clojure.lang.RT 'get (c/cat- [(c/class-spec Object) (c/class-spec Object)]) ann-get)
-
-(def transducer-fn-spec (c/fn-spec {}))
-
-(ann #'identity (fn [spect args-spect]
-                  (assoc spect :ret (c/first- args-spect))))
-
-(ann #'with-meta (fn [spect args-spect]
-                   (assoc spect :ret (c/first- args-spect))))
-
-(defn empty-seq?
-  "True if this spect represents the empty seq, or a value that (seq x) would return nil on"
-  [s]
-  (or (c/valid? (c/value []) s)
-      (c/valid? (c/value nil) s)
-      (c/valid? (c/pred-spec #'nil?) s)))
-
-(ann #'first (fn [spect args-spect]
-               (let [arg (c/first- args-spect)]
-                 (assoc spect :ret (c/first- arg)))))
-
-(defn ann-next [spect args-spect]
-  (let [arg (c/first- args-spect)]
-    (assoc spect :ret (c/rest- arg))))
-
-(ann #'next ann-next)
-
-(defn ann-rest [spect args-spect]
-  (let [arg (c/first- args-spect)
-        ret (c/rest- arg)
-        ret (if (= ret (c/value nil))
-              (c/value ())
-              ret)]
-    (assoc spect :ret ret)))
-
-(ann #'rest ann-rest)
-
-(defn filter-fn [spect args-spect]
-  (let [f (c/first- args-spect)
-        coll (c/second- args-spect)]
-    (if (and f (c/fn-spec? f) (c/coll-of? coll) (every? #(not (c/invalid? (c/invoke f (c/cat- [%])))) (c/all-possible-values coll 3)))
-      (assoc spect :ret (c/coll-of (c/and- [(:s coll) (c/pred-spec (:var f))]) (:kind coll)))
-      (c/invalid {:message (format "filter f does not conform: %s w/ %s" (print-str f) (print-str (first (filter (fn [arg]
-                                                                                                                   (c/invalid? (c/invoke f (c/cat- [arg])))) (c/all-possible-values coll 3)))))
-                  :form `(filter ~f ~coll)}))))
-
-(defn ann-filter [spect args-spect]
-  (if (= 1 (count (c/coll-items args-spect)))
-    (assoc spect :ret transducer-fn-spec)
-    (let [f (c/first- args-spect)
-          coll (c/second- args-spect)]
-      (cond
-        (nil? coll) transducer-fn-spec
-        (c/equivalent? coll (c/value nil)) (assoc spect :ret (c/value '()))
-        (c/first-rest? coll) (filter-fn spect args-spect)
-        :else spect))))
-
-(ann #'filter ann-filter)
-
-(defn map-coll-arity
-  "Given the seq of collections passed to map, return the spec that will be passed to f"
-  [colls]
-  (->> colls
-       (#(c/all-possible-values % 3))
-       (mapv (fn [colls*]
-               (->> colls*
-                    (c/elements)
-                    (map (fn [c]
-                           (if-let [items (seq (c/coll-items c))]
-                             (c/or- items)
-                             (c/value nil))))
-                    (c/cat- ))))
-       (distinct)
-       (c/or- )))
-
-(s/fdef map-fn :args (s/cat :s c/invoke? :args ::c/spect) :ret c/fn-spec?)
-(defn map-fn [spect args-spect]
-  (let [f (c/first- args-spect)
-        colls (c/rest- args-spect)]
-    (let [invoke-args (map-coll-arity colls)]
-      (if (every? (fn [colls*] (every? (fn [c] (not (empty-seq? c))) (c/coll-items colls*))) (c/all-possible-values colls 3))
-        (if (c/valid? (:args f) invoke-args)
-          (assoc spect :ret (c/coll-of (c/invoke f invoke-args)))
-          (c/invalid {:message (format "couldn't invoke %s w/ %s" (print-str f) (print-str colls))}))
-        (assoc spect :ret (c/value []))))))
-
-;; [[X->Y] [X] -> [Y]]
-(defn map-ann [spect args-spect]
-  (if (= 1 (count (c/coll-items args-spect)))
-    (assoc spect :ret transducer-fn-spec)
-    (let [f (c/first- args-spect)
-          colls (c/rest- args-spect)
-          _ (assert (c/cat? colls))
-          coll-count (count (:ps colls))]
-      (if (pos? coll-count)
-        (cond
-          (c/fn-spec? f) (map-fn spect args-spect)
-          :else (assoc spect :ret (c/pred-spec #'seq?)))
-        (assoc spect :ret (c/value (list)))))))
-
-(ann #'map map-ann)
-
-;; [[X->[Y]] [X] -> [Y]]
-
-(s/fdef mapcat-fn :args (s/cat :s c/fn-spec? :args ::c/spect) :ret c/fn-spec?)
-(defn mapcat-fn [spect args-spect]
-  (let [f (c/first- args-spect)
-        colls (c/rest- args-spect)
-        _ (assert (c/cat? colls))
-        colls (c/coll-items colls)]
-    (let [invoke-args (cond
-                        (every? c/first-rest? colls) (c/cat- (map c/first- colls))
-                        (every? c/value? colls) (let [colls (map :v colls)]
-                                                            (when (seq colls)
-                                                              (c/cat- (map (fn [p] (c/value (first (:v p)))) colls))))
-                        :else (c/unknown {:message (format "mapcat-fn args unknown: %s" colls)
-                                          :form args-spect}))]
-      (if (every? (fn [c] (not (empty-seq? c))) colls)
-        (if (and (c/conformy? (c/invoke f invoke-args))
-                 (c/conform (c/pred-spec #'seqable?) (:ret f)))
-          (assoc spect :ret (c/invoke f invoke-args))
-          (do
-            (c/invalid {:message (format "mapcat %s does not conform with %s" (print-str f) (print-str invoke-args))})))
-        (do
-          (assoc spect :ret (c/value [])))))))
-
-;; [[X->Y] [X] -> [Y]]
-(defn mapcat-ann [spect args-spect]
-  (if (= 1 (count (c/coll-items args-spect)))
-    (assoc spect :ret transducer-fn-spec)
-    (let [f (c/first- args-spect)
-          colls (c/rest- args-spect)
-          _ (assert (c/cat? colls))
-          coll-count (count (:ps colls))]
-      (if (pos? coll-count)
-        (cond
-          (c/fn-spec? f) (mapcat-fn spect args-spect)
-          :else (do
-                  ;;(println "ann map don't know how to check:" f)
-                  spect))
-        (assoc spect :ret (c/value (list)))))))
-
-(ann #'any? (fn [spect args-spect]
-              (assoc spect :ret (c/value true))))
-
-(ann #'mapcat mapcat-ann)
-
-(ann #'seq (fn [spect args-spect]
-             (let [arg (c/first- args-spect)]
-               (if (c/valid? (c/pred-spec #'seq?) arg)
-                 (assoc spect :ret (c/pred-spec #'seq?))
-                 spect))))
-
-(def inc-ret-class {Long Long
-                    Double Double
-                    Float Double
-                    BigInt BigInt
-                    BigInteger BigInt
-                    Ratio Ratio
-                    BigDecimal BigDecimal
-                    Number Number})
-
-(defn inc-fn-transformer [spect args-spect]
-  (let [arg (c/first- args-spect)]
-    (if (c/valid? (c/class-spec Number) arg)
-      (let [cs (c/spec->classes arg)
-            ret (->> cs (map (fn [p] (get inc-ret-class p Long))) (distinct) (map c/class-spec) (c/or-))]
-        (assoc spect :ret ret))
-      (c/invalid {:message (format "inc: %s does not conform to Number" (print-str arg))}))))
-
-(defn inc-method-transformer [spect args-spect]
-  (let [arg (c/first- (c/rest- args-spect))]
-    (if (c/valid? (c/class-spec Number) arg)
-      (let [cs (c/spec->classes arg)
-            ret (->> cs (map (fn [p] (get inc-ret-class p Long))) (distinct) (map c/class-spec) (c/or-))]
-        (assoc spect :ret ret))
-      (c/invalid {:message (format "inc: %s does not conform to Number" (print-str arg))}))))
-
-
-(ann-protocol? #'c/spect? p/Spect)
-
-(defn with-not-nil-ret
-  "Given the spec for a java method, remove the (or nil) from the ret"
-  [s args]
-  (if (:ret s)
-    (assoc-in s [:ret] (c/maybe-or-disj (:ret s) (c/value nil)))
-    s))
-
-(defn type-cond
-  "`case for conforming spects. Takes a seq with an even number of values. left hand side values must be spects. Finds the first left hand side value that x conforms to, returns the right-hand side. Throws on no match.
-
-(type-cond x
- (c/class-spec Long) :long
- (c/class-spec Double) :double)
-
-"
-  [x & ps]
-  (assert (even? (count ps)))
-  (let [ps (partition 2 ps)]
-    (loop [[p & pr] ps]
-      (if p
-        (let [[spec val] p]
-          (if (c/valid? spec x)
-            val
-            (recur pr)))
-        (throw (ex-info "No matching clause" {:x x}))))))
-
-(defn big-int? [x]
-  (or (instance? clojure.lang.BigInt x)
-      (instance? BigInteger x)))
-
-(defn pred-count
-  "Return the number of items in coll that conform to s"
-  [s coll]
-  (->> (map (fn [a] (c/valid? s a)) coll)
-       (filter identity)
-       count))
-
-(s/fdef add-transform-concrete :args (s/cat :a class? :b class?) :ret class?)
-(defn add-transform-singular [a b]
-  (let [args [(c/class-spec a) (c/class-spec b)]
-        int-count (pred-count (c/pred-spec #'int?) args)
-        float-count (pred-count (c/pred-spec #'float?) args)
-        big-int-count (pred-count (c/and- [(c/pred-spec #'integer?) (c/not- (c/pred-spec #'int?))]) args)
-        ratio-count (pred-count (c/pred-spec #'ratio?) args)]
-    (cond
-      (pos? float-count)  (c/class-spec Double/TYPE)
-      (pos? ratio-count) (c/class-spec Ratio)
-      (pos? big-int-count) (c/class-spec BigInt)
-      (= 2 int-count) (c/class-spec Long/TYPE)
-      :else (c/class-spec Number))))
-
-(defn add-transformer [spect args]
-  (let [cls (c/first- args)
-        a (c/first- (c/rest- args))
-        b (c/first- (c/rest- (c/rest- args)))
-        as (c/spec->classes a)
-        bs (c/spec->classes b)
-        ret (c/or- (set (for [a as
-                              b bs]
-                          (add-transform-singular a b))))]
-    (assoc spect :ret ret)))
-
-(def add-params [[(c/class-spec Double/TYPE) (c/class-spec Object)]
-                 [(c/class-spec Object) (c/class-spec Double/TYPE)]
-                 [(c/class-spec Object) (c/class-spec Object)]
-                 [(c/class-spec Object) (c/class-spec Long/TYPE)]
-                 [(c/class-spec Long/TYPE) (c/class-spec Object)]])
-
-(doseq [p add-params]
-  (ann-method clojure.lang.Numbers 'add (c/cat- p) add-transformer))
-
-(defn ann-apply [spect args]
-  (let [f (c/first- args)
-        f-args (c/rest- args)]
-    (assoc spect :ret (c/invoke f f-args))))
-
-(ann #'apply ann-apply)
-
-(defn cast-method-transformer [s args]
-  (let [cls (c/first- args)
-        x (c/second- args)]
-    (if (c/class-spec? cls)
-      (-> s
-          (assoc
-           :args (c/cat- [(c/class-spec Class) cls])
-           :ret cls))
-      s)))
-
-(ann-method java.lang.Class 'cast (c/cat- [(c/class-spec Object)]) cast-method-transformer)
-
-(defn cast-fn-transformer [spec args]
-  (let [cls-s (c/first- args)
-        x (c/second- args)]
-    (if (and (c/value? cls-s) (class? (:v cls-s)))
-      (let [cls (:v cls-s)]
-        (-> spec
-            (assoc :args (c/cat- [cls-s (c/class-spec cls)]))
-            (assoc :ret (c/class-spec cls))))
-      spec)))
-
-(ann #'cast cast-fn-transformer)
-
-;; extra clojure stuff
-
-(data/register-dependent-spec (c/pred-spec #'even?) (c/pred-spec #'integer?))
-(data/register-dependent-spec (c/pred-spec #'odd?) (c/pred-spec #'integer?))
-
-(data/register-dependent-spec (c/pred-spec #'true?) (c/value true))
-(data/register-dependent-spec (c/pred-spec #'false?) (c/value false))
-(data/register-dependent-spec (c/pred-spec #'nil?) (c/value nil))
-(data/register-dependent-spec (c/pred-spec #'zero?) (c/value 0))
-
-(data/register-dependent-spec (c/value true) (c/pred-spec #'true?))
-(data/register-dependent-spec (c/value false) (c/pred-spec #'false?))
-(data/register-dependent-spec (c/value nil) (c/pred-spec #'nil?))
-(data/register-dependent-spec (c/value 0) (c/pred-spec #'zero?))
-
-(data/register-dependent-spec (c/pred-spec #'fn?) (c/pred-spec #'ifn?))
-
-(defn object->number [t]
-  (let [t (j/resolve-java-class t)]
-    (if (= Object t)
-      (c/class-spec Number)
-      (c/class-spec t))))
-
-(defn numeric-proper-spec [m]
-  (let [declaring-class (j/resolve-java-class (:declaring-class m))]
-    (c/fn-spec {:args (c/cat- (concat (if (contains? (:flags m) :static)
-                                        [(c/value declaring-class)]
-                                        [(c/class-spec declaring-class)]) (mapv object->number (:parameter-types m))))
-                :ret (object->number (:return-type m))})))
-
-(defn replace-numeric-tower-objects! []
-  ;; for every clojure.lang.Numbers operation that takes Object and
-  ;; returns nil or Object, replace-method-spec to Number->Number
-  (doseq [m (:members (clojure.reflect/reflect clojure.lang.Numbers))
-          :when (j/reflect-method? m)]
-    (when (or (some (fn [c] (= Object (j/resolve-java-class c))) (:parameter-types m))
-              (= Object (j/resolve-java-class (:return-type m))))
-      (let [s (numeric-proper-spec m)]
-        (data/replace-method-spec clojure.lang.Numbers (:name m) (mapv j/resolve-java-class (:parameter-types m)) s)))))
-
-(replace-numeric-tower-objects!)
-
-(ann-method clojure.lang.Numbers 'lt (c/cat- [(c/class-spec Number) (c/class-spec Number)])
-            (fn [spect args]
-              (let [args (c/rest- args)
-                    x (c/first- args)
-                    y (c/second- args)]
-                (if (and (c/value? x) (c/value? y))
-                  (assoc spect :ret (c/value (< (:v x) (:v y))))
-                  spect))))
-
-(ann #'inc inc-fn-transformer)
-
-(ann-method clojure.lang.Numbers 'inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
-(ann-method clojure.lang.Numbers 'unchecked_inc (c/cat- [(c/class-spec Object)]) inc-method-transformer)
-
-
-(ann-method clojure.lang.RT 'assoc (c/cat- [(c/class-spec Object) (c/class-spec Object) (c/class-spec Object)])
-            (fn [spect args-spect]
-              {:post [(do (println "ann assoc:" spect "=>" %) true)]}
-              (-> spect
-                  (assoc-in [:args :ps 1] (c/class-spec clojure.lang.Associative))
-                  (assoc-in [:ret] (c/class-spec clojure.lang.Associative)))))
-
-(ann-method clojure.lang.RT 'booleanCast (c/cat- [(c/class-spec Object)])
-            (fn [spect args-spect]
-              (-> spect
-                  (assoc-in [:ret] (c/pred-spec #'boolean?)))))
+(ann #'next (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
+                     [#'any?] #'nil?}))

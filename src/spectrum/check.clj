@@ -10,6 +10,7 @@
             [spectrum.core-specs]
             [spectrum.analyzer :as analyzer]
             [spectrum.classpath :as classpath]
+            [spectrum.types :as t]
             [spectrum.data :as data :refer (*a*)]
             [spectrum.flow :as flow]
             [spectrum.util :as util :refer (zip with-a unwrap-a print-once)]))
@@ -61,7 +62,7 @@
 (defn check-common [a]
   (let [ret (::flow/ret-spec a)]
     (assert ret)
-    (when (c/invalid? ret)
+    (when (t/invalid? ret)
       [(new-error (merge {:message "unknown"} (select-keys ret [:message :form])) a)])))
 
 (s/fdef check-walk :args (s/cat :a ::flow/analysis) :ret ::check-errors)
