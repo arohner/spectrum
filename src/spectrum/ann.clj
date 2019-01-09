@@ -1,6 +1,8 @@
 (ns spectrum.ann
   (:require [clojure.java.io :as io]
             [clojure.spec.alpha :as s]
+            [spectrum.conform :as c]
+            [spectrum.data :as data :refer [ann]]
             [spectrum.java :as j]
             [spectrum.types :as t]
             [spectrum.util :refer (print-once validate!)])
@@ -9,20 +11,6 @@
                          Seqable)
            (java.util Map)))
 
-(def annotations (atom {}))
-
-(s/fdef ann :args (s/cat :v var? :m (s/tuple [class? symbol?]) :t ::t/type))
-(defn ann
-  "Define a more specific type for the var. `ann` types are preferred
-  over explicit specs or inferred types, and if an `ann` exists for a
-  var, only it will be consulted"
-  [v t]
-  (swap! annotations assoc v t)
-  nil)
-
-(s/fdef get-ann :args (s/cat :x (s/or :v var? :m (s/tuple [class? symbol?]))) :ret (s/nilable ::t/type))
-(defn get-ann [x]
-  (get @annotations x))
 
 (s/fdef ann-instance? :args (s/cat :v var? :c class?))
 (defn ann-instance?
@@ -32,13 +20,15 @@
  "
   [v cls]
   (ann v (t/fn-t {[(t/class-t cls)] (t/value-t true)
-                  [#'any?] (t/value-t false)})))
+                       [#'any?] (t/value-t false)}))
+  (c/unify-terms-equiv (t/class-t cls) v))
 
 (defn ann-instance-or?
   "Ann var-predicate v as (some #(instance? c x) clses)"
   [v clses]
-  (ann v (t/fn-t {(mapv t/class-t clses) (t/value-t true)
-                  [#'any?] (t/value-t false)})))
+  (ann v (t/fn-t {[(t/or-t (mapv t/class-t clses))] (t/value-t true)
+                       [#'any?] (t/value-t false)}))
+  (c/unify-terms-equiv (t/or-t (mapv t/class-t clses)) v))
 ;;;
 
 (def pred->class
@@ -86,6 +76,11 @@
 (doseq [[v cls] pred->class]
   (ann-instance? v cls))
 
+(c/unify-terms-equiv (t/value-t nil) #'nil?)
+(c/unify-terms-equiv (t/value-t true) #'true?)
+(c/unify-terms-equiv (t/value-t false) #'false?)
+(c/unify-terms-equiv (t/value-t 0) #'zero?)
+
 (ann-instance-or? #'float? [Float Double])
 (ann-instance-or? #'int? [Long Integer Short Byte])
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
@@ -93,10 +88,11 @@
 
 (s/fdef ann-method :args (s/cat :c class? :n symbol? :t ::type))
 (defn ann-method
-  "Annotate a java method. This replaces all arities, so t should cover all signatures of the method"
+  "Annotate a java method. This replaces all arities, so t should
+  accept all arities the method accepts (and reject signatures the method rejects!)"
   [cls method t]
   (assert (seq (j/get-java-method cls method)))
-  (ann [cls method] t))
+  (data/ann [cls method] t))
 
 (ann #'seq (t/fn-t {[(t/class-t Iterable)] (t/seq-of '?x)
                     [(t/class-t CharSequence)] (t/seq-of (t/class-t Character))
@@ -106,8 +102,10 @@
                     [(t/class-t Seqable)] (t/seq-of '?x)}))
 
 (ann #'first (t/fn-t {[(t/seq-of '?a)] (t/or-t ['?a #'nil?])
-                      [#'seqable?] (t/invoke-t #'first (t/cat-t [(t/invoke-t #'seq (t/cat-t ['?x]))]))
+                      [#'seqable?] (t/or-t ['?x #'nil?])
                       [#'any?] #'nil?}))
 
 (ann #'next (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
+                     [#'any?] #'nil?}))
+(ann #'rest (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
                      [#'any?] #'nil?}))

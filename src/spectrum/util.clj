@@ -144,3 +144,11 @@
 
 (def-instance-predicate url? java.net.URL)
 (def-instance-predicate namespace? clojure.lang.Namespace)
+
+(defmacro defn-memo
+  "Just like defn, but memoizes the function using clojure.core/memoize"
+  [fn-name & defn-stuff]
+  `(do
+     (defn ~fn-name ~@defn-stuff)
+     (alter-var-root (var ~fn-name) memoize)
+     (var ~fn-name)))

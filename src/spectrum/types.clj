@@ -1,6 +1,7 @@
 (ns spectrum.types
-  (:refer-clojure :exclude [vector-of * +])
-  (:require [clojure.spec.alpha :as s]
+  (:refer-clojure :exclude [vector-of * + parents])
+  (:require [clojure.core :as core]
+            [clojure.spec.alpha :as s]
             [spectrum.java :as j]
             [spectrum.util :refer [instrument-ns]]))
 
@@ -9,6 +10,22 @@
 (defn logic? [x]
   (or (and (symbol? x) (= \? (-> x name first)))
       (ignore? x)))
+
+(s/fdef logic-name :args (s/cat :l logic?) :ret string?)
+(defn logic-name [x]
+  (as-> x %
+    (name %)
+    (re-find #"^\?(.*)$" %)
+    (second %)))
+
+(def type-counter (atom -1))
+
+(defn new-logic
+  ([]
+   (new-logic "t"))
+  ([prefix]
+   (let [next (swap! type-counter inc)]
+     (symbol (str "?" prefix next)))))
 
 (s/def ::type-atom (s/or :lvar logic? :v var? :s symbol?))
 
@@ -98,11 +115,16 @@
 ;; a vector of types, rather than the more correct but noisier cat-t
 ;; of types
 
+(defn maybe-cat [args]
+  (if (cat-t? args)
+    args
+    (cat-t args)))
+
 (s/fdef fn-t :args (s/cat :f ::fn-args) :ret ::fn-t)
 (defn fn-t [m]
   (->> m
        (map (fn [[args ret]]
-              [(cat-t args) ret]))
+              [(maybe-cat args) ret]))
        (into {})
        (conj ['fn])))
 
@@ -154,24 +176,16 @@
       (set)
       (disj #'contains? #'every? #'satisfies? #'isa? #'some? #'future-done? #'empty? #'extends? #'instance? #'identical? #'distinct? #'any?)))
 
-
 (declare derive-type)
 
-(defn ensure-type-any
-  "Ensure that type t derives from #'any?"
-  [t]
-  (when (and (not= #'any?)
-             (not (contains? (ancestors @types-hierarchy t) #'any?)))
-    (derive-type #'any? t)))
-
+(s/fdef derive-type :args (s/cat :h (s/? any?) :parent ::type :type ::type))
 (defn derive-type
-  "clojure.core/derive, but patched to allow vars as tags and parents.
+  "clojure.core/derive, but patched to allow types.
 
 Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
-  ([h parent tag]
-   (assert (not= tag parent))
-   (assert (or (class? tag) (instance? clojure.lang.Named tag) (var? tag) (nil? tag)))
-   (assert (or (instance? clojure.lang.Named parent) (var? parent)))
+  ([h parent type]
+   (assert (not= type parent))
+   (assert h)
    (let [tp (:parents h)
          td (:descendants h)
          ta (:ancestors h)
@@ -180,19 +194,41 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                         (assoc ret k
                                (reduce conj (get targets k #{}) (cons target (targets target)))))
                       m (cons source (sources source))))]
-     (or
-      (when-not (contains? (tp tag) parent)
-        (when (contains? (ta tag) parent)
-          (throw (Exception. (print-str tag "already has" parent "as ancestor"))))
-        (when (contains? (ta parent) tag)
-          (throw (Exception. (print-str "Cyclic derivation:" parent "has" tag "as ancestor"))))
-        {:parents (assoc (:parents h) tag (conj (get tp tag #{}) parent))
-         :ancestors (tf (:ancestors h) tag td parent ta)
-         :descendants (tf (:descendants h) parent ta tag td)}))))
-  ([parent tag]
-   (swap! types-hierarchy derive-type parent tag)
-   (ensure-type-any parent)
-   (ensure-type-any tag)))
+     (when-not tp
+       (println "derive-type:" parent type "no tp"))
+     (assert tp)
+     (assert ta)
+     (assert td)
+     (assert tf)
+     (when-not (contains? (tp type) parent)
+       (when (contains? (ta type) parent)
+         (throw (Exception. (print-str type "already has" parent "as ancestor"))))
+       (when (contains? (ta parent) type)
+         (throw (Exception. (print-str "Cyclic derivation:" parent "has" type "as ancestor"))))
+       {:parents (assoc (:parents h) type (conj (get tp type #{}) parent))
+        :ancestors (tf (:ancestors h) type td parent ta)
+        :descendants (tf (:descendants h) parent ta type td)})))
+  ([parent type]
+   ;; (ensure-type-any parent)
+   ;; (ensure-type-any type)
+   (let [ret (derive-type @types-hierarchy parent type)]
+     (when ret
+       (reset! types-hierarchy ret)))))
+
+(defn equiv-type
+  "Store that x and y are equivalent types"
+  [x y]
+  (swap! types-equiv update x (fnil assoc #{}) y))
+
+(defn parents
+  "Same as clojure.core/parents, but for types"
+  [t]
+  (->> (concat [(core/parents @types-hierarchy t)
+                (when (tagged? t)
+                  (core/parents @types-hierarchy (type-tag t)))])
+       (filter identity)
+       (distinct)
+       seq))
 
 (derive-type #'any? 'or)
 (derive-type #'any? 'and)
@@ -220,6 +256,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
               (value-value x)
               x)]
     ['class cls]))
+
+(derive-type (class-t clojure.lang.ISeq) 'seq-of)
 
 (def seq-value type-value)
 
@@ -311,7 +349,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn simplify
   "Given a type, convert to it's most precise version"
   [t]
-  (let [ts (parents types-hierarchy t)]
+  (let [ts (parents t)]
     (or (->> ts
              (filter value-t?)
              first)

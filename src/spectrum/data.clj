@@ -14,6 +14,9 @@
   ;; var => spec
   (atom {}))
 
+(defonce var-annotations
+  (atom {}))
+
 (defonce var-dependencies
   ;; var => vars
   (atom {}))
@@ -22,46 +25,13 @@
   ;; [var dispatch-value] => analysis cache
   (atom {}))
 
-(defonce java-method-specs
-  (atom {}))
-
 (defonce analyzed-nses
   (atom #{}))
-
-(defonce
-  ^{:doc "Map of vars to transformer functions"}
-  invoke-transformers
-  (atom {}))
-
-(defonce
-  ^{:doc "Map of specs to extra specs that are true about the spec"}
-  extra-dependent-specs (atom {}))
 
 ;; current ana.jvm/analysis, if any
 (def ^:dynamic *a* nil)
 
 (def-instance-predicate reflect-method? clojure.reflect.Method)
-(s/fdef add-invoke-transformer :args (s/cat :v (s/alt :v var? :m reflect-method?) :f fn?))
-(defn add-invoke-transformer [v f]
-  (swap! invoke-transformers assoc v f)
-  nil)
-
-(defn get-invoke-transformer [v]
-  (get @invoke-transformers v))
-
-(s/fdef register-dependent-specs :args (s/cat :s :spectrum.conform/spect :dep :spectrum.conform/spect) :ret nil?)
-(defn register-dependent-spec
-  "Register an extra dependent-spec for spec s.
-
-This is useful for extra properties of the spec e.g. (pred #'string?) -> (class String)
-"
-  [s dep]
-  (swap! extra-dependent-specs update s (fnil conj #{}) dep)
-  nil)
-
-(s/fdef get-dependent-specs :args (s/cat :s :spectrum.conform/spect) :ret (s/nilable (s/coll-of :spectrum.conform/spect :kind set?)))
-(defn get-dependent-specs [s]
-  (get @extra-dependent-specs s))
 
 (s/def ::a ::ana.jvm/analysis)
 (s/def ::path vector?)
@@ -81,14 +51,6 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
     (println "store-var-analysis:" (get-in a (conj path :op)) (:form a)))
   (assert (= :def (get-in a (conj path :op))))
   (swap! var-analysis assoc v {:a a :path path}))
-
-(s/fdef store-var-dependencies :args (s/cat :v var? :deps (s/coll-of var?)))
-(defn store-var-dependencies [v deps]
-  (swap! var-dependencies assoc v deps)
-  nil)
-
-(defn get-var-dependencies []
-  @var-dependencies)
 
 (defn store-defmethod-analysis
   [a]
@@ -130,14 +92,6 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
   [v]
   (boolean (get @var-analysis v)))
 
-(s/fdef get-var-arities :args (s/cat :v var?) :ret (s/nilable ::ana.jvm/analysis))
-(defn get-var-arities
-  "Return the set of :arglists for this var. Must have been analyzed"
-  [v]
-  (some->> (get-var-analysis v)
-           :init
-           :expr))
-
 (defn with-meta? [x]
   (instance? clojure.lang.IObj x))
 
@@ -157,33 +111,18 @@ This is useful for extra properties of the spec e.g. (pred #'string?) -> (class 
             true)]}
   (get @var-specs v))
 
-(s/def ::reflect-args (s/coll-of class? :kind vector?))
-(s/fdef replace-method-spec :args (s/cat :cls class? :name symbol? :args ::reflect-args :spect :spectrum.conform/spect))
-(defn replace-method-spec
-  "Given a java method replace it
-  with the more accurate spec `spec`.
+(s/fdef ann :args (s/cat :m (s/or :v var? :m (s/tuple [class? symbol?])) :t ::t/type))
+(defn ann
+  "Define a more specific type for the var. `ann` types are preferred
+  over explicit specs or inferred types, and if an `ann` exists for a
+  var, only it will be consulted"
+  [v t]
+  (swap! var-annotations assoc v t)
+  nil)
 
-  implicit (c/or nil) will not be added to arguments or return types,
-  so if nils are necessary, they must be specified.
-
-  Method args is a vector of classes, same as returned by
-  clojure.reflect/reflect :parameter-types. Spec should be an fn-spec
-
-  use this to e.g. indicate a method is always not-nil, regardless of
-  args. use `ann` when the return type is dynamic based on the input
-  arguments.
-"
-
-  [cls method-name method-args spec]
-  {:pre [(class? cls)
-         (symbol? method-name)
-         (vector? method-args)
-         (every? class? method-args)]}
-  (swap! java-method-specs assoc [cls method-name method-args] spec))
-
-(s/fdef get-updated-method-spec :args (s/cat :cls class? :name symbol? :args ::reflect-args))
-(defn get-updated-method-spec [cls method-name method-args]
-  (get @java-method-specs [cls method-name method-args]))
+(s/fdef get-ann :args (s/cat :x (s/or :v var? :m (s/tuple [class? symbol?]))) :ret (s/nilable ::t/type))
+(defn get-ann [x]
+  (get @var-annotations x))
 
 (defn reset-cache!
   "Clear cache. Useful for dev"
