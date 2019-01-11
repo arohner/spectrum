@@ -204,6 +204,20 @@
         (assert false))))
   true)
 
+(defn unify-canonical [x y substs]
+  ;; {:post [{:post [(do (println "unify canonical" (t/canonicalize x) (t/canonicalize y) "=>" %) true)]}]}
+  (let [x (t/canonicalize x)
+        y (t/canonicalize y)]
+    (->> (unify-terms x y substs)
+         seq)))
+
+(defn unify-class [x y substs]
+  ;; {:post [(do (println "unify class" (t/class-cast x) (t/class-cast y) "=>" %) true)]}
+  (let [x* (t/class-cast x)
+        y* (t/class-cast y)]
+    (when (and x* y* (->> (unify-terms x* y* substs) seq))
+      substs)))
+
 (s/fdef unify :args (s/cat :x any? :y any? :substs (s/? ::substs)) :ret ::substs)
 (defn unify
   "Unifies term x and y with initial subst.
@@ -214,12 +228,14 @@
    (unify x y [{}]))
   ([x y substs]
    {;; :pre [(do (println "unify pre" x y) true)]
-    ;; :post [(verify-unify x y substs %)]
+    ;; :post [(do (println "unify" x y "=>" %) true)]
     }
    (cond
      (nil? substs) nil
      (= x y) substs
-     :else (->> (unify-terms x y substs) seq doall))))
+     :else (or
+            (unify-canonical x y substs)
+            (unify-class x y substs)))))
 
 (defmulti accept-nil?
   "True if this (regex) type may accept no input"
@@ -673,7 +689,7 @@
 ;;   (unify x (t/type-value v) substs))
 
 (defmethod unify-terms ['value 'value] [x y substs]
-  (unify x (t/type-value x) (t/type-value y)))
+  (unify (t/type-value x) (t/type-value y) substs))
 
 (prefer-method unify-terms [#'any? 'value] [#'t/logic? #'any?])
 (prefer-method unify-terms ['value #'any?] [#'any? #'t/logic?])
@@ -688,5 +704,19 @@
     subst)
   (prefer-method unify-terms [#'any? #'t/logic?] [x y])
   (prefer-method unify-terms [#'t/logic? #'any?] [y x]))
+
+
+(defn derive-all-any
+  "We need all tagged types to derive from #'any?, so default dispatching works"
+  []
+  (->> (unify-terms-methods)
+       (apply concat)
+       distinct
+       (filter symbol?)
+       (map (fn [s]
+              (t/derive-type #'any? s)))
+       (dorun)))
+
+(derive-all-any)
 
 (instrument-ns)

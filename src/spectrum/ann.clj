@@ -8,6 +8,8 @@
             [spectrum.util :refer (print-once validate!)])
   (:import (clojure.lang BigInt
                          Ratio
+                         IPersistentCollection
+                         ISeq
                          Seqable)
            (java.util Map)))
 
@@ -20,16 +22,24 @@
  "
   [v cls]
   (ann v (t/fn-t {[(t/class-t cls)] (t/value-t true)
-                       [#'any?] (t/value-t false)}))
-  (c/unify-terms-equiv (t/class-t cls) v))
+                  [#'any?] (t/value-t false)}))
+  (t/set-equiv-types! (t/class-t cls) v))
 
+(s/fdef ann-instance-or? :args (s/cat :v var? :c (s/coll-of class?)))
 (defn ann-instance-or?
   "Ann var-predicate v as (some #(instance? c x) clses)"
   [v clses]
   (ann v (t/fn-t {[(t/or-t (mapv t/class-t clses))] (t/value-t true)
-                       [#'any?] (t/value-t false)}))
-  (c/unify-terms-equiv (t/or-t (mapv t/class-t clses)) v))
-;;;
+                  [#'any?] (t/value-t false)}))
+  (t/set-equiv-types! (t/or-t (mapv t/class-t clses)) v))
+
+(s/fdef ann-method :args (s/cat :c class? :n symbol? :t ::type))
+(defn ann-method
+  "Annotate a java method. This replaces all arities, so t should
+  accept all arities the method accepts (and reject signatures the method rejects!)"
+  [cls method t]
+  (assert (seq (j/get-java-method cls method)))
+  (data/ann [cls method] t))
 
 (def pred->class
   {#'associative? clojure.lang.Associative
@@ -76,23 +86,22 @@
 (doseq [[v cls] pred->class]
   (ann-instance? v cls))
 
-(c/unify-terms-equiv (t/value-t nil) #'nil?)
-(c/unify-terms-equiv (t/value-t true) #'true?)
-(c/unify-terms-equiv (t/value-t false) #'false?)
-(c/unify-terms-equiv (t/value-t 0) #'zero?)
+(t/set-equiv-types! (t/value-t nil) #'nil?)
+(t/set-equiv-types! (t/value-t true) #'true?)
+(t/set-equiv-types! (t/value-t false) #'false?)
+(t/set-equiv-types! (t/value-t 0) #'zero?)
+
+(t/derive-type #'number? #'integer?)
+(t/derive-type #'number? #'double?)
+(t/derive-type #'integer? #'int?)
+(t/derive-type #'int? #'even?)
+
+(t/derive-type 'coll-of 'vector-of)
 
 (ann-instance-or? #'float? [Float Double])
 (ann-instance-or? #'int? [Long Integer Short Byte])
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or? #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
-
-(s/fdef ann-method :args (s/cat :c class? :n symbol? :t ::type))
-(defn ann-method
-  "Annotate a java method. This replaces all arities, so t should
-  accept all arities the method accepts (and reject signatures the method rejects!)"
-  [cls method t]
-  (assert (seq (j/get-java-method cls method)))
-  (data/ann [cls method] t))
 
 (ann #'seq (t/fn-t {[(t/class-t Iterable)] (t/seq-of '?x)
                     [(t/class-t CharSequence)] (t/seq-of (t/class-t Character))

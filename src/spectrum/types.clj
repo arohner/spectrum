@@ -1,5 +1,5 @@
 (ns spectrum.types
-  (:refer-clojure :exclude [vector-of * + parents])
+  (:refer-clojure :exclude [vector-of * + parents ancestors])
   (:require [clojure.core :as core]
             [clojure.spec.alpha :as s]
             [spectrum.java :as j]
@@ -35,6 +35,10 @@
        (not (logic? (first t)))))
 
 (s/def ::type (s/or :ta ::type-atom :tagged-type tagged? :n nil?))
+
+(defn type? [x]
+  (s/valid? ::type x))
+
 (s/def ::types (s/coll-of ::type))
 
 (defn type-tag [t]
@@ -64,6 +68,24 @@
 
 (defn-tagged-type value-t 'value)
 (defn-type-pred value-t? 'value)
+
+(s/fdef type-value :args (s/cat :t tagged?) :ret any?)
+(defn type-value [t]
+  (when (and (vector? t) (> (count t) 1))
+    (nth t 1)))
+
+(s/fdef type-values :args (s/cat :t tagged?) :ret any?)
+(defn type-values [t]
+  (vec (rest t)))
+
+(def value-value type-value)
+
+(s/fdef class-t :args (s/cat :c (s/or :c class? :l logic? :v value-t?)) :ret ::type)
+(defn class-t [x]
+  (let [cls (if (value-t? x)
+              (value-value x)
+              x)]
+    ['class cls]))
 
 (defn-tagged-type throw-t 'throw)
 (defn-tagged-type recur-t 'recur)
@@ -141,17 +163,6 @@
 (defn object-t? [t]
   (and (class-t? t) (-> t second (= Object))))
 
-(s/fdef type-value :args (s/cat :t tagged?) :ret any?)
-(defn type-value [t]
-  (when (and (vector? t) (> (count t) 1))
-    (nth t 1)))
-
-(s/fdef type-values :args (s/cat :t tagged?) :ret any?)
-(defn type-values [t]
-  (vec (rest t)))
-
-(def value-value type-value)
-
 (declare or-t)
 (declare regex?)
 
@@ -215,20 +226,28 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
      (when ret
        (reset! types-hierarchy ret)))))
 
-(defn equiv-type
-  "Store that x and y are equivalent types"
-  [x y]
-  (swap! types-equiv update x (fnil assoc #{}) y))
-
+(s/fdef parents :args (s/cat :t ::type) :ret (s/nilable (s/coll-of ::type)))
 (defn parents
   "Same as clojure.core/parents, but for types"
   [t]
-  (->> (concat [(core/parents @types-hierarchy t)
-                (when (tagged? t)
-                  (core/parents @types-hierarchy (type-tag t)))])
+  (->> [(core/parents @types-hierarchy t)
+        (when (tagged? t)
+          (core/parents @types-hierarchy (type-tag t)))
+        (when (class-t? t)
+          (map class-t (core/parents (type-value t))))]
+       (apply concat)
        (filter identity)
        (distinct)
        seq))
+
+(s/fdef ancestors :args (s/cat :t ::type) :ret (s/nilable (s/coll-of ::type)))
+(defn ancestors [t]
+  (->> t
+       (parents)
+       (mapcat (fn [p]
+                 (concat [p] (parents p))))
+       (distinct)
+       (filter identity)))
 
 (derive-type #'any? 'or)
 (derive-type #'any? 'and)
@@ -249,13 +268,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
     (derive-type #'any? p)))
 
 (load-type-hierarchy)
-
-(s/fdef class-t :args (s/cat :c (s/or :c class? :l logic? :v value-t?)) :ret ::type)
-(defn class-t [x]
-  (let [cls (if (value-t? x)
-              (value-value x)
-              x)]
-    ['class cls]))
 
 (derive-type (class-t clojure.lang.ISeq) 'seq-of)
 
@@ -345,23 +357,54 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (s/fdef class-value :args (s/cat :t class-t?) :ret (s/or :c class? :t ::type))
 (def class-value type-value)
 
-(s/fdef simplify :args (s/cat :t ::type) :ret ::type)
-(defn simplify
+(def equiv-types
+  (atom {}))
+
+(s/fdef set-equiv-types! :args (s/cat :x ::type :x ::type))
+(defn set-equiv-types!
+  "Define types x and y as being equivalent"
+  [x y]
+  (swap! equiv-types update x (fnil conj #{}) y)
+  (swap! equiv-types update y (fnil conj #{}) x)
+  nil)
+
+(s/fdef get-equiv-types :args (s/cat :t any?) :ret (s/nilable (s/coll-of any?)))
+(defn get-equiv-types
+  ""
+  [t]
+  (or (get @equiv-types t)
+      (when (tagged? t)
+        (get @equiv-types (type-tag t)))))
+
+(declare class-cast)
+
+(defn instance-or-t?
+  [t]
+  (and (or-t? t)
+       (every? (fn [t]
+                 (or (class-t? t)
+                     (class-cast t))) (or-types t))))
+
+(s/fdef canonicalize :args (s/cat :t any?) :ret any?)
+(defn canonicalize
   "Given a type, convert to it's most precise version"
   [t]
-  (let [ts (parents t)]
-    (or (->> ts
-             (filter value-t?)
-             first)
-        (->> ts
-             (filter class-t?)
-             first)
-        (->> ts
-             (filter (fn [s]
-                       (and (or-t? s)
-                            (every? class-t? (or-types s)))))
-             first)
-        t)))
+  (let [ts (conj (get-equiv-types t) t)]
+    (->> (concat (filter value-t? ts)
+                 (filter var? ts)
+                 (filter (fn [t*] (and (tagged? t*)
+                                       (not (class-t? t*))
+                                       (not (instance-or-t? t*)))) ts)
+                 [t])
+         (first))))
+
+(defn class-cast
+  "cast to class-t If the type can be cast without losing precision, else nil"
+  [t]
+  (let [ts (conj (get-equiv-types t) t)]
+    (->> (concat (filter class-t? ts)
+                 (filter instance-or-t? ts))
+         (first))))
 
 (s/fdef maybe-value :args (s/cat :m maybe-t?) :ret ::type)
 (def maybe-value type-value)
@@ -377,7 +420,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
         ts (->> ts
                 (remove or-t?)
                 (remove maybe-t?))
-        ts (map simplify ts)
+        ts (map canonicalize ts)
         ts (concat ts or-ts maybe-ts)
         ts (join-not-pairs ts)
         ts (map (fn [t]
@@ -411,7 +454,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                            (and (j/interface? a) (j/subclassable? b))
                            (and (j/interface? b) (j/subclassable? a)))))
         ts-classes (->> ts
-                        (map simplify)
+                        (map canonicalize)
                         (filter class-t?))]
     (loop [[t-classes & tr-classes] ts-classes]
       (if t-classes
@@ -453,7 +496,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   [ts]
   (let [ts-orig ts
         ts (distinct ts)
-        ts (map simplify ts)
+        ts (map canonicalize ts)
         {values true not-values false} (group-by value-t? ts)
         ts (if (seq values)
              values
@@ -520,13 +563,5 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (defmethod regex? 'alt [x]
   true)
-
-(derive-type #'number? #'integer?)
-(derive-type #'number? #'double?)
-(derive-type #'integer? #'int?)
-(derive-type #'int? #'even?)
-(derive-type #'seqable? 'seq-of)
-(derive-type #'seqable? 'coll-of)
-(derive-type 'coll-of 'vector-of)
 
 (instrument-ns)
