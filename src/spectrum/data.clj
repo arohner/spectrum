@@ -120,7 +120,7 @@
   (swap! var-annotations assoc v t)
   nil)
 
-(s/fdef get-ann :args (s/cat :x (s/or :v var? :m (s/tuple [class? symbol?]))) :ret (s/nilable ::t/type))
+(s/fdef get-ann :args (s/cat :x (s/or :v var? :m (s/tuple class? symbol?))) :ret (s/nilable ::t/type))
 (defn get-ann [x]
   (get @var-annotations x))
 

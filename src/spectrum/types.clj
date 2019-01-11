@@ -300,9 +300,10 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn alt-types [x]
   (vec (rest x)))
 
-(s/fdef merge-fns :args (s/cat :fns (s/coll-of ::fn-t)) :ret ::fn-t)
+(s/fdef merge-fns :args (s/cat :fns (s/coll-of ::fn-t)) :ret (s/nilable ::fn-t))
 (defn merge-fns [fns]
-  (fn-t (apply merge (map second fns))))
+  (when (seq fns)
+    (fn-t (apply merge (map second fns)))))
 
 (s/fdef fn-args :args (s/cat :f ::fn-t) :ret ::type)
 (defn fn-args

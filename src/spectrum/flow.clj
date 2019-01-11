@@ -422,12 +422,12 @@
     (conj (make-equations f-args invoke-args)
           [ret-t (t/invoke-t f-t invoke-args)])))
 
-(defn method-t
+(defn get-method-t
   "Return a fn-t for the java method; includes all arity overloads"
   [cls method]
   (or
    (data/get-ann [cls method])
-   (->> (j/get-java-method class method)
+   (->> (j/get-java-method cls method)
         (map method->fn-t)
         (t/merge-fns))))
 
@@ -926,7 +926,12 @@
       (if fail
         (debug-failure context a eq substs fail)
         (when substs
-          (store-var-inference-results context a substs))))))
+          (store-var-inference-results context a substs)
+          (->> substs
+               (map (fn [s]
+                      (c/resolve-type t s)))
+               (distinct)
+               (t/or-t)))))))
 
 (defn infer-form
   ([form]
