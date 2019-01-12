@@ -1,7 +1,8 @@
 (ns spectrum.conform-test
   (:require [clojure.test :refer :all]
             [spectrum.conform :as c]
-            [spectrum.types :as t]))
+            [spectrum.types :as t])
+  (:import [clojure.lang Keyword]))
 
 (def a?)
 (def b?)
@@ -69,17 +70,9 @@
       {:a '?b} {:a '?b}
       {'?a '?b} {:a '?b}
       #'any? (t/seq-of '?x)
-      #'any? #'integer?
-      #'integer? #'int?
-      #'number? #'even?
+
       '?x '?x
       '?y '?y
-
-      (t/seq-of '?x) (t/seq-of '?x)
-      (t/seq-of '?z) (t/seq-of '?z)
-      #'seqable? (t/seq-of '?x)
-      (t/coll-of '?x) (t/vector-of '?x)
-      (t/coll-of #'a?) (t/vector-of #'a?)
 
       ;; or
       (t/or-t #{'?a}) '?a
@@ -133,7 +126,10 @@
 
       ;; seq
       (t/seq-of #'b?) (t/cat-t [#'a?])
-      (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a?]))))
+      (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a?])
+
+      (t/class-t Integer) (t/class-t Keyword)
+      )))
 
 (deftest and-logic
   (are [ts ret] (= ret (t/and-t ts))
@@ -141,7 +137,6 @@
     ['?x '?y] ['and #{'?x '?y}]
     [['maybe '?y]] '?y
     ['?x ['maybe '?y]] ['or #{'?x '?y}]
-    [#'int? #'any?] #'int?
     [#'any?] #'any?
     ['?x '?y ['maybe '?z]] ['or #{['and #{'?x '?y}] '?z}]))
 
