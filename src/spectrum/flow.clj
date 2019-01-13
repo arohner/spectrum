@@ -442,8 +442,7 @@
             cls-class (:class a*)
             invoke-args (t/cat-t (map-sequential-children get-type! context a path :args))
             ret-t (get-type! context a path)
-            ]
-        (println "get-eq java" method-t invoke-args)
+            method-t (get-method-t cls-class method)]
         (if method-t
           (->> (conj (invoke-fn-equations method-t invoke-args ret-t)
                      (when (and cls-type cls-class)
@@ -809,8 +808,8 @@
        (filter identity)
        (set)))
 
-(s/fdef v-vars :args (s/cat :v var?) :ret (s/coll-of var? :kind set?))
-(defn v-vars
+(s/fdef var-dependencies :args (s/cat :v var?) :ret (s/coll-of var? :kind set?))
+(defn var-dependencies
   "Return all vars this var depends on. Analyzes if necessary"
   [v]
   (ensure-analysis-var v)
@@ -821,17 +820,26 @@
 
 (s/def :var-dependencies/map (s/map-of var? (s/coll-of var?)))
 
-(defn var-dependencies
-  "Given an analysis, return a dependency map of all vars the analysis depends on"
-  [a]
+(s/fdef dependencies-map :args (s/cat :vs (s/coll-of var?)) :ret :var-dependencies/map)
+(defn dependencies-map
+  "Return a map of vars this var depends on"
+  [v]
   (loop [dep-map {}
-         queue (q/q (a-vars a))]
+         queue (q/q v)]
     (if-let [v (first queue)]
-      (let [deps (v-vars v)
+      (let [deps (var-dependencies v)
             seen (set (keys dep-map))
             new (set/difference deps seen)]
         (recur (assoc dep-map v deps) (pop (apply conj queue new))))
       dep-map)))
+
+(s/fdef a-var-dependencies :args (s/cat :a ::a) :ret :var-dependencies/map)
+(defn a-var-dependencies
+  "Given an analysis, return a dependency map of all vars the analysis depends on"
+  [a]
+  (-> a
+      (a-vars)
+      (dependencies-map)))
 
 (declare infer)
 
@@ -844,21 +852,70 @@
     (infer a {:dependencies? dependencies?})
     (println "couldn't find analysis for" v)))
 
+(defn infer-cycle
+  "Given a seq of vars that form a cycle, infer them together"
+  [vs]
+  (doseq [v vs]
+    (ensure-analysis-var v))
+  (let [as {:op :do
+            :statements (mapv (fn [v]
+                                {:post [%]}
+                                (data/get-var-analysis v)) vs)
+            :ret {:op :const
+                  :val nil}}]
+    (infer as)))
+
+(defn ensure-infer-var-cycle [vs]
+  (if (every? c/get-var-type vs)
+    nil
+    (infer-cycle vs)))
+
 (defn ensure-infer-var [v &[{:keys [dependencies?]}]]
+  {:post [%]}
   (or (c/get-var-type v)
       (do
         (println "inferring var" v)
         (infer-var v {:dependencies? dependencies?}))))
 
+(defn sort-dependencies
+  "Given a var dependency map, return a seq of vars to visit in order. Returns a seq of vars for cycles"
+  [dm]
+  (loop [nodes (set/union (set (keys dm)) (set (apply concat (vals dm))))
+         returned #{}
+         ret []]
+    (if-let [n (first nodes)]
+      (let [visit (fn visit
+                    ([n stack visiting]
+                     {:pre [(var? n)]}
+                     (let [deps (get dm n)
+                           to-visit (remove (fn [d]
+                                              (contains? returned d)) deps)
+                           can-ret? (nil? (seq to-visit))]
+                       (cond
+                         (and (contains? returned n) (seq stack)) (recur (peek stack) (pop stack) visiting)
+                         (some #(= n %) visiting) (let [cycle (drop-while #(not= n %) visiting)]
+                                                    (println "not a dag:" n cycle)
+                                                    cycle)
+                         (seq to-visit) (recur (first to-visit) (into stack to-visit) (conj visiting n))
+                         :else n)))
+                    ([n]
+                     (visit n (list) [])))]
+        (let [new-ret (visit n)]
+          (if (coll? new-ret)
+            (recur (apply disj nodes new-ret) (into returned new-ret) (conj ret new-ret))
+            (recur (disj nodes new-ret) (conj returned new-ret) (conj ret new-ret)))))
+      ret)))
+
 (defn infer-dependencies
   "Infer all var dependencies contained in analysis a"
   [a]
   (->> a
-       (var-dependencies)
-       (topo-sort/topo-sort)
-       (reverse)
+       (a-var-dependencies)
+       (sort-dependencies)
        (map (fn [v]
-              (ensure-infer-var v {:dependencies? false})))
+              (if (coll? v)
+                (ensure-infer-var-cycle v)
+                (ensure-infer-var v {:dependencies? false}))))
        (dorun)))
 
 (defn get-type-meta
