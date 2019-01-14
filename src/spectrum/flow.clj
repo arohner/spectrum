@@ -15,7 +15,6 @@
             [spectrum.data :as data :refer (*a*)]
             [spectrum.java :as j]
             [spectrum.queue :as q]
-            [spectrum.topo-sort :as topo-sort]
             [spectrum.types :as t]
             [spectrum.util :as util :refer [print-once protocol? namespace? queue validate! instrument-ns memoize-with]])
   (:import [clojure.lang Var Namespace]))
