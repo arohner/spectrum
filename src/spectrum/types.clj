@@ -27,7 +27,7 @@
    (let [next (swap! type-counter inc)]
      (symbol (str "?" prefix next)))))
 
-(s/def ::type-atom (s/or :lvar logic? :v var? :s symbol?))
+(s/def ::type-atom (s/or :lvar logic? :v var?))
 
 (defn tagged? [t]
   (and (vector? t)
@@ -127,7 +127,8 @@
 (s/fdef keys-t :args (s/cat :k (s/keys :opt-un [:keys/req :keys/req-un :keys/opt :keys/opt-un])))
 (defn-tagged-type keys-t 'keys)
 
-(s/def :fn/args (s/coll-of ::type :kind vector?))
+(s/def ::fn-args-in (s/or :ta (s/coll-of ::type :kind vector?) ::t cat-t?))
+(s/def :fn/args ::type)
 (s/def :fn/ret ::type)
 (s/def ::fn-args (s/map-of :fn/args :fn/ret))
 (s/def ::fn-tag #{'fn})
@@ -142,7 +143,7 @@
     args
     (cat-t args)))
 
-(s/fdef fn-t :args (s/cat :f ::fn-args) :ret ::fn-t)
+(s/fdef fn-t :args (s/cat :f (s/map-of ::fn-args-in :fn/ret)) :ret ::fn-t)
 (defn fn-t [m]
   (->> m
        (map (fn [[args ret]]
@@ -189,7 +190,7 @@
 
 (declare derive-type)
 
-(s/fdef derive-type :args (s/cat :h (s/? any?) :parent ::type :type ::type))
+(s/fdef derive-type :args (s/cat :h (s/? any?) :parent (s/or :t ::type :s symbol?) :type (s/or :t ::type :s symbol?)))
 (defn derive-type
   "clojure.core/derive, but patched to allow types.
 
@@ -300,10 +301,27 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn alt-types [x]
   (vec (rest x)))
 
+(defn simplify-arities
+  "Merge fn arities with the same return type and same number of arguments"
+  [fn-map]
+  (->> fn-map
+       (group-by (fn [[args ret]]
+                   (assert (cat-t? args))
+                   [ret (count args)]))
+       (map (fn [[[_  arg-count] arities]]
+              (let [args (map first arities)
+                    ret (-> arities first val)]
+                [(or-t args) ret])))
+       (into {})))
+
 (s/fdef merge-fns :args (s/cat :fns (s/coll-of ::fn-t)) :ret (s/nilable ::fn-t))
 (defn merge-fns [fns]
   (when (seq fns)
-    (fn-t (apply merge (map second fns)))))
+    (->> fns
+      (map second)
+      (apply merge)
+      (simplify-arities)
+      (fn-t))))
 
 (s/fdef fn-args :args (s/cat :f ::fn-t) :ret ::type)
 (defn fn-args
@@ -428,9 +446,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                   (if (object-t? t)
                     #'any?
                     t)) ts)
-        ;; ts (if (some any-t? ts)
-        ;;      (take 1 (filterv any-t? ts))
-        ;;      ts)
+        ts (if (some any-t? ts)
+             (do
+               (when (> (count ts) 1)
+                 (println "WARNING: or-t" ts "=>" #'any?))
+               (take 1 (filterv any-t? ts)))
+             ts)
         ts (set ts)]
     ts))
 

@@ -49,6 +49,16 @@
     (t/cat-t [(t/seq-of #'a?) #'b?]) [#'a? #'b?]
     (t/cat-t [(t/seq-of #'a?) (t/? #'b?)]) [#'a? #'b? nil]))
 
+(deftest dx?
+  (testing "truthy"
+    (are [t] (c/dx? t)
+      (t/cat-t [])
+      (t/cat-t [#'int?])))
+  (testing "falsey"
+    (are [t] (= false (c/dx? t))
+      #'int?
+      (t/value-t 3))))
+
 (deftest dx
   (are [x y ret] (= ret (c/dx x y [{}]))
     (t/cat-t [(t/seq-of #'a?) #'b?]) #'a? [{:state (t/cat-t [#'b?]) :substs [{}]}
@@ -173,12 +183,6 @@
                                                 (t/cat-t ['?b '?b])
                                                 (t/cat-t ['?b '?c])}
     (t/cat-t []) 0 #{(t/cat-t [])}))
-
-(deftest value-preds
-  (are [x y] (seq (c/unify x y))
-    (t/value-t nil) #'nil?
-    #'nil? (t/value-t nil)
-    (t/value-t true) #'true?))
 
 (deftest apply-invoke
   (let [s (t/fn-t {[#'nil?] #'nil?

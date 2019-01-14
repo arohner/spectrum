@@ -110,6 +110,10 @@
                     ;; todo array-of
                     [(t/class-t Seqable)] (t/seq-of '?x)}))
 
+(ann #'cons (t/fn-t {['?x #'nil?] (t/value-t (list '?x))
+                     ['?x (t/seq-of '?y)] (t/seq-of (t/or-t ['?x '?y]))
+                     ['?x #'seqable?] (t/seq-of (t/or-t ['?x '?y]))}))
+
 (ann #'first (t/fn-t {[(t/seq-of '?a)] (t/or-t ['?a #'nil?])
                       [#'seqable?] (t/or-t ['?x #'nil?])
                       [#'any?] #'nil?}))

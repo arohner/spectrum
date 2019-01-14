@@ -413,9 +413,11 @@
                      (distinct))
    ;;; TODO ideally, there would be an 'if P->Q' between args and
    ;;; ret here. Need better equations for that
-        f-args (map (comp t/cat-types first) arities)
+        f-args (seq (map (comp t/cat-types first) arities))
+
         f-args (t/cat-t (apply mapv (fn [& arg]
                                       (t/or-t arg)) f-args))
+
         _ (assert (= (count invoke-args) (count f-args)))
         rets (map second arities)]
     (conj (make-equations f-args invoke-args)
@@ -877,7 +879,8 @@
         (infer-var v {:dependencies? dependencies?}))))
 
 (defn sort-dependencies
-  "Given a var dependency map, return a seq of vars to visit in order. Returns a seq of vars for cycles"
+  "Given a var dependency map, return a seq of vars to visit in
+  order. Returns collections of vars to represent cycles"
   [dm]
   (loop [nodes (set/union (set (keys dm)) (set (apply concat (vals dm))))
          returned #{}

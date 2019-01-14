@@ -212,13 +212,18 @@
   (let [x (t/canonicalize x)
         y (t/canonicalize y)]
     (->> (unify-terms x y substs)
+         (filter identity)
+         distinct
          seq)))
 
 (defn unify-class [x y substs]
   ;; {:post [(do (println "unify class" (t/class-cast x) (t/class-cast y) "=>" %) true)]}
   (let [x* (t/class-cast x)
         y* (t/class-cast y)]
-    (when (and x* y* (->> (unify-terms x* y* substs) seq))
+    (when (and x* y* (->> (unify-terms x* y* substs)
+                          (filter identity)
+                          distinct
+                          seq))
       substs)))
 
 (s/fdef unify :args (s/cat :x any? :y any? :substs (s/? ::substs)) :ret ::substs)
@@ -501,9 +506,7 @@
 (defmethod unify-terms ['or #'any?] [or-x y substs]
   (->> (t/or-types or-x)
        (mapcat (fn [x]
-                 (unify x y substs)))
-       (filter identity)
-       (distinct)))
+                 (unify x y substs)))))
 
 (prefer-method unify-terms ['or #'any?] [#'any? #'t/logic?])
 
@@ -514,9 +517,7 @@
        (combo/permutations)
        (mapcat (fn [ys]
                  (reduce (fn [substs y]
-                           (unify or-x y substs)) substs ys)))
-       (filter identity)
-       (distinct)))
+                           (unify or-x y substs)) substs ys)))))
 
 (defmethod unify-terms ['alt #'any?] [alt-x y substs]
   (->> alt-x
@@ -524,9 +525,7 @@
        (mapcat (fn [x]
                  (if (nil? x)
                    substs
-                   (unify x y substs))))
-       (filter identity)
-       (distinct)))
+                   (unify x y substs))))))
 
 (defmethod unify-terms ['class 'class] [x y substs]
   (unify (t/type-value x) (t/type-value y) substs))
@@ -572,10 +571,12 @@
        (t/or-types)
        (map #(resolve-type % subst))
        (t/or-t)
-       ((fn [or-t]
-          (if (every? t/fn-t? (t/or-types or-t))
-            (t/merge-fns (t/or-types or-t))
-            or-t)))))
+       ((fn [t]
+          (if (t/or-t? t)
+            (if (every? t/fn-t? (t/or-types t))
+              (t/merge-fns (t/or-types t))
+              t)
+            t)))))
 
 (defmethod resolve-type* 'and [t subst]
   (->> t
@@ -658,9 +659,7 @@
        (mapcat (fn [[y subst]]
                  (when (t/invoke-t? y)
                    (println "unify any-invoke recur:" x invoke-y "=> unify" x y "?=" (= invoke-y y)))
-                 (unify x y [subst])))
-       (filter identity)
-       (distinct)))
+                 (unify x y [subst])))))
 
 (defmethod unify-terms ['invoke #'any?] [invoke-x y subst]
   (->>
@@ -671,9 +670,7 @@
    (mapcat (fn [[x* subst]]
              (when (t/invoke-t? x*)
                (println "unify invoke-any recur:" invoke-x y "=> unify" x* y "?=" (= invoke-x x*)))
-             (unify x* y [subst])))
-   (filter identity)
-   (distinct)))
+             (unify x* y [subst])))))
 
 (prefer-method unify-terms [#'any? 'invoke] [#'t/logic? #'any?])
 (prefer-method unify-terms [#'any? 'invoke] ['or #'any?])
