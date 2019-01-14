@@ -33,6 +33,7 @@
     #'number? #'even?
     (t/value-t nil) #'nil?
     #'nil? (t/value-t nil)
+    (t/value-t true) #'true?
 
     (t/seq-of '?x) (t/seq-of '?x)
     (t/seq-of '?z) (t/seq-of '?z)

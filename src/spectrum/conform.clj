@@ -66,12 +66,18 @@
   #'dx-dispatch
   :default :default)
 
-(defn dx? [t]
-  (-> dx .getMethodTable keys (set) (contains? (t/type-tag t))))
-
 (declare unify-terms-dispatch)
 
 (defmulti unify-terms "" #'unify-terms-dispatch :hierarchy t/types-hierarchy :default [#'any? #'any?])
+
+(defn-memo unify-terms-methods []
+  (-> unify-terms .getMethodTable keys set))
+
+(defn-memo dx-methods []
+  (-> dx .getMethodTable keys set))
+
+(defn dx? [t]
+  (contains? (dx-methods) (t/type-tag t)))
 
 (defn unify-term-value [x]
   (cond
@@ -83,9 +89,6 @@
                #'any?)
     (nil? x) #'any?
     :else (class x)))
-
-(defn-memo unify-terms-methods []
-  (-> unify-terms .getMethodTable keys set))
 
 (defn unify-terms-method?
   "Is there a *direct* dispatch value for (unify-terms x y)?"
@@ -119,7 +122,7 @@
   (->> substs
        (mapcat (fn [s]
                  (unify-variable-1 x y s)))
-       (filterv identity)))
+       (filter identity)))
 
 (s/fdef unify-terms-default :args (s/cat :x any? :y any? :subst ::substs) :ret ::substs)
 (defn unify-terms-default [x y substs]
@@ -291,7 +294,7 @@
          ((fn [xs]
             xs))
          (map (fn [xs]
-                (t/cat-t (filterv identity xs)))))))
+                (t/cat-t (filter identity xs)))))))
 
 (defn fix-length-dispatch [t n]
   (t/type-tag t))
@@ -442,14 +445,12 @@
          (filter identity))))
 
 (defmethod dx 'seq-of [seq-x y subst]
-  {:post [(validate! ::dx-rets %)]}
   (let [x (t/seq-value seq-x)
         subst (unify x y subst)]
     [{:state nil :substs subst}
      {:state seq-x :substs subst}]))
 
 (defmethod dx 'alt [alt-x y substs]
-  {:post [(validate! ::dx-rets %)]}
   (->> (t/alt-types alt-x)
        (mapcat (fn [at]
               (dx at y substs)))))
@@ -615,9 +616,6 @@
     it))
 
 (defmethod apply-invoke 'fn [it substs]
-  {;; :pre [(do (println "apply fn pre" (printable-invoke-t it)) true)]
-   :post [;; (do (println "apply fn post" (printable-invoke-t it) "=>" %) true)
-          (validate! ::apply-invoke-ret %)]}
   (let [[f invoke-args] (t/type-values it)
         substs-old substs]
     (->> (nth f 1)
@@ -628,7 +626,7 @@
                           (mapv (fn [subst]
                                   ;; {:post [(do (println "apply fn" f-args "=>" %) true)]}
                                   [(resolve-type f-ret subst) subst]))))))
-         (filterv identity)
+         (filter identity)
          (distinct))))
 
 (defmethod apply-invoke 'map-of [it subst]
@@ -646,7 +644,6 @@
       (data/get-var-spec v)))
 
 (defmethod apply-invoke #'var? [it subst]
-  {:post [(validate! ::apply-invoke-ret %)]}
   (let [v (nth it 1)
         _ (assert (var? v))
         t (get-var-type v)
@@ -662,7 +659,7 @@
                  (when (t/invoke-t? y)
                    (println "unify any-invoke recur:" x invoke-y "=> unify" x y "?=" (= invoke-y y)))
                  (unify x y [subst])))
-       (filterv identity)
+       (filter identity)
        (distinct)))
 
 (defmethod unify-terms ['invoke #'any?] [invoke-x y subst]
@@ -675,7 +672,7 @@
              (when (t/invoke-t? x*)
                (println "unify invoke-any recur:" invoke-x y "=> unify" x* y "?=" (= invoke-x x*)))
              (unify x* y [subst])))
-   (filterv identity)
+   (filter identity)
    (distinct)))
 
 (prefer-method unify-terms [#'any? 'invoke] [#'t/logic? #'any?])
