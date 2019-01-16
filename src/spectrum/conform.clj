@@ -161,15 +161,15 @@
 
 (defmethod unify-terms [Sequential Object] [x y subst]
   (when (and (seqable? y) (seq y))
-    (->> subst
-         (unify (first x) (first y))
-         (unify (rest x) (rest y)))))
+    (some->> subst
+             (unify (first x) (first y))
+             (unify (rest x) (rest y)))))
 
 (defmethod unify-terms [IPersistentSet Object] [x y subst]
   (when (and (seqable? y) (seq y))
-    (->> subst
-         (unify (first x) (first y))
-         (unify (rest x) (rest y)))))
+    (some->> subst
+             (unify (first x) (first y))
+             (unify (rest x) (rest y)))))
 
 (defmethod unify-terms [IPersistentMap IPersistentMap] [x y subst]
   (let [[x-k x-v] (->> x (sort-by (fn [[k v]] (t/logic? k))) first)]
@@ -209,22 +209,35 @@
 
 (defn unify-canonical [x y substs]
   ;; {:post [{:post [(do (println "unify canonical" (t/canonicalize x) (t/canonicalize y) "=>" %) true)]}]}
-  (let [x (t/canonicalize x)
-        y (t/canonicalize y)]
-    (->> (unify-terms x y substs)
+  (let [x* (t/canonicalize x)
+        y* (t/canonicalize y)]
+    (->> (unify-terms x* y* substs)
          (filter identity)
          distinct
          seq)))
 
-(defn unify-class [x y substs]
+(defn unify-class [x y]
   ;; {:post [(do (println "unify class" (t/class-cast x) (t/class-cast y) "=>" %) true)]}
   (let [x* (t/class-cast x)
         y* (t/class-cast y)]
-    (when (and x* y* (->> (unify-terms x* y* substs)
+    (when (and x* y* (->> (unify-terms x* y* [{}])
                           (filter identity)
                           distinct
                           seq))
-      substs)))
+      [{}])))
+
+(defn cacheable? [x y]
+  (and (= #{} (get-lvars x))
+       (= #{} (get-lvars y))))
+
+(defn unify* [x y substs]
+  (unify-canonical x y substs))
+
+(defn-memo unify-cache [x y]
+  (or
+   (or
+    (unify-canonical x y [{}])
+    (unify-class x y))))
 
 (s/fdef unify :args (s/cat :x any? :y any? :substs (s/? ::substs)) :ret ::substs)
 (defn unify
@@ -236,14 +249,14 @@
    (unify x y [{}]))
   ([x y substs]
    {;; :pre [(do (println "unify pre" x y) true)]
-    ;; :post [(do (println "unify" x y "=>" %) true)]
+    ;; :post [(do (println "unify" x y "=>" (boolean (seq %))) true)]
     }
+   (assert substs)
    (cond
-     (nil? substs) nil
      (= x y) substs
-     :else (or
-            (unify-canonical x y substs)
-            (unify-class x y substs)))))
+     (cacheable? x y) (when (unify-cache x y)
+                        substs)
+     :else (unify* x y substs))))
 
 (defmulti accept-nil?
   "True if this (regex) type may accept no input"
@@ -517,7 +530,8 @@
        (combo/permutations)
        (mapcat (fn [ys]
                  (reduce (fn [substs y]
-                           (unify or-x y substs)) substs ys)))))
+                           (when substs
+                             (unify or-x y substs))) substs ys)))))
 
 (defmethod unify-terms ['alt #'any?] [alt-x y substs]
   (->> alt-x
@@ -529,6 +543,12 @@
 
 (defmethod unify-terms ['class 'class] [x y substs]
   (unify (t/type-value x) (t/type-value y) substs))
+
+(defmethod unify-terms [nil #'any?] [x y subst]
+  nil)
+
+(defmethod unify-terms [nil nil] [x y substs]
+  substs)
 
 (prefer-method unify-terms ['alt #'any?] [#'any? #'t/logic?])
 

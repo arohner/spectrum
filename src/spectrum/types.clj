@@ -3,7 +3,7 @@
   (:require [clojure.core :as core]
             [clojure.spec.alpha :as s]
             [spectrum.java :as j]
-            [spectrum.util :refer [instrument-ns]]))
+            [spectrum.util :refer [instrument-ns defn-memo]]))
 
 (def ignore? (partial = '_))
 
@@ -154,9 +154,10 @@
 (defn-type-pred fn-t? 'fn)
 
 (s/def ::invokeable (s/or :v var? :k keyword? :t tagged?))
-(s/fdef invoke-t :args (s/cat :f ::invokeable :args cat-t?) :ret ::type)
 (defn-tagged-type invoke-t 'invoke)
 (defn-type-pred invoke-t? 'invoke)
+
+(s/fdef invoke-t :args (s/cat :f ::invokeable :args (s/or :c cat-t? :i invoke-t?)) :ret ::type)
 
 (defn any-t? [t]
   (= #'any? t))
@@ -405,7 +406,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                      (class-cast t))) (or-types t))))
 
 (s/fdef canonicalize :args (s/cat :t any?) :ret any?)
-(defn canonicalize
+(defn-memo canonicalize
   "Given a type, convert to it's most precise version"
   [t]
   (let [ts (conj (get-equiv-types t) t)]
