@@ -87,7 +87,7 @@
     (var? x) (if (parents @t/types-hierarchy x)
                x
                #'any?)
-    (nil? x) #'any?
+    (nil? x) nil
     :else (class x)))
 
 (defn unify-terms-method?
@@ -126,7 +126,9 @@
 
 (s/fdef unify-terms-default :args (s/cat :x any? :y any? :subst ::substs) :ret ::substs)
 (defn unify-terms-default [x y substs]
-  ;; {:post [(do (println "unify terms default" x y "=>" %) true)]}
+  ;; {:pre [(do (println "default unify terms" x y "pre") true)]
+  ;;  :post [(do (println "default unify terms" x y "=>" %) true)]}
+  (assert substs)
   (or
    (when (t/logic? y)
      (unify-variable y x substs))
@@ -136,10 +138,11 @@
      substs)
    (when (isa? @t/types-hierarchy y x)
      substs)
-   (when-let [ancestors (ancestors @t/types-hierarchy y)]
-     (->> ancestors
-          (some (fn [a]
-                  (unify x a substs)))))
+   (when (not (instance? Class y))
+     (when-let [ancestors (ancestors @t/types-hierarchy y)]
+       (->> ancestors
+            (some (fn [a]
+                    (unify x a substs))))))
    (when (t/tagged? y)
      (when-let [ancestors (ancestors @t/types-hierarchy (t/type-tag y))]
        (->> ancestors
@@ -642,11 +645,9 @@
     (->> (nth f 1)
          (mapcat (fn [[f-args f-ret]]
                    (when-let [substs (seq (unify f-args invoke-args substs))]
-                     ;; (println "apply invoke match:" f-args substs-old "=>" substs)
                      (->> substs
-                          (mapv (fn [subst]
-                                  ;; {:post [(do (println "apply fn" f-args "=>" %) true)]}
-                                  [(resolve-type f-ret subst) subst]))))))
+                          (map (fn [subst]
+                                 [(resolve-type f-ret subst) subst]))))))
          (filter identity)
          (distinct))))
 
@@ -677,8 +678,6 @@
   ;;  :post [(do (println "unify any invoke:" x invoke-y subst "=>" %) true)]}
   (->> (apply-invoke invoke-y subst)
        (mapcat (fn [[y subst]]
-                 (when (t/invoke-t? y)
-                   (println "unify any-invoke recur:" x invoke-y "=> unify" x y "?=" (= invoke-y y)))
                  (unify x y [subst])))))
 
 (defmethod unify-terms ['invoke #'any?] [invoke-x y subst]
@@ -718,7 +717,6 @@
     subst)
   (prefer-method unify-terms [#'any? #'t/logic?] [x y])
   (prefer-method unify-terms [#'t/logic? #'any?] [y x]))
-
 
 (defn derive-all-any
   "We need all tagged types to derive from #'any?, so default dispatching works"

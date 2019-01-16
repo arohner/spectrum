@@ -104,9 +104,7 @@
   nil)
 
 (defn get-var-spec [v]
-  {:post [(do (when (and % (not (= v (:var %))))
-                (println "get-var-spec:" v %)) true)
-          (if %
+  {:post [(if %
             (-> % meta :var (= v))
             true)]}
   (get @var-specs v))
