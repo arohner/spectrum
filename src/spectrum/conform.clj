@@ -732,5 +732,7 @@
        (dorun)))
 
 (derive-all-any)
+(t/derive-type #'any? #'dx?)
+nil
 
 (instrument-ns)

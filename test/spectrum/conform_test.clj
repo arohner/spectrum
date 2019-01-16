@@ -112,7 +112,9 @@
 
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'b?])
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'b?])
-      (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a? #'b?])))
+      (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a? #'b?])
+
+      (t/or-t #{(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])}) (t/cat-t ['?x])))
 
   (testing "falsey"
     (are [x y] (= false (c/valid? x y))
