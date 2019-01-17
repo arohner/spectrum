@@ -56,7 +56,6 @@
 
 (deftest apply-invoke-ann
   (testing "truthy"
-    (are [v args ret] (c/valid? (t/or-t [#'int? #'nil?]) (t/invoke-t v (t/cat-t args)))
-      #'first [(t/seq-of #'int?)] [(t/or-t [#'int? #'nil?])]
-      ;; #'first [#'seqable?] [(t/or-t ['?x #'nil?])]
-      )))
+    (are [v args ret] (c/valid? ret (t/invoke-t v (t/cat-t args)))
+      #'first [(t/seq-of #'int?)] (t/or-t [#'int? #'nil?])
+      #'cons ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)]))))

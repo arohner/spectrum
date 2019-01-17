@@ -15,6 +15,7 @@
 ;; http://mullr.github.io/micrologic/literate.html
 
 (declare unify)
+(declare resolve-type)
 
 ;;; Types are one of:
 ;;; a var predicate, such as #'int?, representing a value that satisfies that predicate
@@ -564,6 +565,124 @@
 (defmethod accept-nil? 'cat [t]
   (every? accept-nil? (t/cat-types t)))
 
+(defn apply-invoke-dispatch [it subst]
+  (let [f (t/type-value it)]
+    (cond
+      (t/tagged? f) (t/type-tag f)
+      (keyword? f) :keyword
+      (var? f) #'var?)))
+
+(defmulti apply-invoke #'apply-invoke-dispatch)
+
+(s/def ::apply-invoke-ret (s/nilable (s/coll-of (s/tuple ::t/type ::subst))))
+
+(defmethod apply-invoke :default [it subst]
+  {:post [(do (println "apply-invoke default:" it "=>" %) true)]}
+  nil)
+
+(defn printable-invoke-t [it]
+  (if-let [v (-> it (nth 1) meta :var)]
+    (assoc it 1 v)
+    it))
+
+(defmethod apply-invoke 'fn [it substs]
+  (let [[f invoke-args] (t/type-values it)
+        substs-old substs]
+    (->> (nth f 1)
+         (mapcat (fn [[f-args f-ret]]
+                   (when-let [substs (seq (unify f-args invoke-args substs))]
+                     (->> substs
+                          (map (fn [subst]
+                                 [(resolve-type f-ret subst) subst]))))))
+         (filter identity)
+         (distinct))))
+
+(defmethod apply-invoke 'map-of [it subst]
+  (assert false "TODO"))
+
+(defmethod apply-invoke 'keys [it subst]
+  (assert false "TODO"))
+
+(defmethod apply-invoke :keyword [it subst]
+  (assert false "TODO"))
+
+(defn get-var-type [v]
+  (or (data/get-ann v)
+      ;;(parse/get-spec v)
+      (data/get-var-spec v)))
+
+(defmethod apply-invoke #'var? [it subst]
+  (let [v (nth it 1)
+        _ (assert (var? v))
+        t (get-var-type v)
+        t (with-meta t {:var v})]
+    (assert (t/fn-t? t))
+    (apply-invoke (assoc it 1 t) subst)))
+
+(defn thunk
+  "Utility/test fn. Given an invoke, return all possible return types"
+  [f args]
+  (-> (t/invoke-t f (t/maybe-cat args))
+      (apply-invoke [{}])
+      (->>
+       (map first)
+       seq)))
+
+(defmethod unify-terms [#'any? 'invoke] [x invoke-y subst]
+  ;; {:pre [(do (println "unify any invoke pre" x invoke-y) true)]
+  ;;  :post [(do (println "unify any invoke:" x invoke-y subst "=>" %) true)]}
+  (->> (apply-invoke invoke-y subst)
+       (mapcat (fn [[y subst]]
+                 (unify x y [subst])))))
+
+(defmethod unify-terms ['invoke #'any?] [invoke-x y subst]
+  (->>
+   (apply-invoke invoke-x subst)
+   (mapcat (fn [[x* subst]]
+             (unify x* y [subst])))))
+
+(prefer-method unify-terms [#'any? 'invoke] [#'t/logic? #'any?])
+(prefer-method unify-terms [#'any? 'invoke] ['or #'any?])
+(prefer-method unify-terms ['invoke #'any?] [#'any? #'t/logic?])
+
+;; (defmethod unify-terms ['value #'any?] [v y substs]
+;;   (unify (t/type-value v) y substs))
+
+;; (defmethod unify-terms [#'any? 'value] [x v substs]
+;;   (unify x (t/type-value v) substs))
+
+(defmethod unify-terms ['value 'value] [x y substs]
+  (unify (t/type-value x) (t/type-value y) substs))
+
+(prefer-method unify-terms [#'any? 'value] [#'t/logic? #'any?])
+(prefer-method unify-terms ['value #'any?] [#'any? #'t/logic?])
+
+(s/fdef unify-terms-equiv :args (s/cat :x ::t/type :y ::t/type))
+(defn unify-terms-equiv
+  "Define unify-terms such that x and y unify, bidirectionally"
+  [x y]
+  (defmethod unify-terms [x y] [x y subst]
+    subst)
+  (defmethod unify-terms [y x] [y x subst]
+    subst)
+  (prefer-method unify-terms [#'any? #'t/logic?] [x y])
+  (prefer-method unify-terms [#'t/logic? #'any?] [y x]))
+
+(defn derive-all-any
+  "We need all tagged types to derive from #'any?, so default dispatching works"
+  []
+  (->> (unify-terms-methods)
+       (apply concat)
+       distinct
+       (filter symbol?)
+       (map (fn [s]
+              (t/derive-type #'any? s)))
+       (dorun)))
+
+(derive-all-any)
+(t/derive-type #'any? #'dx?)
+nil
+
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))
 
@@ -619,118 +738,4 @@
 (defmethod unify-terms [#'number? #'integer?] [x y subst]
   subst)
 
-(defn apply-invoke-dispatch [it subst]
-  (let [f (t/type-value it)]
-    (cond
-      (t/tagged? f) (t/type-tag f)
-      (keyword? f) :keyword
-      (var? f) #'var?)))
-
-(defmulti apply-invoke #'apply-invoke-dispatch)
-
-(s/def ::apply-invoke-ret (s/nilable (s/coll-of (s/tuple ::t/type ::subst))))
-
-(defmethod apply-invoke :default [it subst]
-  {:post [(do (println "apply-invoke default:" it "=>" %) true)]}
-  nil)
-
-(defn printable-invoke-t [it]
-  (if-let [v (-> it (nth 1) meta :var)]
-    (assoc it 1 v)
-    it))
-
-(defmethod apply-invoke 'fn [it substs]
-  (let [[f invoke-args] (t/type-values it)
-        substs-old substs]
-    (->> (nth f 1)
-         (mapcat (fn [[f-args f-ret]]
-                   (when-let [substs (seq (unify f-args invoke-args substs))]
-                     (->> substs
-                          (map (fn [subst]
-                                 [(resolve-type f-ret subst) subst]))))))
-         (filter identity)
-         (distinct))))
-
-(defmethod apply-invoke 'map-of [it subst]
-  (assert false "TODO"))
-
-(defmethod apply-invoke 'keys [it subst]
-  (assert false "TODO"))
-
-(defmethod apply-invoke :keyword [it subst]
-  (assert false "TODO"))
-
-(defn get-var-type [v]
-  (or (data/get-ann v)
-      ;;(parse/get-spec v)
-      (data/get-var-spec v)))
-
-(defmethod apply-invoke #'var? [it subst]
-  (let [v (nth it 1)
-        _ (assert (var? v))
-        t (get-var-type v)
-        t (with-meta t {:var v})]
-    (assert (t/fn-t? t))
-    (apply-invoke (assoc it 1 t) subst)))
-
-(defmethod unify-terms [#'any? 'invoke] [x invoke-y subst]
-  ;; {:pre [(do (println "unify any invoke pre" x invoke-y) true)]
-  ;;  :post [(do (println "unify any invoke:" x invoke-y subst "=>" %) true)]}
-  (->> (apply-invoke invoke-y subst)
-       (mapcat (fn [[y subst]]
-                 (unify x y [subst])))))
-
-(defmethod unify-terms ['invoke #'any?] [invoke-x y subst]
-  (->>
-   (apply-invoke invoke-x subst)
-   ((fn [ts]
-      (println "unify invoke-any apply-invoke" invoke-x y "=>" ts)
-      ts))
-   (mapcat (fn [[x* subst]]
-             (when (t/invoke-t? x*)
-               (println "unify invoke-any recur:" invoke-x y "=> unify" x* y "?=" (= invoke-x x*)))
-             (unify x* y [subst])))))
-
-(prefer-method unify-terms [#'any? 'invoke] [#'t/logic? #'any?])
-(prefer-method unify-terms [#'any? 'invoke] ['or #'any?])
-(prefer-method unify-terms ['invoke #'any?] [#'any? #'t/logic?])
-
-;; (defmethod unify-terms ['value #'any?] [v y substs]
-;;   (unify (t/type-value v) y substs))
-
-;; (defmethod unify-terms [#'any? 'value] [x v substs]
-;;   (unify x (t/type-value v) substs))
-
-(defmethod unify-terms ['value 'value] [x y substs]
-  (unify (t/type-value x) (t/type-value y) substs))
-
-(prefer-method unify-terms [#'any? 'value] [#'t/logic? #'any?])
-(prefer-method unify-terms ['value #'any?] [#'any? #'t/logic?])
-
-(s/fdef unify-terms-equiv :args (s/cat :x ::t/type :y ::t/type))
-(defn unify-terms-equiv
-  "Define unify-terms such that x and y unify, bidirectionally"
-  [x y]
-  (defmethod unify-terms [x y] [x y subst]
-    subst)
-  (defmethod unify-terms [y x] [y x subst]
-    subst)
-  (prefer-method unify-terms [#'any? #'t/logic?] [x y])
-  (prefer-method unify-terms [#'t/logic? #'any?] [y x]))
-
-(defn derive-all-any
-  "We need all tagged types to derive from #'any?, so default dispatching works"
-  []
-  (->> (unify-terms-methods)
-       (apply concat)
-       distinct
-       (filter symbol?)
-       (map (fn [s]
-              (t/derive-type #'any? s)))
-       (dorun)))
-
-(derive-all-any)
-(t/derive-type #'any? #'dx?)
-nil
-
-(instrument-ns)
+;; (instrument-ns)

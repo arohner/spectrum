@@ -98,6 +98,12 @@
 
 (t/derive-type 'coll-of 'vector-of)
 
+(t/derive-type #'keyword? #'simple-keyword?)
+(t/derive-type #'keyword? #'qualified-keyword?)
+
+(t/derive-type #'symbol? #'qualified-symbol?)
+(t/derive-type #'symbol? #'simple-symbol?)
+
 (ann-instance-or? #'float? [Float Double])
 (ann-instance-or? #'int? [Long Integer Short Byte])
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
@@ -110,9 +116,9 @@
                     ;; todo array-of
                     [(t/class-t Seqable)] (t/seq-of '?x)}))
 
-(ann #'cons (t/fn-t {['?x #'nil?] (t/value-t (list '?x))
-                     ['?x (t/seq-of '?y)] (t/seq-of (t/or-t ['?x '?y]))
-                     ['?x #'seqable?] (t/seq-of (t/or-t ['?x '?y]))}))
+(ann #'cons (t/fn-t {['?x #'nil?] (t/cat-t ['?x])
+                     ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)])
+                     ['?x #'seqable?] (t/cat-t ['?x (t/seq-of '?y)])}))
 
 (ann #'first (t/fn-t {[(t/seq-of '?a)] (t/or-t ['?a #'nil?])
                       [#'seqable?] (t/or-t ['?x #'nil?])
@@ -122,3 +128,10 @@
                      [#'any?] #'nil?}))
 (ann #'rest (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
                      [#'any?] #'nil?}))
+
+(ann #'apply (t/fn-t {[['fn '?x] (t/cat-t ['?y])] (t/invoke-t ['fn '?x] (t/cat-t ['?y]))
+                      [['fn '?x] (t/cat-t ['?y (t/seq-of '?z)])] (t/invoke-t ['fn '?x] (t/cat-t ['?y (t/seq-of '?z)]))}))
+
+(ann #'keyword (t/fn-t {[(t/or-t [#'keyword? #'symbol? #'string?])] #'simple-keyword?
+                        [#'nil?] #'nil?
+                        [#'string? #'string?] #'qualified-keyword?}))
