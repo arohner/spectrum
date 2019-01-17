@@ -53,11 +53,11 @@
   (testing "truthy"
     (are [t] (c/dx? t)
       (t/cat-t [])
-      (t/cat-t [#'int?])))
+      (t/cat-t [#'int?])
+      (t/value-t [1 2 3])))
   (testing "falsey"
     (are [t] (= false (c/dx? t))
-      #'int?
-      (t/value-t 3))))
+      #'int?)))
 
 (deftest dx
   (are [x y ret] (= ret (c/dx x y [{}]))
@@ -114,7 +114,16 @@
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'b?])
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a? #'b?])
 
-      (t/or-t #{(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])}) (t/cat-t ['?x])))
+      (t/or-t #{(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])}) (t/cat-t ['?x])
+
+      ;; value
+      '?x (t/value-t 3)
+      (t/value-t 3) '?x
+      #'int? (t/value-t 3)
+      #'string? (t/value-t "foo")
+      (t/seq-of (t/class-t Character)) (t/value-t "foo")
+      (t/cat-t [#'int? #'string?]) (t/value-t [3 "foo"])
+      ))
 
   (testing "falsey"
     (are [x y] (= false (c/valid? x y))
@@ -141,6 +150,10 @@
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a?])
 
       (t/class-t Integer) (t/class-t Keyword)
+
+      ;; value
+      #'string? (t/value-t 3)
+      (t/cat-t [#'int? #'string?]) [3 "foo"]
       )))
 
 (deftest and-logic

@@ -80,9 +80,15 @@
 (defn dx? [t]
   (contains? (dx-methods) (t/type-tag t)))
 
+(defn var-pred? [x]
+  (and (var? x)
+       (-> x .sym t/predicate-symbol?)))
+
 (defn unify-term-value [x]
   (cond
     (t/logic? x) #'t/logic?
+
+    (t/value-t? x) 'value
     (dx? x) #'dx?
     (t/tagged? x) (t/type-tag x)
     (var? x) (if (parents @t/types-hierarchy x)
@@ -441,6 +447,11 @@
                    (first-t t)
                    [t])))))
 
+(defmethod first-t 'value [val-t]
+  (let [val (t/type-value val-t)]
+    (when (seq val)
+      [(t/value-t (first val))])))
+
 (s/def :dx/state (s/nilable ::t/type))
 (s/def ::dx-ret (s/keys :req-un [:dx/state ::substs]))
 
@@ -475,9 +486,17 @@
 (defmethod dx 'alt [alt-x y substs]
   (->> (t/alt-types alt-x)
        (mapcat (fn [at]
-              (dx at y substs)))))
+                 (dx at y substs)))))
 
-(defmethod unify-terms [#'dx? #'dx?] [tx ty substs]
+(defmethod dx 'value [val-x y substs]
+  (let [val (t/type-value val-x)]
+    (if (seq val)
+      (let [[v & vr] val
+            substs (unify v y substs)]
+        [{:state (t/value-t (seq vr)) :substs substs}])
+      nil)))
+
+(defn unify-dx-dx [tx ty substs]
   (let [xs (first-t tx)
         ys (first-t ty)]
     (->> xs
@@ -508,6 +527,9 @@
           (when (and (accept-nil? tx) (accept-nil? ty))
             substs))
          (distinct))))
+
+(defmethod unify-terms [#'dx? #'dx?] [tx ty substs]
+  (unify-dx-dx tx ty substs))
 
 (defmethod unify-terms ['seq-of #'any?] [a b subst]
   (let [x (t/seq-value a)]
@@ -565,6 +587,10 @@
 (defmethod accept-nil? 'cat [t]
   (every? accept-nil? (t/cat-types t)))
 
+(defmethod accept-nil? 'value [t]
+  (let [val (-> t t/type-value)]
+    (nil? (seq val))))
+
 (defn apply-invoke-dispatch [it subst]
   (let [f (t/type-value it)]
     (cond
@@ -577,7 +603,6 @@
 (s/def ::apply-invoke-ret (s/nilable (s/coll-of (s/tuple ::t/type ::subst))))
 
 (defmethod apply-invoke :default [it subst]
-  {:post [(do (println "apply-invoke default:" it "=>" %) true)]}
   nil)
 
 (defn printable-invoke-t [it]
@@ -648,15 +673,6 @@
 ;; (defmethod unify-terms ['value #'any?] [v y substs]
 ;;   (unify (t/type-value v) y substs))
 
-;; (defmethod unify-terms [#'any? 'value] [x v substs]
-;;   (unify x (t/type-value v) substs))
-
-(defmethod unify-terms ['value 'value] [x y substs]
-  (unify (t/type-value x) (t/type-value y) substs))
-
-(prefer-method unify-terms [#'any? 'value] [#'t/logic? #'any?])
-(prefer-method unify-terms ['value #'any?] [#'any? #'t/logic?])
-
 (s/fdef unify-terms-equiv :args (s/cat :x ::t/type :y ::t/type))
 (defn unify-terms-equiv
   "Define unify-terms such that x and y unify, bidirectionally"
@@ -681,7 +697,51 @@
 
 (derive-all-any)
 (t/derive-type #'any? #'dx?)
-nil
+
+(def value-pred-whitelist (atom #{}))
+
+(s/fdef add-value-pred-whitelist! :args (s/cat :v var?))
+(defn add-value-pred-whitelist!
+  "Declare var predicate v as safe for calling to unify with values. v
+  should be a predicate, pure (free of side-effects) and fast"
+  [v]
+  (swap! value-pred-whitelist conj v))
+
+(doseq [v (t/core-predicates)]
+  (add-value-pred-whitelist! v))
+
+(defmethod unify-terms [#'any? 'value] [x v substs]
+  (let [val (t/type-value v)]
+    (or
+     (when (t/logic? x)
+       (->>
+        @value-pred-whitelist
+        (mapcat (fn [f]
+                  (when (f val)
+                    (unify-variable x f substs))))
+        (doall)))
+     (when (and (contains? @value-pred-whitelist x) (x val))
+       substs))))
+
+(prefer-method unify-terms ['or #'any?] [#'any? 'value])
+
+(defmethod unify-terms ['class 'value] [x v substs]
+  (let [cls (t/type-value x)
+        val (t/type-value v)]
+    (or
+     (when (t/logic? cls)
+       (unify-variable cls val substs))
+     (when (instance? cls val)
+       substs))))
+
+(defmethod unify-terms [#'dx? 'value] [x y substs]
+  (unify-dx-dx x y substs))
+
+(defmethod unify-terms ['value 'value] [x y substs]
+  (unify (t/type-value x) (t/type-value y) substs))
+
+(prefer-method unify-terms [#'any? 'value] [#'t/logic? #'any?])
+(prefer-method unify-terms ['value #'any?] [#'any? #'t/logic?])
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))

@@ -187,7 +187,24 @@
   (-> 'clojure.core
       (ns-predicates)
       (set)
-      (disj #'contains? #'every? #'satisfies? #'isa? #'some? #'future-done? #'empty? #'extends? #'instance? #'identical? #'distinct? #'any?)))
+      (disj #'contains?
+            #'every?
+            #'satisfies?
+            #'isa?
+            #'some?
+            #'future-done?
+            #'empty?
+            #'extends?
+            #'instance?
+            #'identical?
+            #'distinct?
+            #'any?
+            #'realized?
+            #'not-any?
+            #'bound?
+            #'not-every?
+            #'future-cancelled?
+            #'thread-bound?)))
 
 (declare derive-type)
 
