@@ -173,32 +173,6 @@
     ['?x ['maybe '?y]] ['or #{'?x '?y}]
     [['maybe '?y]] '?y))
 
-(deftest fix-length
-  (are [t n ret] (= ret (c/fix-length t n))
-    (t/* '?t) 2 [(t/cat-t []) (t/cat-t ['?t]) (t/cat-t ['?t '?t])]
-
-    (t/cat-t []) 2 [(t/cat-t [])]
-    (t/cat-t ['?t]) 2 [(t/cat-t ['?t])]
-    ;; (t/cat-t [(t/* '?a) '?b]) 2 [(t/cat-t ['?b]) (t/cat-t ['?a '?b])]
-    ))
-
-(deftest disentangle
-  (are [t ret] (= ret (c/disentangle t))
-    (t/cat-t [(t/? '?t1) '?t2]) [(t/cat-t ['?t1 '?t2]) (t/cat-t ['?t2])]))
-
-(deftest all-possible-values
-  (are [t n ret] (= ret (c/all-possible-values t 2))
-    (t/cat-t [(t/* '?a) (t/* '?b) (t/? '?c)]) 2 #{(t/cat-t [])
-                                                (t/cat-t ['?a])
-                                                (t/cat-t ['?b])
-                                                (t/cat-t ['?c])
-                                                (t/cat-t ['?a '?a])
-                                                (t/cat-t ['?a '?b])
-                                                (t/cat-t ['?a '?c])
-                                                (t/cat-t ['?b '?b])
-                                                (t/cat-t ['?b '?c])}
-    (t/cat-t []) 0 #{(t/cat-t [])}))
-
 (deftest apply-invoke
   (let [s (t/fn-t {[#'nil?] #'nil?
                    [#'string?] #'symbol?
