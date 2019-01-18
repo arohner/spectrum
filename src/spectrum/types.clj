@@ -156,11 +156,10 @@
 
 (defn-type-pred fn-t? 'fn)
 
-(s/def ::invokeable (s/or :v var? :k keyword? :t tagged?))
 (defn-tagged-type invoke-t 'invoke)
 (defn-type-pred invoke-t? 'invoke)
 
-(s/fdef invoke-t :args (s/cat :f ::invokeable :args (s/or :c cat-t? :i invoke-t?)) :ret ::type)
+(s/fdef invoke-t :args (s/cat :f ::type :args (s/or :c cat-t? :i invoke-t?)) :ret ::type)
 
 (defn any-t? [t]
   (= #'any? t))

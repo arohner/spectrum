@@ -129,8 +129,10 @@
 (ann #'rest (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
                      [#'any?] #'nil?}))
 
-(ann #'apply (t/fn-t {[['fn '?x] (t/cat-t ['?y])] (t/invoke-t ['fn '?x] (t/cat-t ['?y]))
-                      [['fn '?x] (t/cat-t ['?y (t/seq-of '?z)])] (t/invoke-t ['fn '?x] (t/cat-t ['?y (t/seq-of '?z)]))}))
+(ann #'apply (t/fn-t {['?f (t/cat-t ['?a])] (t/invoke-t '?f (t/cat-t ['?a]))
+                      ['?f (t/cat-t ['?a '?b])] (t/invoke-t '?f (t/cat-t ['?a '?b]))
+                      ['?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?b]))])] (t/invoke-t '?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?b]))]))
+                      ['?x (t/cat-t ['?y (t/spec-t (t/seq-of '?z))])] (t/invoke-t '?x (t/cat-t ['?y (t/spec-t (t/seq-of '?z))]))}))
 
 (ann #'keyword (t/fn-t {[(t/or-t [#'keyword? #'symbol? #'string?])] #'simple-keyword?
                         [#'nil?] #'nil?

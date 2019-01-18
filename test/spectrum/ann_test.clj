@@ -58,4 +58,10 @@
   (testing "truthy"
     (are [v args ret] (c/valid? ret (t/invoke-t v (t/cat-t args)))
       #'first [(t/seq-of #'int?)] (t/or-t [#'int? #'nil?])
-      #'cons ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)]))))
+      #'cons ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)])
+      #'keyword [#'string?] #'simple-keyword?
+      #'keyword [#'string? #'string?] #'qualified-keyword?
+
+      ;; apply
+      #'apply [#'keyword (t/spec-t (t/cat-t [#'string? #'string?]))] #'qualified-keyword?
+      #'apply [#'keyword #'string? (t/spec-t (t/cat-t [#'string?]))] #'qualified-keyword?)))

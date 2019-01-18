@@ -125,6 +125,8 @@
       (t/cat-t [#'int? #'string?]) (t/value-t [3 "foo"])
       (t/cat-t [(t/cat-t [#'int?]) #'string?]) (t/value-t [3 "foo"])
       (t/cat-t [(t/spec-t (t/cat-t [#'int?])) #'string?]) (t/value-t [[3] "foo"])
+
+      '?a '[invoke ?x [cat ?y]]
       ))
 
   (testing "falsey"

@@ -133,8 +133,10 @@
 
 (s/fdef unify-terms-default :args (s/cat :x any? :y any? :subst ::substs) :ret ::substs)
 (defn unify-terms-default [x y substs]
-  ;; {:pre [(do (println "default unify terms" x y "pre") true)]
-  ;;  :post [(do (println "default unify terms" x y "=>" %) true)]}
+  {
+   ;; :pre [(do (println "default unify terms" x y "pre") true)]
+   ;; :post [(do (println "default unify terms" x y "=>" %) true)]
+   }
   (assert substs)
   (or
    (when (t/logic? y)
@@ -475,6 +477,8 @@
 (s/def ::apply-invoke-ret (s/nilable (s/coll-of (s/tuple ::t/type ::subst))))
 
 (defmethod apply-invoke :default [it subst]
+  (println "apply-invoke :default" it subst)
+  (assert false)
   nil)
 
 (defn printable-invoke-t [it]
@@ -483,14 +487,17 @@
     it))
 
 (defmethod apply-invoke 'fn [it substs]
+  {
+   ;; :post [(do (println "apply-invoke:" it substs "=>" %) true)]
+   }
   (let [[f invoke-args] (t/type-values it)
         substs-old substs]
     (->> (nth f 1)
          (mapcat (fn [[f-args f-ret]]
-                   (when-let [substs (seq (unify f-args invoke-args substs))]
-                     (->> substs
-                          (map (fn [subst]
-                                 [(resolve-type f-ret subst) subst]))))))
+                   (let [substs (seq (unify f-args invoke-args substs))]
+                     (some->> substs
+                              (map (fn [subst]
+                                     [(resolve-type f-ret subst) subst]))))))
          (filter identity)
          (distinct))))
 
@@ -516,21 +523,43 @@
     (assert (t/fn-t? t))
     (apply-invoke (assoc it 1 t) subst)))
 
+(s/fdef thunk :args (s/cat :it t/invoke-t? :s (s/? ::substs)) :ret (s/nilable ::t/type))
 (defn thunk
+  ([it]
+   (thunk it [{}]))
+  ([it substs]
+   (some->>
+    (apply-invoke it substs)
+    (map (fn [[ret substs]]
+           ret))
+    seq
+    (t/or-t))))
+
+(s/fdef maybe-thunk :args (s/cat :it t/invoke-t? :s (s/? ::substs)) :ret ::t/type)
+(defn maybe-thunk
+  "Thunk if possible, else return the invoke-t"
+  ([it]
+   (maybe-thunk it [{}]))
+  ([it substs]
+   (or (thunk it substs)
+       it)))
+
+(defn apply-t
   "Utility/test fn. Given an invoke, return all possible return types"
   [f args]
   (-> (t/invoke-t f (t/maybe-cat args))
-      (apply-invoke [{}])
-      (->>
-       (map first)
-       seq)))
+      (thunk)))
 
 (defmethod unify-terms [#'any? 'invoke] [x invoke-y subst]
-  ;; {:pre [(do (println "unify any invoke pre" x invoke-y) true)]
-  ;;  :post [(do (println "unify any invoke:" x invoke-y subst "=>" %) true)]}
   (->> (apply-invoke invoke-y subst)
        (mapcat (fn [[y subst]]
                  (unify x y [subst])))))
+
+(defmethod unify-terms [#'t/logic? 'invoke] [x y substs]
+  (unify-variable x y substs))
+
+(defmethod unify-terms ['invoke #'t/logic?] [x y substs]
+  (unify-variable y x substs))
 
 (defmethod unify-terms ['invoke #'any?] [invoke-x y subst]
   (->>
@@ -549,6 +578,8 @@
   (unify-terms x (t/type-value y) substs))
 
 (prefer-method unify-terms ['spec #'any?] [#'any? 'value])
+(prefer-method unify-terms [#'any? 'spec] [#'t/logic? #'any?])
+(prefer-method unify-terms ['spec #'any?] [#'any? 'spec])
 
 (s/fdef unify-terms-equiv :args (s/cat :x ::t/type :y ::t/type))
 (defn unify-terms-equiv
@@ -626,7 +657,7 @@
 (defmulti resolve-type* #'resolve-type-dispatch)
 
 (defmethod resolve-type* :default [t subst]
-  nil)
+  t)
 
 (s/fdef resolve-type :args (s/cat :t #'any? :s ::subst) :ret #'any?)
 (defn resolve-type [t subst]
@@ -672,7 +703,9 @@
 (defmethod resolve-type* 'value [t subst]
   (t/value-t (resolve-type (t/type-value t) subst)))
 
-(defmethod unify-terms [#'number? #'integer?] [x y subst]
-  subst)
+(defmethod resolve-type* 'invoke [t subst]
+  (let [it (apply t/invoke-t (map (fn [t]
+                                    (resolve-type t subst)) (t/type-values t)))]
+    (maybe-thunk it [subst])))
 
-;; (instrument-ns)
+(instrument-ns)
