@@ -115,6 +115,9 @@
 
 (defn-tagged-type coll-of 'coll-of)
 
+(defn-tagged-type spec-t 'spec)
+(defn-type-pred spec-t? 'spec)
+
 (s/fdef vector-of :args (s/cat :x ::type) :ret ::type)
 (defn-tagged-type vector-of 'vector-of)
 

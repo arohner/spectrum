@@ -542,8 +542,13 @@
 (prefer-method unify-terms [#'any? 'invoke] ['or #'any?])
 (prefer-method unify-terms ['invoke #'any?] [#'any? #'t/logic?])
 
-;; (defmethod unify-terms ['value #'any?] [v y substs]
-;;   (unify (t/type-value v) y substs))
+(defmethod unify-terms ['spec #'any?] [x y substs]
+  (unify-terms (t/type-value x) y substs))
+
+(defmethod unify-terms [#'any? 'spec] [x y substs]
+  (unify-terms x (t/type-value y) substs))
+
+(prefer-method unify-terms ['spec #'any?] [#'any? 'value])
 
 (s/fdef unify-terms-equiv :args (s/cat :x ::t/type :y ::t/type))
 (defn unify-terms-equiv

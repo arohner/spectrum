@@ -123,6 +123,8 @@
       #'string? (t/value-t "foo")
       (t/seq-of (t/class-t Character)) (t/value-t "foo")
       (t/cat-t [#'int? #'string?]) (t/value-t [3 "foo"])
+      (t/cat-t [(t/cat-t [#'int?]) #'string?]) (t/value-t [3 "foo"])
+      (t/cat-t [(t/spec-t (t/cat-t [#'int?])) #'string?]) (t/value-t [[3] "foo"])
       ))
 
   (testing "falsey"
@@ -153,7 +155,9 @@
 
       ;; value
       #'string? (t/value-t 3)
-      (t/cat-t [#'int? #'string?]) [3 "foo"]
+
+      (t/cat-t [#'int? #'string?]) [3 "foo"] ;; missing value-t
+      (t/cat-t [#'int? #'string?]) (t/value-t [[3] "foo"])
       )))
 
 (deftest and-logic

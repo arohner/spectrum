@@ -594,7 +594,6 @@
         t (get-type! context a path)
         f (get-type! context a (conj path :fn))
         invoke-args (t/cat-t (map-sequential-children get-type! context a path :args))
-        ;; fn-args-t (t/all-possible-values-length-n (t/fn-args t) (t/cat-length invoke-args))
         method-path (fn-get-method-with-arity a (conj path :fn) (count (get-in a (conj path :args))))
         m (get-in a method-path)
         fn-args-t (t/cat-t (map-sequential-children get-type! context a method-path :params))
