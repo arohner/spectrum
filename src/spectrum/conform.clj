@@ -87,7 +87,6 @@
 (defn unify-term-value [x]
   (cond
     (t/logic? x) #'t/logic?
-
     (t/value-t? x) 'value
     (dx? x) #'dx?
     (t/tagged? x) (t/type-tag x)
@@ -95,7 +94,10 @@
                x
                #'any?)
     (nil? x) nil
-    :else (class x)))
+    (sequential? x) #'sequential?
+    (set? x) #'set?
+    (map? x) #'map?
+    :else #'any?))
 
 (defn unify-terms-method?
   "Is there a *direct* dispatch value for (unify-terms x y)?"
@@ -169,21 +171,21 @@
   (unify-variable y x subst))
 
 (defmethod unify-terms [#'t/logic? #'t/logic?] [x y subst]
-  (unify-variable y x subst))
+  (unify-variable x y subst))
 
-(defmethod unify-terms [Sequential Object] [x y subst]
+(defmethod unify-terms [#'sequential? #'any?] [x y subst]
   (when (and (seqable? y) (seq y))
     (some->> subst
              (unify (first x) (first y))
              (unify (rest x) (rest y)))))
 
-(defmethod unify-terms [IPersistentSet Object] [x y subst]
+(defmethod unify-terms [#'set? #'any?] [x y subst]
   (when (and (seqable? y) (seq y))
     (some->> subst
              (unify (first x) (first y))
              (unify (rest x) (rest y)))))
 
-(defmethod unify-terms [IPersistentMap IPersistentMap] [x y subst]
+(defmethod unify-terms [#'map? #'map?] [x y subst]
   (let [[x-k x-v] (->> x (sort-by (fn [[k v]] (t/logic? k))) first)]
     ;; (println "unify map" x-k x-v (contains? y x-k) (t/logic? x-k))
     (cond
@@ -409,8 +411,6 @@
   (let [x (t/seq-value a)]
     (unify x b subst)))
 
-(prefer-method unify-terms ['seq-of #'any?] [#'any? #'t/logic?])
-
 (defmethod unify-terms ['coll-of 'coll-of] [a b subst]
   (let [x (t/type-value a)
         y (t/type-value b)]
@@ -420,8 +420,6 @@
   (->> (t/or-types or-x)
        (mapcat (fn [x]
                  (unify x y substs)))))
-
-(prefer-method unify-terms ['or #'any?] [#'any? #'t/logic?])
 
 (defmethod unify-terms ['or 'or] [or-x or-y substs]
   (->> or-y
@@ -449,8 +447,6 @@
 
 (defmethod unify-terms [nil nil] [x y substs]
   substs)
-
-(prefer-method unify-terms ['alt #'any?] [#'any? #'t/logic?])
 
 (defmethod accept-nil? 'alt [t]
   (some nil? (t/alt-types t)))
@@ -567,19 +563,11 @@
    (mapcat (fn [[x* subst]]
              (unify x* y [subst])))))
 
-(prefer-method unify-terms [#'any? 'invoke] [#'t/logic? #'any?])
-(prefer-method unify-terms [#'any? 'invoke] ['or #'any?])
-(prefer-method unify-terms ['invoke #'any?] [#'any? #'t/logic?])
-
 (defmethod unify-terms ['spec #'any?] [x y substs]
   (unify-terms (t/type-value x) y substs))
 
 (defmethod unify-terms [#'any? 'spec] [x y substs]
   (unify-terms x (t/type-value y) substs))
-
-(prefer-method unify-terms ['spec #'any?] [#'any? 'value])
-(prefer-method unify-terms [#'any? 'spec] [#'t/logic? #'any?])
-(prefer-method unify-terms ['spec #'any?] [#'any? 'spec])
 
 (s/fdef unify-terms-equiv :args (s/cat :x ::t/type :y ::t/type))
 (defn unify-terms-equiv
@@ -620,18 +608,23 @@
 
 (defmethod unify-terms [#'any? 'value] [x v substs]
   (let [val (t/type-value v)]
-    (or
-     (when (t/logic? x)
-       (->>
-        @value-pred-whitelist
-        (mapcat (fn [f]
-                  (when (f val)
-                    (unify-variable x f substs))))
-        (doall)))
-     (when (and (contains? @value-pred-whitelist x) (x val))
-       substs))))
+    (->> [(when (t/logic? x)
+            (->>
+             @value-pred-whitelist
+             (mapcat (fn [f]
+                       (when (f val)
+                         (unify-variable x f substs))))
+             (doall)))
+          (when (and (contains? @value-pred-whitelist x) (x val))
+            substs)
+          (if (t/logic? x)
+            (unify-variable x v substs)
+            (unify x val substs))]
+         (apply concat))))
 
-(prefer-method unify-terms ['or #'any?] [#'any? 'value])
+(defmethod unify-terms ['value #'any?] [x y substs]
+  (let [val (t/type-value x)]
+    (unify val y substs)))
 
 (defmethod unify-terms ['class 'value] [x v substs]
   (let [cls (t/type-value x)
@@ -648,8 +641,32 @@
 (defmethod unify-terms ['value 'value] [x y substs]
   (unify (t/type-value x) (t/type-value y) substs))
 
+(prefer-method unify-terms [#'any? 'invoke] [#'t/logic? #'any?])
+(prefer-method unify-terms [#'any? 'invoke] ['or #'any?])
+(prefer-method unify-terms [#'any? 'invoke] ['value #'any?])
+(prefer-method unify-terms [#'any? 'spec] [#'t/logic? #'any?])
+(prefer-method unify-terms [#'any? 'value] [#'sequential? #'any?])
 (prefer-method unify-terms [#'any? 'value] [#'t/logic? #'any?])
+(prefer-method unify-terms ['alt #'any?] [#'any? #'t/logic?])
+(prefer-method unify-terms ['invoke #'any?] [#'any? #'t/logic?])
+(prefer-method unify-terms ['invoke #'any?] [#'any? 'value])
+(prefer-method unify-terms ['or #'any?] [#'any? #'t/logic?])
+(prefer-method unify-terms ['or #'any?] [#'any? 'value])
+(prefer-method unify-terms ['seq-of #'any?] [#'any? #'t/logic?])
+(prefer-method unify-terms ['spec #'any?] [#'any? 'spec])
+(prefer-method unify-terms ['spec #'any?] [#'any? 'value])
 (prefer-method unify-terms ['value #'any?] [#'any? #'t/logic?])
+
+(s/fdef merge-substs :args (s/cat :s ::substs) :ret ::subst)
+
+(defn merge-substs [substs]
+  (->>
+   substs
+   (reduce (fn [final subst]
+             (reduce (fn [final [k v]]
+                       (update-in final [k] (fnil conj #{}) v)) final subst)) {})
+   (reduce (fn [final [k v]]
+             (assoc final k (t/or-t v))) {})))
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))
@@ -659,12 +676,16 @@
 (defmethod resolve-type* :default [t subst]
   t)
 
+(def ^:dynamic *resolve-seen* #{})
+
 (s/fdef resolve-type :args (s/cat :t #'any? :s ::subst) :ret #'any?)
 (defn resolve-type [t subst]
-  (let [t* (get subst t t)]
-    (cond
-      (and (t/logic? t*) (not= t t*)) (resolve-type t* subst)
-      :else (or (resolve-type* t* subst) t*))))
+  (when-not (contains? *resolve-seen* t)
+    (binding [*resolve-seen* (conj *resolve-seen* t)]
+      (let [t* (get subst t t)]
+        (cond
+          (and (t/logic? t*) (not= t t*)) (resolve-type t* subst)
+          :else (or (resolve-type* t* subst) t*))))))
 
 (defmethod resolve-type* 'cat [t subst]
   (t/cat-t (map #(resolve-type % subst) (t/cat-types t))))
@@ -680,6 +701,7 @@
   (->> t
        (t/or-types)
        (map #(resolve-type % subst))
+       (filter identity)
        (t/or-t)
        ((fn [t]
           (if (t/or-t? t)

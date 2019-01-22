@@ -4,5 +4,9 @@
             [clojure.spec.alpha :as s]
             [clojure.spec.test.alpha :as spec-test]
             [spectrum.conform :as c]
-            [spectrum.data :as data]
-            [spectrum.flow :as flow]))
+            [spectrum.flow :as f]))
+
+(deftest infer-var
+  (are [v] (boolean (f/infer-var v {:dependencies? true}))
+    #'str
+    #'apply))

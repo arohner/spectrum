@@ -400,36 +400,13 @@
   (mapv (fn [ma ia]
           [ma ia]) (rest a) (rest b)))
 
-(s/fdef invoke-fn-equations :args (s/cat :f-t t/fn-t? :i t/cat-t? :ret ::t/type) :ret ::equations)
-(defn invoke-fn-equations
-  "Given an `fn-t` and a vector of invoke args, return a set of equations"
-  [f-t invoke-args ret-t]
-  (let [arities (->> f-t
-                     (t/type-value)
-                     (map (fn [[f-args f-ret]]
-                            (when-let [substs (seq (c/unify f-args invoke-args))]
-                              [f-args f-ret])))
-                     (filterv identity)
-                     (distinct))
-   ;;; TODO ideally, there would be an 'if P->Q' between args and
-   ;;; ret here. Need better equations for that
-        f-args (seq (map (comp t/cat-types first) arities))
-
-        f-args (t/cat-t (apply mapv (fn [& arg]
-                                      (t/or-t arg)) f-args))
-
-        _ (assert (= (count invoke-args) (count f-args)))
-        rets (map second arities)]
-    (conj (make-equations f-args invoke-args)
-          [ret-t (t/invoke-t f-t invoke-args)])))
-
 (defn get-method-t
   "Return a fn-t for the java method; includes all arity overloads"
   [cls method]
   (or
    (data/get-ann [cls method])
    (->> (j/get-java-method cls method)
-        (map method->fn-t)
+        (mapv method->fn-t)
         (t/merge-fns))))
 
 (s/fdef get-equations-java-call :ret ::equations)
@@ -445,7 +422,7 @@
             ret-t (get-type! context a path)
             method-t (get-method-t cls-class method)]
         (if method-t
-          (->> (conj (invoke-fn-equations method-t invoke-args ret-t)
+          (->> (conj [[ret-t (t/invoke-t method-t invoke-args)]]
                      (when (and cls-type cls-class)
                        [cls-type (t/class-t cls-class)]))
                (filter identity))
@@ -566,7 +543,7 @@
         t (get-type-for-invoke a path)
         ret-t (get-type! context a path)]
     (assert t (format "unknown invoke: %s %s" (:form a*) (a-loc-str a*)))
-    (invoke-fn-equations t invoke-args ret-t)))
+    [[ret-t (t/invoke-t t invoke-args)]]))
 
 (defn fn-get-method-with-arity
   "Given an :fn node at `[a path]`, return the path to the method that
@@ -671,7 +648,7 @@
   (let [a* (get-in a path)
         t (get-type! context a path)
         cls (get-type! context a (conj path :class))]
-    [[t cls]]))
+    [[t (t/class-t cls)]]))
 
 (defn find-loop-path
   "Given a recur at `path`, return the path to the recur destination"
@@ -775,7 +752,7 @@
                 (let [[l r] eq]
                   (let [substs* (seq (c/unify l r substs))]
                     (if substs*
-                      (assoc state :substs substs*)
+                      (assoc state :substs [(c/merge-substs substs*)])
                       (assoc state :fail eq)))))) {:substs substs :fail nil} eqs)))
 
 (defn store-var-inference-results [context a substs]
@@ -785,15 +762,12 @@
                     v (get-in a (conj def-p :var))
                     init-p (conj def-p :init)
                     t (get-type! context a init-p)
-                    v-ts (->> substs
-                              (map (fn [s]
-                                     (c/resolve-type t s)))
-                              (distinct))
-                    v-s (if (every? t/fn-t? v-ts)
-                          (t/merge-fns v-ts)
-                          (t/or-t v-ts))]
+                    subst (c/merge-substs substs)
+                    _ (println "resolving" t)
+                    _ (def subst subst)
+                    v-s (c/resolve-type t subst)]
                 (assert v-s)
-                (println "storing" v v-s)
+                (println "storing" t v v-s)
                 (data/store-var-spec v v-s)
                 [v v-s])))
        (into {})))
@@ -849,7 +823,8 @@
 (defn infer-var [v & [{:keys [dependencies?]}]]
   (ensure-analysis-var v)
   (if-let [{:keys [a]} (data/get-var-analysis v)]
-    (infer a {:dependencies? dependencies?})
+    (let [t (infer a {:dependencies? dependencies?})]
+      (assert t (format "failed to infer var %s" v)))
     (println "couldn't find analysis for" v)))
 
 (defn infer-cycle

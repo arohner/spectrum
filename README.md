@@ -76,7 +76,7 @@ which is useful when you want to debug the signature of a form.
 
 ## Limitations
 
-- It's still very early. Contributions welcome.
+- It's still very early.
 
 ## Justification
 

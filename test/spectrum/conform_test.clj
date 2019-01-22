@@ -1,5 +1,6 @@
 (ns spectrum.conform-test
   (:require [clojure.test :refer :all]
+            [clojure.set :as set]
             [spectrum.conform :as c]
             [spectrum.types :as t])
   (:import [clojure.lang Keyword]))
@@ -12,8 +13,8 @@
   (testing "truthy"
     (are [x y subst] (= (set subst) (set (c/unify x y)))
       ;; or
-      (t/or-t ['?a '?b]) '?a '[{} {?a ?b}]
-      (t/or-t ['?a '?b]) '?x '[{?x ?a} {?x ?b}]
+      (t/or-t ['?a '?b]) '?a '[{} {?b ?a}]
+      (t/or-t ['?a '?b]) '?x '[{?a ?x} {?b ?x}]
       (t/or-t [#'int?]) '?x [{'?x #'int?}]
 
       (t/or-t ['?a '?b]) #'int? [{'?a #'int?}
@@ -22,22 +23,35 @@
       (t/or-t ['?a '?b]) (t/or-t [#'int? #'string?]) [{'?a #'int? '?b #'string?}
                                                       {'?a #'string? '?b #'int?}]
 
-      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '[{?a ?x, ?b ?x}
-                                                  {?a ?y, ?b ?x}
-                                                  {?a ?z, ?b ?x}
-                                                  {?a ?x, ?b ?y}
-                                                  {?a ?y, ?b ?y}
-                                                  {?a ?z, ?b ?y}
-                                                  {?a ?x, ?b ?z}
-                                                  {?a ?y, ?b ?z}
-                                                  {?a ?z, ?b ?z}]
+      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '[{?x ?b, ?b ?a}
+                                                  {?z ?a, ?a ?b}
+                                                  {?x ?a, ?z ?b}
+                                                  {?y ?a, ?z ?b}
+                                                  {?x ?a, ?a ?b}
+                                                  {?y ?a, ?x ?b}
+                                                  {?x ?a, ?y ?b}
+                                                  {?y ?b, ?b ?a}
+                                                  {?z ?b, ?b ?a}
+                                                  {?z ?a, ?x ?b}
+                                                  {?z ?a, ?y ?b}
+                                                  {?y ?a, ?a ?b}]
 
       ;; cat
       (t/cat-t [(t/? '?a)]) (t/cat-t [(t/? #'int?)]) [{'?a #'int?}
                                                       {'?a nil}
                                                       {}]
 
-      (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{} {'?a nil} {'?a #'int?}]))
+      (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{} {'?a nil} {'?a #'int?}]
+      ))
+
+  (testing "truthy substs"
+    (are [x y substs-in] (seq (c/unify x y substs-in))
+      '?a '?b [{'?a (t/or-t ['?b '?c])}]))
+
+  (testing "substs contains"
+    (are [x y substs] (= substs (set/intersection substs (set (c/unify x y))))
+      '?x ['value :foo] #{{'?x #'keyword?}
+                          {'?x (t/value-t :foo)}}))
 
   (testing "falsey"
     (are [x y] (nil? (c/unify x y))
@@ -118,6 +132,7 @@
 
       ;; value
       '?x (t/value-t 3)
+      :foo (t/value-t :foo)
       (t/value-t 3) '?x
       #'int? (t/value-t 3)
       #'string? (t/value-t "foo")

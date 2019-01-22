@@ -130,7 +130,7 @@
 (s/fdef keys-t :args (s/cat :k (s/keys :opt-un [:keys/req :keys/req-un :keys/opt :keys/opt-un])))
 (defn-tagged-type keys-t 'keys)
 
-(s/def ::fn-args-in (s/or :ta (s/coll-of ::type :kind vector?) ::t cat-t?))
+(s/def ::fn-args-in (s/or :ta (s/coll-of ::type :kind vector?) ::t ::type))
 (s/def :fn/args ::type)
 (s/def :fn/ret ::type)
 (s/def ::fn-args (s/map-of :fn/args :fn/ret))
@@ -141,10 +141,12 @@
 ;; a vector of types, rather than the more correct but noisier cat-t
 ;; of types
 
+(s/fdef maybe-cat :args (s/cat :o (s/or :ts ::types :c cat-t? :t ::type)) :ret ::type)
 (defn maybe-cat [args]
-  (if (cat-t? args)
-    args
-    (cat-t args)))
+  (cond
+    (cat-t? args) args
+    (s/valid? ::types args) (cat-t args)
+    :else args))
 
 (s/fdef fn-t :args (s/cat :f (s/map-of ::fn-args-in :fn/ret)) :ret ::fn-t)
 (defn fn-t [m]
@@ -185,28 +187,35 @@
                  (predicate-symbol? sym)))
        (vals)))
 
+;; things that appear to be named predicates, but aren't. We can automate this once we infer better
+(def not-core-predicates #{#'any?
+                           #'bound?
+                           #'contains?
+                           #'distinct?
+                           #'empty?
+                           #'every?
+                           #'even?
+                           #'extends?
+                           #'future-cancelled?
+                           #'future-done?
+                           #'identical?
+                           #'instance?
+                           #'isa?
+                           #'neg?
+                           #'odd?
+                           #'not-any?
+                           #'not-every?
+                           #'pos?
+                           #'realized?
+                           #'satisfies?
+                           #'some?
+                           #'thread-bound?
+                           #'zero?})
 (defn core-predicates []
   (-> 'clojure.core
       (ns-predicates)
       (set)
-      (disj #'contains?
-            #'every?
-            #'satisfies?
-            #'isa?
-            #'some?
-            #'future-done?
-            #'empty?
-            #'extends?
-            #'instance?
-            #'identical?
-            #'distinct?
-            #'any?
-            #'realized?
-            #'not-any?
-            #'bound?
-            #'not-every?
-            #'future-cancelled?
-            #'thread-bound?)))
+      (set/difference not-core-predicates)))
 
 (declare derive-type)
 
@@ -321,6 +330,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn alt-types [x]
   (vec (rest x)))
 
+(s/fdef simplify-arities :args (s/cat :m (s/map-of ::type ::type)) :ret (s/map-of ::type ::type))
 (defn simplify-arities
   "Merge fn arities with the same return type and same number of arguments"
   [fn-map]
@@ -338,10 +348,10 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn merge-fns [fns]
   (when (seq fns)
     (->> fns
-      (map second)
-      (apply merge)
-      (simplify-arities)
-      (fn-t))))
+         (map second)
+         (apply merge)
+         (simplify-arities)
+         (fn-t))))
 
 (s/fdef fn-args :args (s/cat :f ::fn-t) :ret ::type)
 (defn fn-args

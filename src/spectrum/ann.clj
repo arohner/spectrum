@@ -94,7 +94,10 @@
 (t/derive-type #'number? #'integer?)
 (t/derive-type #'number? #'double?)
 (t/derive-type #'integer? #'int?)
-(t/derive-type #'int? #'even?)
+(t/derive-type #'integer? #'even?)
+(t/derive-type #'integer? #'odd?)
+(t/derive-type #'number? #'neg?)
+(t/derive-type #'number? #'pos?)
 
 (t/derive-type 'coll-of 'vector-of)
 
