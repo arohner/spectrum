@@ -1,8 +1,9 @@
 (ns spectrum.ann-test
   (:require [clojure.test :refer :all]
             [spectrum.ann :as ann]
-            [spectrum.types :as t]
-            [spectrum.conform :as c])
+            [spectrum.conform :as c]
+            [spectrum.flow :as f]
+            [spectrum.types :as t])
   (:import [clojure.lang IChunkedSeq ISeq]))
 
 (def a?)
@@ -48,20 +49,43 @@
     (t/class-t ISeq) (t/class-t IChunkedSeq)
 
     (t/and-t [#'int? #'any?]) #'int?
-    (t/or-t [(t/class-t Byte) (t/class-t Long) (t/class-t Integer) (t/class-t Short) (t/class-t String)]) #'int?)
+    (t/or-t [(t/class-t Byte) (t/class-t Long) (t/class-t Integer) (t/class-t Short) (t/class-t String)]) #'int?
+
+
+    ;; fn
+      ['class clojure.lang.IFn] ['fn {['?t2] '?t3}])
 
   (testing "invalid"
     (are [a b] (not (c/valid? a b))
       (t/seq-of '?x) (t/class-t IChunkedSeq))))
 
-(deftest apply-invoke-ann
+(deftest integration-tests
   (testing "truthy"
-    (are [v args ret] (c/valid? ret (t/invoke-t v (t/cat-t args)))
-      #'first [(t/seq-of #'int?)] (t/or-t [#'int? #'nil?])
-      #'cons ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)])
-      #'keyword [#'string?] #'simple-keyword?
-      #'keyword [#'string? #'string?] #'qualified-keyword?
-
+    (are [form] (boolean (f/infer-form form))
+      '(fn [x] (seq x))
+      '(fn [x] (seq (seq x)))
+      '(fn [x] (first x))
+      '(fn [x] (first (seq x)))
+      '(fn [x] (rest (seq x)))
+      '(fn [x] (next (seq x)))))
+  (testing "falsey"
+    (are [form] (not (boolean (f/infer-form form)))
+      '(inc "foo")
+      '(keyword 3)
+      '(first 1)
+      '(rest 2)))
+  (testing "return value"
+    (are [form ret] (= ret (f/infer-form form))
+      '(keyword "foo") #'simple-keyword?
+      '(keyword "foo" "bar") #'qualified-keyword?
       ;; apply
-      #'apply [#'keyword (t/spec-t (t/cat-t [#'string? #'string?]))] #'qualified-keyword?
-      #'apply [#'keyword #'string? (t/spec-t (t/cat-t [#'string?]))] #'qualified-keyword?)))
+      '(apply keyword ["foo"]) #'simple-keyword?
+      '(apply keyword ["foo" "bar"]) #'qualified-keyword?
+      '(= 1 2) ['value false]
+      '(= 3 3) ['value true])
+
+    (testing "args"
+      (are [form args ret] (= ret (f/infer-form form args))
+        '(first x) {:x ['seq-of #'int?]} ['or #{#'int? #'nil?}]
+        '(cons x y) {:x '?x :y (t/seq-of '?y)} ['cat '?x (t/seq-of '?y)]
+        ))))

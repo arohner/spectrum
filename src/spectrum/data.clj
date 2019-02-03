@@ -109,7 +109,7 @@
             true)]}
   (get @var-specs v))
 
-(s/fdef ann :args (s/cat :m (s/or :v var? :m (s/tuple [class? symbol?])) :t ::t/type))
+(s/fdef ann :args (s/cat :m (s/or :v var? :m (s/tuple class? symbol?)) :t ::t/type))
 (defn ann
   "Define a more specific type for the var. `ann` types are preferred
   over explicit specs or inferred types, and if an `ann` exists for a

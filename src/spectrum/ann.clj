@@ -99,6 +99,8 @@
 (t/derive-type #'number? #'neg?)
 (t/derive-type #'number? #'pos?)
 
+(t/derive-type #'ifn? #'fn?)
+
 (t/derive-type 'coll-of 'vector-of)
 
 (t/derive-type #'keyword? #'simple-keyword?)
@@ -112,31 +114,41 @@
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or? #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
 
-(ann #'seq (t/fn-t {[(t/class-t Iterable)] (t/seq-of '?x)
+(ann #'seq (t/fn-t {[(t/seq-of '?x)] (t/seq-of '?x)
+                    [(t/class-t Iterable)] (t/seq-of '?x)
                     [(t/class-t CharSequence)] (t/seq-of (t/class-t Character))
                     [(t/class-t Map)] (t/seq-of (t/cat-t ['?k '?v]))
                     [(t/map-of '?x '?y)] (t/seq-of (t/cat-t ['?x '?y]))
                     ;; todo array-of
-                    [(t/class-t Seqable)] (t/seq-of '?x)}))
+                    [(t/class-t Seqable)] (t/seq-of '?x)
+                    }))
 
 (ann #'cons (t/fn-t {['?x #'nil?] (t/cat-t ['?x])
                      ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)])
                      ['?x #'seqable?] (t/cat-t ['?x (t/seq-of '?y)])}))
 
 (ann #'first (t/fn-t {[(t/seq-of '?a)] (t/or-t ['?a #'nil?])
-                      [#'seqable?] (t/or-t ['?x #'nil?])
-                      [#'any?] #'nil?}))
+                      [#'seqable?] (t/or-t ['?x #'nil?])}))
 
 (ann #'next (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
-                     [#'any?] #'nil?}))
+                     [#'seqable?] (t/or-t ['?x #'nil?])}))
+
 (ann #'rest (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
-                     [#'any?] #'nil?}))
+                     [#'seqable?] (t/or-t ['?x #'nil?])}))
 
 (ann #'apply (t/fn-t {['?f (t/cat-t ['?a])] (t/invoke-t '?f (t/cat-t ['?a]))
                       ['?f (t/cat-t ['?a '?b])] (t/invoke-t '?f (t/cat-t ['?a '?b]))
-                      ['?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?b]))])] (t/invoke-t '?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?b]))]))
-                      ['?x (t/cat-t ['?y (t/spec-t (t/seq-of '?z))])] (t/invoke-t '?x (t/cat-t ['?y (t/spec-t (t/seq-of '?z))]))}))
+                      ['?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?c]))])] (t/invoke-t '?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?c]))]))
+                      ['?f (t/cat-t ['?a (t/spec-t (t/seq-of '?z))])] (t/invoke-t '?f (t/cat-t ['?a (t/spec-t (t/seq-of '?z))]))}))
 
 (ann #'keyword (t/fn-t {[(t/or-t [#'keyword? #'symbol? #'string?])] #'simple-keyword?
                         [#'nil?] #'nil?
                         [#'string? #'string?] #'qualified-keyword?}))
+
+(ann-method clojure.lang.Util 'identical (t/fn-t {['[value ?x] '[value ?x]] ['value true]
+                                                  ['[value ?x] '[value ?y]] ['value false]
+                                                  [#'any? #'any?] ['class Boolean/TYPE]}))
+
+(ann-method clojure.lang.Util 'equiv (t/fn-t {['[value ?x] '[value ?x]] ['value true]
+                                              ['[value ?x] '[value ?y]] ['value false]
+                                              ['?a '?b] ['class Boolean/TYPE]} ))

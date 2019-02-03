@@ -2,6 +2,7 @@
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
             [clojure.spec.test.alpha :as stest]
+            [wall.hack :as hack]
             [orchestra.spec.test :as ost])
   (:import clojure.lang.Var
            java.lang.System))
@@ -152,3 +153,45 @@
      (defn ~fn-name ~@defn-stuff)
      (alter-var-root (var ~fn-name) memoize)
      (var ~fn-name)))
+
+(defmacro time-when
+  "clojure.core/time, but only print when elapsed time took longer than `timeout`"
+  [timeout expr]
+  `(let [start# (. System (nanoTime))
+         ret# ~expr
+         elapsed# (/ (double (- (. System (nanoTime)) start#)) 1000000.0)]
+     (when (> elapsed# ~timeout)
+       (prn (str (quote ~expr) "Elapsed time: " elapsed# " msecs")))
+     ret#))
+
+(defn dominates?
+  "True if dispatch value x dominates dispatch value y on multimethod mm"
+  [mm x y]
+  (-> (wall.hack/method clojure.lang.MultiFn :dominates [Object Object] mm x y)
+      (str)
+      (Boolean/getBoolean)))
+
+(defn debug-multimethod-dispatch
+  "Given the arguments to call a multimethod with, print debugging information about why a method was chosen"
+  [mm args]
+  (let [dispatch-fn (.dispatchFn mm)
+        dispatch-val (apply dispatch-fn args)
+        default (.defaultDispatchVal mm)
+        method-table (.getMethodTable mm)
+        hierarchy (deref (.hierarchy mm))]
+    (println "dispatch-val:" dispatch-val)
+    (->> method-table
+         (reduce (fn [best entry]
+                   (let [ek (.getKey entry)
+                         bk (when best (.getKey best))]
+                     (if (isa? hierarchy dispatch-val ek)
+                       (if (or (nil? best) (dominates? mm ek bk))
+                         (do
+                           (println ek ">" bk)
+                           entry)
+                         best)
+                       best))) nil)
+         ((fn [best]
+            (if (nil? best)
+              (println "best=nil, default:" default)
+              (key best)))))))

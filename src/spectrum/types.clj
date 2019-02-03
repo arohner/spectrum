@@ -1,7 +1,9 @@
 (ns spectrum.types
   (:refer-clojure :exclude [vector-of * + parents ancestors])
   (:require [clojure.core :as core]
+            [clojure.set :as set]
             [clojure.spec.alpha :as s]
+            [clojure.walk :as walk]
             [spectrum.java :as j]
             [spectrum.util :refer [instrument-ns defn-memo]]))
 
@@ -26,6 +28,14 @@
   ([prefix]
    (let [next (swap! type-counter inc)]
      (symbol (str "?" prefix next)))))
+
+(defn freshen
+  "Walk x, replacing logic variables with unique versions"
+  [form]
+  (walk/postwalk (fn [f]
+                   (if (logic? f)
+                     (new-logic (logic-name f))
+                     f)) form))
 
 (s/def ::type-atom (s/or :lvar logic? :v var?))
 
@@ -256,7 +266,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
      (when ret
        (reset! types-hierarchy ret)))))
 
-(s/fdef parents :args (s/cat :t ::type) :ret (s/nilable (s/coll-of ::type)))
+(s/fdef parents :args (s/cat :t ::type) :ret (s/nilable (s/coll-of (s/or :t ::type :s symbol?))))
 (defn parents
   "Same as clojure.core/parents, but for types"
   [t]
@@ -293,6 +303,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (derive-type #'any? 'value)
 (derive-type #'any? 'invoke)
 
+(derive-type #'ifn? 'fn)
+
 (defn load-type-hierarchy []
   (doseq [p (core-predicates)]
     (derive-type #'any? p)))
@@ -307,6 +319,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn cat-t [ts]
   (->> ts
        (map (fn [t]
+              (assert t)
               (if (accept-t? t)
                 (type-value t))
               t))
@@ -383,10 +396,10 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (s/fdef not-value :args (s/cat :t not-t?) :ret ::type)
 (def not-value type-value)
 
-(s/fdef or-types :args (s/cat :t or-t?) :ret ::types)
+(s/fdef or-types :args (s/cat :t or-t?) :ret any?)
 (def or-types type-value)
 
-(s/fdef join-not-pairs :args (s/cat :ts ::types) :ret ::types)
+(s/fdef join-not-pairs :args (s/cat :ts (s/coll-of any?)) :ret (s/coll-of any?))
 (defn join-not-pairs
   "If two types in ts are (not x) and x, replace them with any?"
   [ts]
@@ -458,7 +471,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (s/fdef maybe-value :args (s/cat :m maybe-t?) :ret ::type)
 (def maybe-value type-value)
 
-(s/fdef or-consolidate :args (s/cat :ts ::types) :ret ::types)
+(s/fdef or-consolidate :args (s/cat :ts (s/coll-of any?)) :ret (s/coll-of any?))
 (defn or-consolidate [ts]
   (let [or-ts (->> ts
                    (filter or-t?)
@@ -478,14 +491,14 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                     t)) ts)
         ts (if (some any-t? ts)
              (do
-               (when (> (count ts) 1)
-                 (println "WARNING: or-t" ts "=>" #'any?))
+               ;; (when (> (count ts) 1)
+               ;;   (println "WARNING: or-t" ts "=>" #'any?))
                (take 1 (filterv any-t? ts)))
              ts)
         ts (set ts)]
     ts))
 
-(s/fdef or-t :args (s/cat :ts ::types) :ret ::type)
+(s/fdef or-t :args (s/cat :ts (s/coll-of any?)) :ret any?)
 (defn or-t [ts]
   (let [ts (or-consolidate ts)]
     (cond
