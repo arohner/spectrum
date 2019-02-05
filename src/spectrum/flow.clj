@@ -822,11 +822,25 @@
         t (get-type! context a path)]
     [[t (t/throw-t (get-type! context a (conj path :exception)))]]))
 
+(defn get-constructor-t
+  "Return an fn-t for this class constructor"
+  [cls arity]
+  {:post [(do (when-not % (println "get-constructor failed:" cls arity)) true) %]}
+  (->> (j/get-java-constructors cls arity)
+       (map constructor->fn-t)
+       (t/merge-fns)))
+
 (defmethod get-equations* :new [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)
-        cls (get-type! context a (conj path :class))]
-    [[t (t/class-t cls)]]))
+        cls-t (get-type! context a (conj path :class))
+        cls (-> a* :class :val)
+        _ (assert (class? cls))
+        invoke-args (t/cat-t (map-sequential-children get-type! context a path :args))
+        constructor-fn-t (get-constructor-t cls (count (t/cat-types invoke-args)))]
+    (println "constructor fn-t:" constructor-fn-t)
+    (concat [[t (t/class-t cls)]]
+            (get-eq-invoke-fn-t constructor-fn-t invoke-args t))))
 
 (defn find-loop-path
   "Given a recur at `path`, return the path to the recur destination"

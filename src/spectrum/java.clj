@@ -115,6 +115,9 @@
 (defn reflect-method? [x]
   (instance? clojure.reflect.Method x))
 
+(defn reflect-constructor? [x]
+  (instance? clojure.reflect.Constructor x))
+
 ;;; java overloaded method resolution. You should read the spec first. TL;DR, java uses several rules to determine which arity method gets picked, in order
 ;;; 1. identity
 ;;; 2. widening primitive conversion
@@ -269,5 +272,16 @@
   (some->> (reflect/reflect cls)
            :members
            (filterv (fn [m]
-                      (and (instance? clojure.reflect.Method m)
+                      (and (reflect-method? m)
                            (= method (:name m)))))))
+
+(s/fdef get-java-constructors :args (s/cat :cls class? :arity pos-int?) :ret (s/coll-of reflect-constructor?))
+(defn get-java-constructors
+  "Return all constructors with arity n"
+  [cls arity]
+  (some->> (reflect/reflect cls)
+           :members
+           (filterv (fn [m]
+                      (and (reflect-constructor? m)
+                           (contains? (:flags m) :public)
+                           (= arity (count (:parameter-types m))))))))
