@@ -347,6 +347,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
               t))
        (apply vector 'cat)))
 
+
 (s/fdef cat-types :args (s/cat :x cat-t?) :ret (s/coll-of ::type))
 (defn cat-types [x]
   (vec (rest x)))

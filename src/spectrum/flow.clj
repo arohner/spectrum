@@ -320,7 +320,12 @@
       [])))
 
 (defmethod get-equations* :var [context a path]
-  [])
+  (let [a* (get-in a path)
+        v (-> a* :var)
+        t (get-type! context a path)]
+    (if-let [type (c/get-var-type v)]
+      [[t type]]
+      [])))
 
 (defmethod get-equations* :quote [context a path]
   [])
@@ -462,7 +467,7 @@
 (s/def :method/return-types (s/or :c class? :n nil?))
 (s/def ::method (s/keys :req-un [:method/parameter-types :method/return-type]))
 
-(s/fdef method->fn-t :args (s/cat :m ::method) :ret ::t/type)
+(s/fdef method->fn-t :args (s/cat :m j/reflect-method?) :ret ::t/type)
 (defn method->fn-t
   "Given a java method, translate it to a type, and add s/nilable to arguments & return type as necessary"
   [m]
@@ -471,6 +476,16 @@
     (t/fn-t {(mapv (fn [param]
                      (-> param j/resolve-java-class method-class->t)) parameter-types)
              (-> return-type j/resolve-java-class method-class->t)})))
+
+(s/fdef constructor->fn-t :args (s/cat :m j/reflect-constructor?) :ret ::t/type)
+(defn constructor->fn-t
+  "Given a java constructor, translate it to a type, and add s/nilable to arguments & return type as necessary"
+  [m]
+  (let [{:keys [parameter-types declaring-class name]} m
+        declaring-class (j/resolve-java-class declaring-class)]
+    (t/fn-t {(mapv (fn [param]
+                     (-> param j/resolve-java-class method-class->t)) parameter-types)
+             (t/class-t declaring-class)})))
 
 (defn make-equations
   "Given two types that are `valid?`, return a set of equations"
@@ -585,50 +600,45 @@
 (defn get-eq-invoke-logic
   "Invoke on ?x"
   [f invoke-args ret-t]
+  ;; {:post [(do (println "get-eq-invoke-logic" f "=>" %) true)]}
   (let [ret (t/new-logic "ret")]
     [[f (t/fn-t {invoke-args ret})]
      [ret-t ret]]))
 
 (defn maybe-get-eq-invoke-t [t ret-t]
+  ;; {:post [(do (println "maybe-get-eq-invoke-t:" t "=>" %) true)]}
   (when (t/invoke-t? t)
     (let [[f invoke-args] (t/type-values t)]
-      (get-eq-invoke-fn-t t invoke-args ret-t))))
+      (get-eq-invoke-t t invoke-args ret-t))))
 
 (s/fdef get-eq-invoke-fn-t :args (s/cat :f t/fn-t? :i ::t/type :r ::t/type) :ret ::equations)
 (defn get-eq-invoke-fn-t
   [f invoke-args ret-t]
-  {:post [(do (println "c/get-invoke-fn-eq" f invoke-args "=>" %) true)]}
-  (println "get-invoke-fn-eq" f invoke-args ret-t)
-  (let [fn-args (t/freshen (t/fn-args f))
-        aggregate-ret (t/freshen (t/fn-ret f))]
-    (when-let [aggregate-subst (c/merge-substs (c/unify fn-args invoke-args))]
+  ;; {:post [(do (println "get-eq-invoke-fn-t" f invoke-args "=>" %) true)]}
+  (let [f (t/fn-t (t/freshen (nth f 1)))
+        aggregate-args (t/fn-args f)
+        aggregate-ret (t/fn-ret f)]
+    (when-let [aggregate-subst (c/merge-substs (c/unify aggregate-args invoke-args))]
       ;; a fn of {a b, c d} could be invoked with (or a c). If we
       ;; examine arities individually, we could fail all of them
       ;; individually, so also check the aggregate case
       (->> (nth f 1)
            (map (fn [[f-args f-ret]]
-                  (let [[f-args f-ret] (t/freshen [f-args f-ret])]
-                    (when-let [substs (c/unify f-args invoke-args)]
-                      (println "match:" f-args invoke-args "=>" f-ret substs "=>" (c/merge-substs substs))
-                      [f-ret (c/merge-substs substs)]))))
+                  (when-let [substs (c/unify f-args invoke-args)]
+                    [f-args f-ret (c/merge-substs substs)])))
            (filter identity)
            ((fn [x]
               (doall x)
-              (println "x:" x)
               (or
                (when (seq (doall x))
-                 (let [rets (map first x)
-                       substs (map second x)]
-                   (println "x:" rets substs)
-                   [(t/or-t rets) (c/merge-substs substs)]))
-               [aggregate-ret aggregate-subst])))
-           ((fn [[ret subst]]
-              (println "get-invoke-fn-eq" ret subst)
+                 (let [args (map #(nth % 0) x)
+                       rets (map #(nth % 1) x)
+                       substs (map #(nth % 2) x)]
+                   [(apply t/merge-cats args) (t/or-t rets) (c/merge-substs substs)]))
+               [aggregate-args aggregate-ret aggregate-subst])))
+           ((fn [[args ret subst]]
               (let [extra-eq (maybe-get-eq-invoke-t ret ret-t)]
-                (concat (->> invoke-args
-                             t/cat-types
-                             (mapv (fn [i]
-                                     [(c/resolve-type i subst) i])))
+                (concat (make-equations args invoke-args)
                         (or
                          extra-eq
                          ;; if we thunked, extra-eq contains the result, so don't include the `invoke`
@@ -636,9 +646,8 @@
 
 (s/fdef get-eq-thunk-invoke :args (s/cat :t t/invoke-t? :ret-t ::t/type) :ret ::equations)
 (defn get-eq-thunk-invoke [t ret-t]
-  {:post [(do (println "get-eq-thunk-invoke" t ret-t "=>" %) true)]}
   (let [[_ fn-t invoke-args] t]
-    (get-eq-invoke-fn-t fn-t invoke-args ret-t)))
+    (get-eq-invoke-t fn-t invoke-args ret-t)))
 
 (s/fdef get-eq-invoke-t :args (s/cat :t ::t/type :ia t/cat-t? :ret-t ::t/type) ::ret ::equations)
 (defn get-eq-invoke-t

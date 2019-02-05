@@ -232,7 +232,7 @@
       [x]))
 
 (defn unify-canonical [x y substs]
-  ;; {:post [{:post [(do (println "unify canonical" x y "=>" %) true)]}]}
+  ;; {:post [(validate! ::substs %)]}
   (let [x (t/canonicalize x)
         y (t/canonicalize y)
         ys (disentangle y)
@@ -278,7 +278,7 @@
   ([x y substs]
    {
     ;; :pre [(do (println "unify pre" x y substs) true)]
-    ;; :post [(do (println "unify" x y substs "=>" %) (when (> (count %) 1) (println "unify" x y "multiple ret")) true)]
+    ;; :post [(do (println "unify" x y substs "=>" %) (when (> (count %) 1) (println "unify" x y "multiple ret" %)) true)]
     }
    (assert substs)
    (cond
@@ -740,16 +740,18 @@
 (defmethod unify-terms [#'t/logic? 'value] [x y substs]
   ;; {:post [(do (println "uniify logic value" x y) true)]}
   (let [val (t/type-value y)]
-    (->> [(->>
-           @value-pred-whitelist
-           (mapcat (fn [f]
-                     (when (f val)
-                       (if (= y (t/canonicalize f))
-                         substs
-                         (unify x f substs)))))
-           (doall))
-          (unify-logic-any x y substs)]
-         (apply concat))))
+    (unify-logic-any x y substs)))
+
+(defmethod unify-terms ['fn 'fn] [x y substs]
+  (->> x
+       (t/type-value)
+       (mapcat (fn [[x-args x-ret]]
+                 (->> y
+                      (t/type-value)
+                      (mapcat (fn [[y-args y-ret]]
+                                (some->> substs
+                                         (unify x-ret y-ret)
+                                         (unify x-args y-args)))))))))
 
 (defmethod unify-terms ['value #'any?] [x y substs]
   (let [val (t/type-value x)]
@@ -795,6 +797,7 @@
 (prefer-method unify-terms ['or #'any?] [#'any? 'and])
 (prefer-method unify-terms [#'any? 'value] ['sequential #'any?])
 (prefer-method unify-terms [#'dx? #'dx?] [#'any? 'value])
+(prefer-method unify-terms ['spec #'any?] [#'any? #'t/logic?])
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))

@@ -71,17 +71,23 @@
       ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'any?}] [{'?x #'string? '?y #'string?}]
 
       #'seqable? '?x [{'?x #'int?}] nil
-      ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'int?}] nil))
+      ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'int?}] nil
+
+      #'a? '?x [{'?x ['or #{#'a? #'b?}]}] [{'?x #'a}?]
+
+      ;; fn
+      (t/fn-t {['?a] '?b}) (t/fn-t {['?c] '?d ['?e '?f] '?g}) [{}] [{'?c '?a '?d '?b}]
+      ))
 
   (testing "substs contains"
     (are [x y substs] (= substs (set/intersection substs (set (c/unify x y))))
-      '?x ['value :foo] #{{'?x #'keyword?}
-                          {'?x (t/value-t :foo)}}))
+      '?x ['value :foo] #{{'?x (t/value-t :foo)}}))
 
   (testing "substs ="
     (are [x y substs] (= (set substs) (set (c/unify x y)))
       '?x ['and #{'?y #'clojure.core/chunked-seq?}] [{'?x ['and #{'?y #'chunked-seq?}]}]
-      '[cat ?a [cat ?b]] '[cat ?c ?d] '[{?a ?c, ?b ?d}]))
+      '[cat ?a [cat ?b]] '[cat ?c ?d] '[{?a ?c, ?b ?d}]
+      '?x '[value nil] [{'?x ['value nil]}]))
 
   (testing "falsey"
     (are [x y] (nil? (c/unify x y))
