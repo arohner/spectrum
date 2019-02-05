@@ -22,36 +22,6 @@
 ;;; logic variable: a symbol starting with ?, such as '?a
 ;;; a vector where the first item is a symbol, and the rest is arbitrary type data. e.g. ['seq-of '?x]
 
-(s/fdef get-lvars :ret (s/nilable (s/coll-of symbol? :kind set?)))
-(defn get-lvars
-  "Return a set of logic variables in expression"
-  [expr]
-  (let [lvars (atom #{})]
-    (walk/postwalk (fn [f]
-                     (when (t/logic? f)
-                       (swap! lvars conj f)))
-                   expr)
-    @lvars))
-
-(defn rename
-  "Given a map of lvars to lvars, walk form and replace all instances
-  of keys values"
-  [m form]
-  (walk/postwalk (fn [f]
-                   (if (t/logic? f)
-                     (if-let [v (get m f)]
-                       v
-                       f)
-                     f))
-                 form))
-
-(defn freshen
-  "Walk form, replacing all logic variables with unique versions"
-  [form]
-  (let [lvars (get-lvars form)
-        replace-map (->> lvars (map (fn [l] [l (t/new-logic (t/logic-name l))])) (into {}))]
-    (rename replace-map form)))
-
 (defn composite? [x]
   (cond
     (t/logic? x) false

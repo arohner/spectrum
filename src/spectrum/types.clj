@@ -29,13 +29,35 @@
    (let [next (swap! type-counter inc)]
      (symbol (str "?" prefix next)))))
 
-(defn freshen
-  "Walk x, replacing logic variables with unique versions"
-  [form]
+(s/fdef get-lvars :ret (s/nilable (s/coll-of symbol? :kind set?)))
+(defn get-lvars
+  "Return a set of logic variables in expression"
+  [expr]
+  (let [lvars (atom #{})]
+    (walk/postwalk (fn [f]
+                     (when (logic? f)
+                       (swap! lvars conj f)))
+                   expr)
+    @lvars))
+
+(defn rename
+  "Given a map of lvars to lvars, walk form and replace all instances
+  of keys values"
+  [m form]
   (walk/postwalk (fn [f]
                    (if (logic? f)
-                     (new-logic (logic-name f))
-                     f)) form))
+                     (if-let [v (get m f)]
+                       v
+                       f)
+                     f))
+                 form))
+
+(defn freshen
+  "Walk form, replacing all logic variables with unique versions"
+  [form]
+  (let [lvars (get-lvars form)
+        replace-map (->> lvars (map (fn [l] [l (new-logic (logic-name l))])) (into {}))]
+    (rename replace-map form)))
 
 (s/def ::type-atom (s/or :lvar logic? :v var?))
 
