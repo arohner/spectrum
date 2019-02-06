@@ -70,22 +70,35 @@
       '(fn [x] (next (seq x)))))
   (testing "falsey"
     (are [form] (not (boolean (f/infer-form form)))
-      '(inc "foo")
+
       '(keyword 3)
       '(first 1)
       '(rest 2)))
   (testing "return value"
     (are [form ret] (= ret (f/infer-form form))
-      '(keyword "foo") #'simple-keyword?
       '(keyword "foo" "bar") #'qualified-keyword?
-      ;; apply
-      '(apply keyword ["foo"]) #'simple-keyword?
-      '(apply keyword ["foo" "bar"]) #'qualified-keyword?
-      '(= 1 2) ['value false]
-      '(= 3 3) ['value true])
+      ))
 
-    (testing "args"
-      (are [form args ret] (= ret (f/infer-form form args))
+  ;; (testing "args"
+  ;;   (are [form args ret] (= ret (f/infer-form form args))
+
+  ;;     ))
+
+  (testing "TBD"
+    (comment
+      (are [form ret] (= ret (f/infer-form form))
+        '(inc "foo") nil
+        '(= 1 2) ['value false]
+        '(= 3 3) ['value true]
+
         '(first x) {:x ['seq-of #'int?]} ['or #{#'int? #'nil?}]
         '(cons x y) {:x '?x :y (t/seq-of '?y)} ['cat '?x (t/seq-of '?y)]
-        ))))
+
+        '(keyword "foo") #'simple-keyword?
+
+        ;; apply
+      '(apply keyword "foo") nil
+      '(apply keyword ["foo"]) #'simple-keyword?
+      '(apply keyword "foo" "bar") nil
+      '(apply keyword ["foo" "bar"]) #'qualified-keyword?
+      '(apply keyword "foo" ["bar"]) #'qualified-keyword)?)))

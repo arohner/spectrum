@@ -136,10 +136,10 @@
 (ann #'rest (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
                      [#'seqable?] (t/or-t ['?x #'nil?])}))
 
-(ann #'apply (t/fn-t {['?f (t/cat-t ['?a])] (t/invoke-t '?f (t/cat-t ['?a]))
-                      ['?f (t/cat-t ['?a '?b])] (t/invoke-t '?f (t/cat-t ['?a '?b]))
-                      ['?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?c]))])] (t/invoke-t '?f (t/cat-t ['?a (t/spec-t (t/cat-t ['?c]))]))
-                      ['?f (t/cat-t ['?a (t/spec-t (t/seq-of '?z))])] (t/invoke-t '?f (t/cat-t ['?a (t/spec-t (t/seq-of '?z))]))}))
+(ann #'apply (t/fn-t {['?f (t/spec-t (t/cat-t ['?a]))] (t/invoke-t '?f (t/cat-t ['?a]))
+                      ['?f (t/spec-t (t/cat-t ['?a '?b]))] (t/invoke-t '?f (t/cat-t ['?a '?b]))
+                      ['?f (t/spec-t (t/cat-t ['?a '?b '?c]))] (t/invoke-t '?f (t/cat-t ['?a '?b '?c]))
+                      ['?f '?a (t/spec-t (t/seq-of '?b))] (t/invoke-t '?f (t/cat-t ['?a (t/seq-of '?b)]))}))
 
 (ann #'keyword (t/fn-t {[(t/or-t [#'keyword? #'symbol? #'string?])] #'simple-keyword?
                         [#'nil?] #'nil?

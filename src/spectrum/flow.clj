@@ -634,7 +634,11 @@
                  (let [args (map #(nth % 0) x)
                        rets (map #(nth % 1) x)
                        substs (map #(nth % 2) x)]
-                   [(apply t/merge-cats args) (t/or-t rets) (c/merge-substs substs)]))
+                   [(->> args
+                         (mapcat c/disentangle)
+                         (filter (fn [a*]
+                                   (= (count (t/cat-types invoke-args)) (count (t/cat-types a*)))))
+                         (apply t/merge-cats)) (t/or-t rets) (c/merge-substs substs)]))
                [aggregate-args aggregate-ret aggregate-subst])))
            ((fn [[args ret subst]]
               (let [extra-eq (maybe-get-eq-invoke-t ret ret-t)]
@@ -1182,9 +1186,9 @@
 
     (when existing-l
       (println "could not unify eq" fail (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r))
-    (doseq [lv (c/get-lvars fail)]
+    (doseq [lv (t/get-lvars fail)]
       (println lv "=>" (c/resolve-type lv subst)))
-    (doseq [lv (c/get-lvars existing-l)]
+    (doseq [lv (t/get-lvars existing-l)]
       (println lv "=>" (c/resolve-type lv subst)))))
 
 (defn valid-subst?

@@ -255,8 +255,8 @@
       [{}])))
 
 (defn cacheable? [x y]
-  (and (= #{} (get-lvars x))
-       (= #{} (get-lvars y))))
+  (and (= #{} (t/get-lvars x))
+       (= #{} (t/get-lvars y))))
 
 (defn unify* [x y substs]
   (unify-canonical x y substs))
@@ -292,7 +292,7 @@
   [t substs]
   (println "debug-relevant" t "subst:" (->> substs
                                             (map (fn [s]
-                                                   (select-keys s (get-lvars t))))
+                                                   (select-keys s (t/get-lvars t))))
                                             (filter identity)
                                             (distinct))))
 

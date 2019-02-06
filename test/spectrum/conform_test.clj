@@ -56,8 +56,6 @@
       (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{} {'?a #'int?}]
 
       ['cat ['seq-of '?x]] ['cat '?y] [{'?y ['seq-of '?x]}]
-
-
       ))
 
   (testing "truthy substs"
@@ -73,10 +71,10 @@
       #'seqable? '?x [{'?x #'int?}] nil
       ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'int?}] nil
 
-      #'a? '?x [{'?x ['or #{#'a? #'b?}]}] [{'?x #'a}?]
+      #'a? '?x [{'?x ['or #{#'a? #'b?}]}] [{'?x #'a?}]
 
       ;; fn
-      (t/fn-t {['?a] '?b}) (t/fn-t {['?c] '?d ['?e '?f] '?g}) [{}] [{'?c '?a '?d '?b}]
+      (t/fn-t {['?a] '?b}) (t/fn-t {['?c] '?d ['?e '?f] '?g}) [{}] [{'?a '?c '?b '?d}]
       ))
 
   (testing "substs contains"
