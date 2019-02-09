@@ -2,7 +2,6 @@
   (:require [clojure.tools.analyzer.jvm :as ana.jvm]
             [clojure.spec.alpha :as s]
             [clojure.spec.test.alpha :as stest]
-            [wall.hack :as hack]
             [orchestra.spec.test :as ost])
   (:import clojure.lang.Var
            java.lang.System))
