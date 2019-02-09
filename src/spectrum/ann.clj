@@ -22,7 +22,7 @@
  "
   [v cls]
   (ann v (t/fn-t {[(t/class-t cls)] (t/value-t true)
-                  [#'any?] (t/value-t false)}))
+                  [(t/not-t (t/class-t cls))] (t/value-t false)}))
   (t/set-equiv-types! (t/class-t cls) v))
 
 (s/fdef ann-instance-or? :args (s/cat :v var? :c (s/coll-of class?)))
@@ -127,13 +127,13 @@
                      ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)])
                      ['?x #'seqable?] (t/cat-t ['?x (t/seq-of '?y)])}))
 
-(ann #'first (t/fn-t {[(t/seq-of '?a)] (t/or-t ['?a #'nil?])
+(ann #'first (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t ['?a #'nil?])
                       [#'seqable?] (t/or-t ['?x #'nil?])}))
 
-(ann #'next (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
+(ann #'next (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t [(t/seq-of '?a) #'nil?])
                      [#'seqable?] (t/or-t ['?x #'nil?])}))
 
-(ann #'rest (t/fn-t {[(t/seq-of '?a)] (t/or-t [(t/seq-of '?a) #'nil?])
+(ann #'rest (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t [(t/seq-of '?a) #'nil?])
                      [#'seqable?] (t/or-t ['?x #'nil?])}))
 
 (ann #'apply (t/fn-t {['?f (t/spec-t (t/cat-t ['?a]))] (t/invoke-t '?f (t/cat-t ['?a]))
@@ -142,7 +142,7 @@
                       ['?f '?a (t/spec-t (t/seq-of '?b))] (t/invoke-t '?f (t/cat-t ['?a (t/seq-of '?b)]))}))
 
 (ann #'keyword (t/fn-t {[(t/or-t [#'keyword? #'symbol? #'string?])] #'simple-keyword?
-                        [#'nil?] #'nil?
+                        [(t/not-t (t/or-t [#'keyword? #'symbol? #'string?]))] #'nil?
                         [#'string? #'string?] #'qualified-keyword?}))
 
 (ann-method clojure.lang.Util 'identical (t/fn-t {['[value ?x] '[value ?x]] ['value true]

@@ -17,4 +17,8 @@
 
 (deftest branch-prediction
   (are [f ret] (= ret (f/infer-form f))
-    '(fn [s] (if (chunked-seq? s) (chunk-first s))) (t/fn-t {[#'any?] (t/or-t [['class IChunk] #'nil?])})))
+    '(fn [s] (if (chunked-seq? s) (chunk-first s))) (t/fn-t {['cat ['or #{#'clojure.core/chunked-seq?
+                                                                     ['not ['class clojure.lang.IChunkedSeq]]}]]
+                                                             ['or
+                                                              #{['value nil]
+                                                                ['class clojure.lang.IChunk]}]})))

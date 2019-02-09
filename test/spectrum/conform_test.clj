@@ -67,6 +67,7 @@
       ;; narrowing
       #'seqable? '?x [{'?x #'any?}] [{'?x #'seqable?}]
       ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'any?}] [{'?x #'string? '?y #'string?}]
+      '?t1 #'nil? [{'?t1 ['or #{#'a? #'nil?}]}] [{'?t1 ['value nil]}]
 
       #'seqable? '?x [{'?x #'int?}] nil
       ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'int?}] nil

@@ -121,6 +121,20 @@
    (reduce (fn [final [k v]]
              (assoc final k (t/or-t v))) {})))
 
+(defn narrow-unify-logic-any-1 [x y subst]
+  ;;; unify x and y, x is logic. y unifies, but x's subst is currently
+  ;;; wider than what y accepts, so x's subst must become narrower
+  (when-let [substs (and (t/logic? x)
+                        (get subst x)
+                        (unify (get subst x) y [subst]))]
+    (let [subst (merge-substs substs)
+          y-substs (unify x y [(dissoc subst x)])
+          y-subst (merge-substs y-substs)
+          x* (resolve-type x y-subst)]
+      (assert x*)
+      (when-not (seq (unify x* (resolve-type x subst)))
+        y-substs))))
+
 (defn narrow-unify-any-logic-1 [x y subst]
   (let [y* (get subst y)]
 
@@ -149,7 +163,9 @@
 
 (defn unify-logic-any-1 [x y subst]
   (cond
-    (get subst x) (unify (get subst x) y [subst])
+    (get subst x) (or
+                   (narrow-unify-logic-any-1 x y subst)
+                   (unify (get subst x) y [subst]))
     (occurs? x y subst) nil
     (not (t/ignore? x)) [(assoc subst x y)]
     :else [subst]))
@@ -277,7 +293,7 @@
    (unify x y [{}]))
   ([x y substs]
    {
-    ;; :pre [(do (println "unify pre" x y substs) true)]
+    ;; :pre [(do (println "unify pre" x y substs) true])
     ;; :post [(do (println "unify" x y substs "=>" %) (when (> (count %) 1) (println "unify" x y "multiple ret" %)) true)]
     }
    (assert substs)
@@ -524,10 +540,10 @@
   (when-not (unify (t/type-value x) y substs)
     substs))
 
-(defmethod unify-terms [#'any? 'not] [x y substs]
-  ;; (assert false "¯\\_(ツ)_/¯")
-  nil
-  )
+(defmethod unify-terms ['not 'not] [x y substs]
+  (if-let [substs (unify (t/type-value x) (t/type-value y))]
+    substs
+    nil))
 
 (defmethod unify-terms ['alt #'any?] [alt-x y substs]
   (->> alt-x
@@ -798,6 +814,8 @@
 (prefer-method unify-terms [#'any? 'value] ['sequential #'any?])
 (prefer-method unify-terms [#'dx? #'dx?] [#'any? 'value])
 (prefer-method unify-terms ['spec #'any?] [#'any? #'t/logic?])
+(prefer-method unify-terms [#'any? 'not] ['value #'any?])
+(prefer-method unify-terms ['or #'any?] [#'any? 'not])
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))

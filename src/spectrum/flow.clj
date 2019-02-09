@@ -613,37 +613,16 @@
   [f invoke-args ret-t]
   ;; {:post [(do (println "get-eq-invoke-fn-t" f invoke-args "=>" %) true)]}
   (let [f (t/fn-t (t/freshen (nth f 1)))
-        aggregate-args (t/fn-args f)
-        aggregate-ret (t/fn-ret f)]
-    (when-let [aggregate-subst (c/merge-substs (c/unify aggregate-args invoke-args))]
-      ;; a fn of {a b, c d} could be invoked with (or a c). If we
-      ;; examine arities individually, we could fail all of them
-      ;; individually, so also check the aggregate case
-      (->> (nth f 1)
-           (map (fn [[f-args f-ret]]
-                  (when-let [substs (c/unify f-args invoke-args)]
-                    [f-args f-ret (c/merge-substs substs)])))
-           (filter identity)
-           ((fn [x]
-              (doall x)
-              (or
-               (when (seq (doall x))
-                 (let [args (map #(nth % 0) x)
-                       rets (map #(nth % 1) x)
-                       substs (map #(nth % 2) x)]
-                   [(->> args
-                         (mapcat c/disentangle)
-                         (filter (fn [a*]
-                                   (= (count (t/cat-types invoke-args)) (count (t/cat-types a*)))))
-                         (apply t/merge-cats)) (t/or-t rets) (c/merge-substs substs)]))
-               [aggregate-args aggregate-ret aggregate-subst])))
-           ((fn [[args ret subst]]
-              (let [extra-eq (maybe-get-eq-invoke-t ret ret-t)]
-                (concat (make-equations args invoke-args)
-                        (or
-                         extra-eq
-                         ;; if we thunked, extra-eq contains the result, so don't include the `invoke`
-                         [(eq/eq ret-t ret)])))))))))
+        agg-args (t/fn-args f)]
+    (->> (t/type-value f)
+         (mapcat (fn [[f-args f-ret]]
+                   (let [extra-eq (maybe-get-eq-invoke-t ret-t f-ret)]
+                     (or
+                      extra-eq
+                      ;; if we thunked, extra-eq contains the result, so don't include the `invoke`
+                      [(eq/conde (eq/eq f-args invoke-args)
+                                 (eq/eq ret-t f-ret))]))))
+         (concat [(eq/eq agg-args invoke-args)]))))
 
 (s/fdef get-eq-thunk-invoke :args (s/cat :t t/invoke-t? :ret-t ::t/type) :ret ::eq/equations)
 (defn get-eq-thunk-invoke [t ret-t]
@@ -920,6 +899,9 @@
 (defmethod get-equations* :host-interop [context a path]
   [])
 
+(s/def :state/fail (s/nilable ::eq/equation))
+(s/def ::unify-state (s/keys :req-un [:state/fail ::c/substs]))
+
 (s/fdef get-equations :args (s/cat :c ::context :a ::a) :ret ::eq/equations)
 (defn get-equations [context a]
   (->> (walk-a-rec-post
@@ -950,21 +932,48 @@
     (let [[_ n] (re-find #"(\d+)$" (name v))]
       (Long/parseLong n))))
 
+(s/fdef unify-conditional-equations :args (s/cat :st ::unify-state :c ::eq/equations) :ret ::unify-state)
+(defn unify-conditional-equations [state cond-eqs]
+  (let [{:keys [substs fail]} state]
+    (->> cond-eqs
+         (map (fn [eq]
+                (let [[_ test then] eq
+                      [_ test-l test-r] test]
+                  (if-let [substs (c/unify test-l test-r substs)]
+                    (let [[_ then-l then-r] then
+                          substs (c/unify then-l then-r substs)]
+                      (if substs
+                        {:fail nil :substs substs}
+                        {:fail eq :substs nil}))
+                    state))))
+         ((fn [states]
+            (or (some->> states
+                         (remove :fail)
+                         seq
+                         (mapcat :substs)
+                         c/merge-substs
+                         ((fn [subst]
+                            {:fail nil :substs [subst]})))
+                (first states)))))))
+
 (s/fdef unify-all-equations :args (s/cat :eqs ::eq/equations))
 (defn unify-all-equations [eqs]
   (let [substs [{}]
         eqs (group-by first eqs)
-        equal-eqs (:eq eqs)]
-    (reduce (fn [{:keys [substs fail] :as state} eq]
-              (if fail
-                state
-                (let [[_ l r] eq]
-                  (let [substs* (seq (c/unify l r substs))]
-                    (if substs*
-                      (do
-                        ;; (println "unified" eq "=>" substs*)
-                        (assoc state :substs [(c/merge-substs substs*)]))
-                      (assoc state :fail eq)))))) {:substs substs :fail nil} equal-eqs)))
+        equal-eqs (:eq eqs)
+        cond-eqs (:conde eqs)]
+    (as-> {:substs substs :fail nil} state
+      (reduce (fn [{:keys [substs fail] :as state} eq]
+                (if fail
+                  state
+                  (let [[_ l r] eq]
+                    (let [substs* (seq (c/unify l r substs))]
+                      (if substs*
+                        (do
+                          ;; (println "unified" eq "=>" substs*)
+                          (assoc state :substs [(c/merge-substs substs*)]))
+                        (assoc state :fail eq)))))) state equal-eqs)
+      (unify-conditional-equations state cond-eqs))))
 
 (defn store-var-inference-results [context a substs]
   (->> (a-def-paths a)
@@ -1166,29 +1175,44 @@
                      (dorun))))
          (dorun))))
 
-(defn debug-failure
-  "Given a unify failure, print relevant debugging"
-  [context a eqs substs fail]
-  (let [[l r] fail
-        subst (first substs)
+(defn debug-failed-eq-dispatch [context eq subst]
+  {:post [(keyword? %)]}
+  (nth eq 0))
+
+(defmulti debug-failed-eq #'debug-failed-eq-dispatch)
+
+(defmethod debug-failed-eq :eq [context eq subst]
+  (let [[eq-op l r] eq
         l-meta (get-type-meta context l)
         existing-l (c/resolve-type l subst)
         existing-r (c/resolve-type r subst)]
-    (debug-all-types context)
-    (debug-form-eqs context eqs)
-
-    (println "infer failed" (:form a) "failing equation:" fail)
-    (println "fail" fail " meta:" (-> fail meta))
     (println "expected" l (if-let [form (::form l-meta)] form "") "=>" (c/resolve-type r subst))
 
-    (println "subst" subst)
-
     (when existing-l
-      (println "could not unify eq" fail (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r))
-    (doseq [lv (t/get-lvars fail)]
-      (println lv "=>" (c/resolve-type lv subst)))
-    (doseq [lv (t/get-lvars existing-l)]
-      (println lv "=>" (c/resolve-type lv subst)))))
+    (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r))
+  (doseq [lv (t/get-lvars eq)]
+    (println lv "=>" (c/resolve-type lv subst)))
+  (doseq [lv (t/get-lvars existing-l)]
+    (println lv "=>" (c/resolve-type lv subst)))))
+
+(defmethod debug-failed-eq :conde [context eq subst]
+  (let [[eq-op when then] eq
+        [when-op when-l when-r] when
+        [then-op then-l then-r] then]
+    (println eq "failed")
+    (debug-failed-eq context then subst)))
+
+(defn debug-failure
+  "Given a unify failure, print relevant debugging"
+  [context a eqs subst fail]
+  (debug-all-types context)
+  (debug-form-eqs context eqs)
+
+  (println "infer failed" (:form a) "failing equation:" fail)
+  (debug-failed-eq context fail subst)
+  (println "fail" fail " meta:" (-> fail meta))
+  ;; (println "subst" subst)
+  )
 
 (defn valid-subst?
   "True if everything conforms"
@@ -1209,7 +1233,7 @@
           _ (println "infer" (count eqs) "equations")
           _ (pprint eqs)
           {:keys [substs fail]} (unify-all-equations eqs)
-          subst (first substs)
+          subst (c/merge-substs substs)
           _ (println "infer" "done unifying" (count substs) (count (distinct substs)))
           ;; substs (->> substs (filter valid-subst?) distinct seq)
           t (get-type! context a [])]
@@ -1218,9 +1242,9 @@
       (debug-all-types context)
       (debug-form-eqs context eqs)
       (if fail
-        (debug-failure context a eqs substs fail)
+        (debug-failure context a eqs subst fail)
         (when substs
-          (println substs)
+          ;; (println substs)
           (let [type-map (time (store-var-inference-results context a substs))]
             (println (keys type-map))
             (or (some-> type-map first val)

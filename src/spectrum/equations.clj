@@ -11,11 +11,11 @@
 
 (s/def ::test ::equality)
 (s/def ::then ::equality)
-(s/def ::conde (s/tuple #{:when} ::test ::then))
-(s/fdef conde :args (s/cat :when ::when :test ::test) :ret ::conde)
+(s/def ::conde (s/tuple #{:conde} ::test ::then))
+(s/fdef conde :args (s/cat :test ::test :then ::then) :ret ::conde)
 (defn conde [when then]
   "constraint that when the equation `when` is true, `then` must also be true. one-way, does not imply that when `then` is true, `when` must be true"
-  [:when when then])
+  [:conde when then])
 
 (s/def ::equation (s/or :eq ::equality :cond ::conde))
 (s/def ::equations (s/coll-of ::equation))
