@@ -163,10 +163,22 @@
        (prn (str (quote ~expr) "Elapsed time: " elapsed# " msecs")))
      ret#))
 
+(defn private-method
+  "Calls a private or protected method.
+
+   class - the class where the method is declared
+   params - a vector of Class which correspond to the arguments to the method
+   obj - nil for static methods, the instance object otherwise
+   method-name - something Named"
+  [class method-name params obj & args]
+  (-> class (.getDeclaredMethod (name method-name) (into-array Class params))
+    (doto (.setAccessible true))
+    (.invoke obj (into-array Object args))))
+
 (defn dominates?
   "True if dispatch value x dominates dispatch value y on multimethod mm"
   [mm x y]
-  (-> (wall.hack/method clojure.lang.MultiFn :dominates [Object Object] mm x y)
+  (-> (private-method clojure.lang.MultiFn :dominates [Object Object] mm x y)
       (str)
       (Boolean/getBoolean)))
 
