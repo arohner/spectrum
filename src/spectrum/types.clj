@@ -57,6 +57,7 @@
   [form]
   (let [lvars (get-lvars form)
         replace-map (->> lvars (map (fn [l] [l (new-logic (logic-name l))])) (into {}))]
+    (println "freshen" replace-map)
     (rename replace-map form)))
 
 (s/def ::type-atom (s/or :lvar logic? :v var?))
@@ -341,6 +342,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn cat-t [ts]
   (->> ts
        (map (fn [t]
+              (when-not t
+                (println "invalid cat-t:" ts))
               (assert t)
               (if (accept-t? t)
                 (type-value t))

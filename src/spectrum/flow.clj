@@ -210,8 +210,8 @@
 (defn assign-typenames
   "Walk the analysis, assign type names to every expression"
   [context a]
-  (walk-a-rec (fn [a path]
-                (create-typename context a path)) a))
+  (walk-a-rec-post (fn [a path]
+                     (create-typename context a path)) a))
 
 (defn get-equations-dispatch [context a path]
   (:op (get-in a path)))
@@ -230,8 +230,11 @@
 
 (defmulti get-type* #'get-type-dispatch)
 
-(defmethod get-type* :default [context a path]
+(defn get-type-default [context a path]
   (-> context :typenames deref (get [a path])))
+
+(defmethod get-type* :default [context a path]
+  (get-type-default context a path))
 
 (defmethod get-type* :local [context a path]
   {:pre [a (get-in a path)]
@@ -264,7 +267,7 @@
 (s/fdef get-type! :ret ::t/type)
 (defn get-type! [context a path]
   {:post [(do (when-not %
-                (println "get-type!" (:form a) path "failed")) true)
+                (println "get-type!" (:form a) (get-in a (conj path :op)) path "failed")) true)
           %]}
   (get-type* context a path))
 
@@ -319,9 +322,7 @@
   (let [a* (get-in a path)
         v (-> a* :var)
         t (get-type! context a path)]
-    (if-let [type (c/get-var-type v)]
-      [(eq/eq t type)]
-      [])))
+    [(eq/eq t #'var?)]))
 
 (defmethod get-equations* :quote [context a path]
   [])
@@ -582,12 +583,30 @@
                    path)) a)
    (filter identity)))
 
+(defn self-var-reference?
+  "True if the use of :var v at [a path] is a call to a var defined in a. Returns the path to the :def or nil"
+  [a path]
+  (let [a* (get-in a path)
+        _ (assert (= :var (:op a*)))
+        op (:op a*)]
+    (when-let [v (:var a*)]
+      (->> (a-def-paths a)
+           (filter (fn [p]
+                     (= v (get-in a (conj p :var)))))
+           (first)))))
+
+(defmethod get-type* :var [context a path]
+  (or
+   (when-let [new-path (self-var-reference? a path)]
+     (get-type* context a new-path))
+   (get-type-default context a path)
+   (assert false)))
+
 (defn invoke-local?
   "Returns true if the invoke at [a path] is a local fn contained within a"
   [a path]
   (let [a* (get-in a (conj path :fn))
         op (:op a*)]
-    (println "invoke-local?" (:op a*) (:form a*))
     (contains? #{:local :fn} op)))
 
 (declare get-eq-invoke-fn-t)
@@ -597,31 +616,29 @@
 (defn get-eq-invoke-logic
   "Invoke on ?x"
   [f invoke-args ret-t]
-  ;; {:post [(do (println "get-eq-invoke-logic" f "=>" %) true)]}
   (let [ret (t/new-logic "ret")]
-    [(eq/eq f (t/fn-t {invoke-args ret}))
-     (eq/eq ret-t ret)]))
+    [(eq/eq f (t/fn-t {invoke-args ret-t}))]))
 
-(defn maybe-get-eq-invoke-t [t ret-t]
-  ;; {:post [(do (println "maybe-get-eq-invoke-t:" t "=>" %) true)]}
-  (when (t/invoke-t? t)
-    (let [[f invoke-args] (t/type-values t)]
-      (get-eq-invoke-t t invoke-args ret-t))))
+(defn maybe-replace-invoke-t [invoke-args ret-t t]
+  (if (t/invoke-t? t)
+    (let [[f i-invoke-args] (t/type-values t)
+          ret-eqs (get-eq-invoke-t f i-invoke-args ret-t)]
+      ret-eqs)
+    [(eq/eq ret-t t)]))
 
 (s/fdef get-eq-invoke-fn-t :args (s/cat :f t/fn-t? :i ::t/type :r ::t/type) :ret ::eq/equations)
 (defn get-eq-invoke-fn-t
   [f invoke-args ret-t]
-  ;; {:post [(do (println "get-eq-invoke-fn-t" f invoke-args "=>" %) true)]}
-  (let [f (t/fn-t (t/freshen (nth f 1)))
+  (let [f (t/fn-t (nth f 1))
+        f (t/freshen f)
         agg-args (t/fn-args f)]
     (->> (t/type-value f)
          (mapcat (fn [[f-args f-ret]]
-                   (let [extra-eq (maybe-get-eq-invoke-t ret-t f-ret)]
-                     (or
-                      extra-eq
-                      ;; if we thunked, extra-eq contains the result, so don't include the `invoke`
-                      [(eq/conde (eq/eq f-args invoke-args)
-                                 (eq/eq ret-t f-ret))]))))
+                   (->>
+                   (maybe-replace-invoke-t invoke-args ret-t f-ret)
+                    (map (fn [ret-eq]
+                           (eq/conde (eq/eq f-args invoke-args)
+                                     ret-eq))))))
          (concat [(eq/eq agg-args invoke-args)]))))
 
 (s/fdef get-eq-thunk-invoke :args (s/cat :t t/invoke-t? :ret-t ::t/type) :ret ::eq/equations)
@@ -693,7 +710,6 @@
         f-path (get-type-path context f)
         f-ret (ensure-type! context a (conj f-path :ret))
         invoke-args (map-sequential-children get-type! context a path :args)]
-    (println "get-eq invoke local fn" (:form a*) "t:" t "f:" f "invoke-args:" invoke-args)
     (assert f)
     [(eq/eq t f-ret)
      (eq/eq f (t/fn-t {invoke-args f-ret}))]))
@@ -701,13 +717,7 @@
 (defn self-var-call?
   "True if the invoke at [a path] is a call to a var defined in a. Returns the path to the :def or nil"
   [a path]
-  (let [a* (get-in a (conj path :fn))
-        op (:op a*)]
-    (when-let [v (:var a*)]
-      (->> (a-def-paths a)
-           (filter (fn [p]
-                     (= v (get-in a (conj p :var)))))
-           (first)))))
+  (self-var-reference? a (conj path :fn)))
 
 (defn maybe-with-meta
   "Given a path, if [a path] is a :with-meta node, return the real path"
@@ -752,7 +762,6 @@
 
 (s/fdef get-equations-java-call :ret ::eq/equations)
 (defn get-equations-java-call [context a path]
-  {:post [(do (println "get-eq java" (:form (get-in a path)) "=>" %) true)]}
   (let [a* (get-in a path)
         {:keys [class method instance]} a*]
     (if (and class method)
@@ -932,48 +941,66 @@
     (let [[_ n] (re-find #"(\d+)$" (name v))]
       (Long/parseLong n))))
 
-(s/fdef unify-conditional-equations :args (s/cat :st ::unify-state :c ::eq/equations) :ret ::unify-state)
-(defn unify-conditional-equations [state cond-eqs]
-  (let [{:keys [substs fail]} state]
-    (->> cond-eqs
-         (map (fn [eq]
-                (let [[_ test then] eq
-                      [_ test-l test-r] test]
-                  (if-let [substs (c/unify test-l test-r substs)]
-                    (let [[_ then-l then-r] then
-                          substs (c/unify then-l then-r substs)]
-                      (if substs
-                        {:fail nil :substs substs}
-                        {:fail eq :substs nil}))
-                    state))))
-         ((fn [states]
-            (or (some->> states
-                         (remove :fail)
-                         seq
-                         (mapcat :substs)
-                         c/merge-substs
-                         ((fn [subst]
-                            {:fail nil :substs [subst]})))
-                (first states)))))))
+(defn unify-eq-dispatch [state eq]
+  (first eq))
 
-(s/fdef unify-all-equations :args (s/cat :eqs ::eq/equations))
+(defmulti unify-equation #'unify-eq-dispatch)
+
+(defmethod unify-equation :eq [{:keys [substs fail] :as state} eq]
+  (if fail
+    state
+    (let [[_ l r] eq]
+      (let [substs* (seq (c/unify l r substs))]
+        (if substs*
+          (assoc state :substs [(c/merge-substs substs*)])
+          (assoc state :fail eq))))))
+
+(defmethod unify-equation :conde [{:keys [substs fail] :as state} eq]
+  {:post [(validate! (s/nilable ::unify-state) %)]}
+  (if fail
+    state
+    (let [[_ test then] eq
+          [_ test-l test-r] test]
+      (if-let [substs* (c/unify test-l test-r substs)]
+        (let [[_ then-l then-r] then
+              substs (c/unify then-l then-r substs)]
+          (assert (or (seq substs) (nil? substs)))
+          (if substs
+            (assoc state :substs [(c/merge-substs substs)])
+            (assoc state :fail eq)))
+        state))))
+
+(defn unify-conditional-eqs [state cond-eqs]
+  (let [cond-eq-states (->> cond-eqs
+                            (map (fn [eq]
+                                   (unify-equation state eq))))]
+    (or
+     (when (:fail state)
+       state)
+     (->> cond-eq-states
+          (filter :fail)
+          first)
+     (->> cond-eq-states
+          (mapcat :substs)
+          ((fn [substs]
+             (assoc state :substs [(c/merge-substs substs)])))))))
+
+(s/fdef unify-all-equations :args (s/cat :eqs ::eq/equations) :ret ::unify-state)
 (defn unify-all-equations [eqs]
-  (let [substs [{}]
-        eqs (group-by first eqs)
-        equal-eqs (:eq eqs)
-        cond-eqs (:conde eqs)]
-    (as-> {:substs substs :fail nil} state
-      (reduce (fn [{:keys [substs fail] :as state} eq]
-                (if fail
-                  state
-                  (let [[_ l r] eq]
-                    (let [substs* (seq (c/unify l r substs))]
-                      (if substs*
-                        (do
-                          ;; (println "unified" eq "=>" substs*)
-                          (assoc state :substs [(c/merge-substs substs*)]))
-                        (assoc state :fail eq)))))) state equal-eqs)
-      (unify-conditional-equations state cond-eqs))))
+  ;; important to keep ordering here. Weird. Why is order important?
+
+  (let [state {:substs [{}] :fail nil}]
+    (->> eqs
+         (partition-by first)
+         (reduce (fn [state eqs]
+                   (let [{:keys [substs] :as state} (if (= :eq (-> eqs first first))
+                                                      (reduce (fn [state eq]
+                                                                (unify-equation state eq)) state eqs)
+                                                      (unify-conditional-eqs state eqs))]
+                     (if (not (:fail state))
+                       (let [subst (c/merge-substs substs)]
+                         (assoc-in state [:substs] [subst]))
+                       state))) state))))
 
 (defn store-var-inference-results [context a substs]
   (->> (a-def-paths a)
@@ -1044,7 +1071,6 @@
   (ensure-analysis-var v)
   (if-let [{:keys [a]} (data/get-var-analysis v)]
     (let [t (infer a {:dependencies? dependencies?})]
-      (assert t (format "failed to infer var %s" v))
       t)
     (println "couldn't find analysis for" v)))
 
@@ -1067,7 +1093,6 @@
     (infer-cycle vs)))
 
 (defn ensure-infer-var [v &[{:keys [dependencies?]}]]
-  {:post [%]}
   (or (c/get-var-type v)
       (do
         (println "inferring var" v)
@@ -1110,6 +1135,8 @@
        (a-var-dependencies)
        (sort-dependencies)
        (map (fn [v]
+              {:post [(do (when-not % (println "failed to infer" v)) true)
+                      %]}
               (if (coll? v)
                 (ensure-infer-var-cycle v)
                 (ensure-infer-var v {:dependencies? false}))))
@@ -1189,7 +1216,7 @@
     (println "expected" l (if-let [form (::form l-meta)] form "") "=>" (c/resolve-type r subst))
 
     (when existing-l
-    (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r))
+    (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r "subst:" subst))
   (doseq [lv (t/get-lvars eq)]
     (println lv "=>" (c/resolve-type lv subst)))
   (doseq [lv (t/get-lvars existing-l)]

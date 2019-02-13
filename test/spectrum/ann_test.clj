@@ -76,6 +76,7 @@
 
   (testing "return value"
     (are [form ret] (= ret (f/infer-form form))
+      '(first 3) nil
       '(keyword 3) ['value nil]
       '(keyword "foo") #'simple-keyword?
       '(keyword "foo" "bar") #'qualified-keyword?
@@ -95,6 +96,12 @@
                                #{#'clojure.core/simple-keyword?
                                  ['value nil]}]}]
       '(fn [x y] (keyword x y)) ['fn {['cat #'string? #'string?] #'clojure.core/qualified-keyword?}]
+
+      ;; apply
+      '(apply keyword "foo") nil
+
+
+      '(apply true? 1) nil
       ))
 
   (testing "args"
@@ -110,9 +117,9 @@
         '(= 1 2) ['value false]
         '(= 3 3) ['value true]
 
-        ;; apply
-      '(apply keyword "foo") nil
-      '(apply keyword ["foo"]) #'simple-keyword?
+        '(apply keyword ["foo"]) #'simple-keyword?
+        '(apply true? [1]) #'boolean?
+
       '(apply keyword "foo" "bar") nil
       '(apply keyword ["foo" "bar"]) #'qualified-keyword?
 

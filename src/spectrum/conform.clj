@@ -274,9 +274,6 @@
   (and (= #{} (t/get-lvars x))
        (= #{} (t/get-lvars y))))
 
-(defn unify* [x y substs]
-  (unify-canonical x y substs))
-
 (defn-memo unify-cache [x y]
   (or
    (or
@@ -301,7 +298,7 @@
      (= x y) substs
      (cacheable? x y) (when (unify-cache x y)
                         substs)
-     :else (unify* x y substs))))
+     :else (unify-canonical x y substs))))
 
 (defn debug-substs
   "Given a subst, print the parts relevant to type t"
@@ -754,7 +751,6 @@
          (apply concat))))
 
 (defmethod unify-terms [#'t/logic? 'value] [x y substs]
-  ;; {:post [(do (println "uniify logic value" x y) true)]}
   (let [val (t/type-value y)]
     (unify-logic-any x y substs)))
 
@@ -767,7 +763,9 @@
                       (mapcat (fn [[y-args y-ret]]
                                 (some->> substs
                                          (unify x-ret y-ret)
-                                         (unify x-args y-args)))))))))
+                                         (unify x-args y-args)
+                                         seq))))))
+       seq))
 
 (defmethod unify-terms ['value #'any?] [x y substs]
   (let [val (t/type-value x)]
@@ -826,15 +824,15 @@
   t)
 
 (def ^:dynamic *resolve-seen* #{})
-
-(s/fdef resolve-type :args (s/cat :t #'any? :s ::subst) :ret #'any?)
+(s/fdef resolve-type :args (s/cat :t any? :s (s/nilable ::subst)) :ret any?)
 (defn resolve-type [t subst]
-  (when-not (contains? *resolve-seen* t)
+  (if-not (contains? *resolve-seen* t)
     (binding [*resolve-seen* (conj *resolve-seen* t)]
-      (let [t* (get subst t t)]
+     (let [t* (get subst t t)]
         (cond
           (and (t/logic? t*) (not= t t*)) (resolve-type t* subst)
-          :else (or (resolve-type* t* subst) t*))))))
+          :else (or (resolve-type* t* subst) t*))))
+    t))
 
 (defmethod resolve-type* 'cat [t subst]
   (when-not (every? identity (map #(resolve-type % subst) (t/cat-types t)))
