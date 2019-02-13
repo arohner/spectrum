@@ -47,30 +47,32 @@ but won't guarantee correctness for a while.
 
 ## Usage
 
-Use clojure.spec as normal. Then, at the repl or during tests:
+Still under active development, so this is incomplete.
+
+Use clojure.spec as normal. Then, at the repl:
 
 ```clojure
-(require '[spectrum.check :as check])
+(require '[spectrum.flow :as f])
+(require '[spectrum.types :as t])
 
-(check/check 'your.namespace)
+(f/infer-var #'foo)
 ```
 
-Returns a seq of Error defrecords.
 
 There is also
 
 ```clojure
-(check/type-of '(map inc (range 5)))
+(f/infer-form '(foo 3))
 ```
 which is useful when you want to debug the signature of a form.
 
-`type-of` can optionally also take a map of keywordized variables to spects
+`infer-foorm` can optionally also take a map of keywordized variables to spects
 
 ```clojure
-(check/type-of '(string? x) {:x (c/pred-spec #'string?)})
+(f/infer-form '(string? x) {:x #'string?})
 #Value[true]
 
-(check/type-of '(string? x) {:x (c/value 3)})
+(f/infer-form '(string? x) {:x (t/value-t 3)})
 #Value[false]
 ```
 
@@ -82,6 +84,7 @@ which is useful when you want to debug the signature of a form.
 
 - because I could
 - working example of types = proofs = predicates
+- Some properties of a program are easier to prove at runtime. Some at compile-time
 - this is extra checking on top of spec, not a replacement for it
 - to get HN to shut up about how adding a static type system to a dynamic language is impossible
 - why not just use spec by itself?
@@ -93,13 +96,10 @@ which is useful when you want to debug the signature of a form.
  - you can't spec non-defn functions
  - you can't spec higher order functions
  - generative testing with side-effects doesn't work well
- - generative testing gives false negatives in unlikely bugs
+ - generative testing gives false negatives on rare codepaths
+ - static typing guarantees all codepaths are checked
  - spec doesn't deal with non-fn vars at all (binding, alter-var-root, set!, etc)
  - generative testing can be slow
-
-## Downsides
-
-- spectrum is 'viral'. Once you start checking, it encourages you to write specs for everything
 
 ## Plan
 
@@ -107,7 +107,7 @@ Spectrum is still very early, and not ready for production use. Current developm
 
 ## License
 
-Copyright © 2016 Allen Rohner
+Copyright © 2019 Allen Rohner
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
