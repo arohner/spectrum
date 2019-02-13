@@ -15,8 +15,7 @@
                         [arohner/repl-utils "0.1.0"]]
          :repl-options {:init-ns spectrum.repl
                         :init (do
-                                (print "hello")
-                                (set! *print-level* 5)
+                                (set! *print-level* 10)
                                 (set! *print-length* 20))}}}
   :deploy-repositories [["releases" {:url "https://clojars.org/repo"
                                      :creds :gpg}]]

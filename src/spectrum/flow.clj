@@ -322,6 +322,12 @@
   (let [a* (get-in a path)
         v (-> a* :var)
         t (get-type! context a path)]
+    [(eq/eq t (c/get-var-type v))]))
+
+(defmethod get-equations* :the-var [context a path]
+  (let [a* (get-in a path)
+        v (-> a* :var)
+        t (get-type! context a path)]
     [(eq/eq t #'var?)]))
 
 (defmethod get-equations* :quote [context a path]
