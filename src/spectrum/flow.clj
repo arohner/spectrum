@@ -318,12 +318,6 @@
         [(eq/eq t (::ret-spec binding))])
       [])))
 
-(defmethod get-equations* :var [context a path]
-  (let [a* (get-in a path)
-        v (-> a* :var)
-        t (get-type! context a path)]
-    [(eq/eq t (c/get-var-type v))]))
-
 (defmethod get-equations* :the-var [context a path]
   (let [a* (get-in a path)
         v (-> a* :var)
@@ -603,10 +597,19 @@
 
 (defmethod get-type* :var [context a path]
   (or
-   (when-let [new-path (self-var-reference? a path)]
+   (when-let [new-path (some-> (self-var-reference? a path)
+                               (conj :init))]
      (get-type* context a new-path))
    (get-type-default context a path)
    (assert false)))
+
+(defmethod get-equations* :var [context a path]
+  (let [a* (get-in a path)
+        v (-> a* :var)
+        t (get-type! context a path)]
+    (if (self-var-reference? a path)
+      []
+      [(eq/eq t (c/get-var-type v))])))
 
 (defn invoke-local?
   "Returns true if the invoke at [a path] is a local fn contained within a"
