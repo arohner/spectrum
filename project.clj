@@ -1,6 +1,6 @@
 (defproject spectrum "0.1.5-SNAPSHOT"
   :description "Static 'type' checking for clojure.spec"
-  :url "http://example.com/FIXME"
+  :url "http://github.com/arohner/spectrum"
   :license {:name "Attribution-NonCommercial-NoDerivs 3.0 Unported"
             :url "https://creativecommons.org/licenses/by-nc-nd/3.0/"}
   :dependencies [[org.clojure/clojure "1.10.0"]
