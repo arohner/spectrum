@@ -66,7 +66,7 @@ There is also
 ```
 which is useful when you want to debug the signature of a form.
 
-`infer-foorm` can optionally also take a map of keywordized variables to spects
+`infer-form` can optionally take a map of keywordized variables to types
 
 ```clojure
 (f/infer-form '(string? x) {:x #'string?})
