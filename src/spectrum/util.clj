@@ -163,6 +163,12 @@
        (prn (str (quote ~expr) "Elapsed time: " elapsed# " msecs")))
      ret#))
 
+(defn multimethod-dispatch-values
+  "Returns the seq of allowed dispatch values in the multimethod"
+  [^clojure.lang.MultiFn ms]
+  (->> (.getMethodTable ms)
+       (keys)))
+
 (defn private-method
   "Calls a private or protected method.
 
