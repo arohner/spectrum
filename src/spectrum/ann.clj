@@ -10,6 +10,7 @@
                          Ratio
                          IPersistentCollection
                          ISeq
+                         LazySeq
                          Seqable)
            (java.util Map)))
 
@@ -123,9 +124,9 @@
                     [(t/class-t Seqable)] (t/seq-of '?x)
                     }))
 
-(ann #'cons (t/fn-t {['?x #'nil?] (t/cat-t ['?x])
-                     ['?x (t/seq-of '?y)] (t/cat-t ['?x (t/seq-of '?y)])
-                     ['?x #'seqable?] (t/cat-t ['?x (t/seq-of '?y)])}))
+(ann #'cons (t/fn-t {['?x #'nil?] (t/and-t [(t/cat-t ['?x]) (t/class-t ISeq)])
+                     ['?x (t/seq-of '?y)] (t/and-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/class-t ISeq)])
+                     ['?x #'seqable?] (t/and-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/class-t ISeq)])}))
 
 (ann #'first (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t ['?a #'nil?])
                       [#'seqable?] (t/or-t ['?x #'nil?])}))
@@ -152,3 +153,7 @@
 (ann-method clojure.lang.Util 'equiv (t/fn-t {['[value ?x] '[value ?x]] ['value true]
                                               ['[value ?x] '[value ?y]] ['value false]
                                               ['?a '?b] ['class Boolean/TYPE]} ))
+
+;; we'd prefer to infer map, but it needs dependent types to handle the chunked-seq case
+(ann #'map (t/fn-t {[(t/fn-t {['?x] '?y}) (t/spec-t (t/seq-of '?x))] (t/and-t [(t/seq-of '?y) (t/class-t LazySeq)])
+                    [(t/fn-t {['?x1 '?x2] '?y}) (t/spec-t (t/seq-of '?x1)) (t/spec-t (t/seq-of '?x2))] (t/and-t [(t/seq-of '?y) (t/class-t LazySeq)])}))

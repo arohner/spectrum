@@ -754,6 +754,39 @@
   (let [val (t/type-value y)]
     (unify-logic-any x y substs)))
 
+(defn arities-complementary?
+  "True if x and y are both fn-ts, and they have no arities in common"
+  [x y]
+  (->> y
+       (t/type-value)
+       (every? (fn [[y-args y-ret]]
+                 (->> x
+                      (t/type-value)
+                      (every? (fn [[x-args x-ret]]
+                                (not (unify x-args y-args)))))))))
+
+(defn unify-merge-logic-fn-1
+  "While attempting to unify two fn-ts, merge the right arity into the left fn, if possible"
+  [x y subst]
+  (let [x* (get subst x)]
+    (when (and (t/logic? x)
+               x*
+               (t/fn-t? x*)
+               (arities-complementary? x* y))
+      (println "unify-merge-logic-fn" x* y)
+      (assoc subst x (t/merge-fns [x* y])))))
+
+(defn unify-merge-logic-fn [x y substs]
+  (->> substs
+       (map (fn [s]
+              (unify-merge-logic-fn-1 x y s)))
+       (filter identity)
+       seq))
+
+(defmethod unify-terms [#'t/logic? 'fn] [x y substs]
+  (or (unify-merge-logic-fn x y substs)
+      (unify-logic-any x y substs)))
+
 (defmethod unify-terms ['fn 'fn] [x y substs]
   (->> x
        (t/type-value)
@@ -814,6 +847,7 @@
 (prefer-method unify-terms ['spec #'any?] [#'any? #'t/logic?])
 (prefer-method unify-terms [#'any? 'not] ['value #'any?])
 (prefer-method unify-terms ['or #'any?] [#'any? 'not])
+(prefer-method unify-terms [#'any? 'and] ['value #'any?])
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))
