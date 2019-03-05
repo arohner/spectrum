@@ -98,18 +98,15 @@
 (s/fdef store-var-spec :args (s/cat :v var? :s ::t/type) :ret nil?)
 (defn store-var-spec [v t]
   {:pre [(var? v)]}
-  (swap! var-specs assoc v (if (with-meta? t)
-                             (with-meta t {:var v})
-                             t))
+  (println "store-var-spec" v t)
+  (swap! var-specs assoc v t)
   nil)
 
 (defn get-var-spec [v]
-  {:post [(if %
-            (-> % meta :var (= v))
-            true)]}
   (get @var-specs v))
 
-(s/fdef ann :args (s/cat :m (s/or :v var? :m (s/tuple class? symbol?)) :t ::t/type))
+(s/def ::ann-arg (s/or :v var? :method (s/tuple class? symbol?) :constructor class?))
+(s/fdef ann :args (s/cat :a ::ann-arg  :t ::t/type))
 (defn ann
   "Define a more specific type for the var. `ann` types are preferred
   over explicit specs or inferred types, and if an `ann` exists for a
@@ -118,7 +115,7 @@
   (swap! var-annotations assoc v t)
   nil)
 
-(s/fdef get-ann :args (s/cat :x (s/or :v var? :m (s/tuple class? symbol?))) :ret (s/nilable ::t/type))
+(s/fdef get-ann :args (s/cat :x ::ann-arg) :ret (s/nilable ::t/type))
 (defn get-ann [x]
   (get @var-annotations x))
 

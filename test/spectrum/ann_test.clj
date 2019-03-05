@@ -35,6 +35,7 @@
     (t/value-t nil) #'nil?
     #'nil? (t/value-t nil)
     (t/value-t true) #'true?
+    #'int? (t/value-t 1)
 
     (t/seq-of '?x) (t/seq-of '?x)
     (t/seq-of '?z) (t/seq-of '?z)
@@ -51,13 +52,26 @@
     (t/and-t [#'int? #'any?]) #'int?
     (t/or-t [(t/class-t Byte) (t/class-t Long) (t/class-t Integer) (t/class-t Short) (t/class-t String)]) #'int?
 
-
+    ;; spec
+    (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t [[3]])
+    (t/cat-t [(t/spec-t (t/cat-t [#'int?])) #'string?]) (t/value-t [[3] "foo"])
     ;; fn
       ['class clojure.lang.IFn] ['fn {['?t2] '?t3}])
 
   (testing "invalid"
     (are [a b] (not (c/valid? a b))
-      (t/seq-of '?x) (t/class-t IChunkedSeq))))
+      (t/seq-of '?x) (t/class-t IChunkedSeq)
+
+      ;;spec
+
+      (t/cat-t [#'int? #'string?]) [3 "foo"] ;; missing value-t
+      (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t 1)
+      (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t [(t/value-t 1)])
+
+      (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t [[]])
+      (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t [[1 2]])
+
+      )))
 
 (deftest integration-tests
   (testing "truthy"
@@ -76,6 +90,9 @@
 
   (testing "return value"
     (are [form ret] (= ret (f/infer-form form))
+      '(list 1) ['and #{['cat ['value 1]] #'list?}]
+      '(list 1 :a) ['and #{['cat ['value 1] ['value :a]] #'list?}]
+
       '(first 3) nil
       '(keyword 3) ['value nil]
       '(keyword "foo") #'simple-keyword?
@@ -102,7 +119,7 @@
       '(apply keyword ["foo"]) #'simple-keyword?
       '(apply keyword ["foo" "bar"]) #'qualified-keyword?
       '(apply keyword "foo" "bar") nil
-      '(apply true? [1]) ['class Boolean/TYPE]
+      '(apply true? [1]) ['or #{['value true] ['value false] ['class Boolean/TYPE]}]
       '(apply true? 1) nil
       ))
 
@@ -119,4 +136,6 @@
         '(= 1 2) ['value false]
         '(= 3 3) ['value true]
 
-        '(apply keyword "foo" ["bar"]) #'qualified-keyword)?)))
+        '(apply keyword "foo" ["bar"]) #'qualified-keyword
+
+        '(list 1 :a :b "foo") '[and [cat [seq-of [or #'int? #'keyword? #'string?]]] #'list?])?)))

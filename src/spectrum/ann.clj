@@ -42,6 +42,11 @@
   (assert (seq (j/get-java-method cls method)))
   (data/ann [cls method] t))
 
+(defn ann-constructors
+  "annotate the constructors for a java class. Replaces all constructor arities so t should be complete."
+  [cls t]
+  (data/ann cls t))
+
 (def pred->class
   {#'associative? clojure.lang.Associative
    #'boolean? Boolean
@@ -114,6 +119,15 @@
 (ann-instance-or? #'int? [Long Integer Short Byte])
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or? #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
+
+(t/set-equiv-types! (t/seq-of #'any?) (t/class-t LazySeq))
+
+(ann-constructors LazySeq (t/fn-t {[(t/fn-t {[] '?x})] (t/and-t ['?x (t/class-t ISeq)]) }))
+
+(ann #'list (t/fn-t {['?x] (t/and-t [(t/cat-t ['?x]) #'list?])
+                     ['?x '?y] (t/and-t [(t/cat-t ['?x '?y]) #'list?])
+                     ['?x '?y '?z] (t/and-t [(t/cat-t ['?x '?y '?z]) #'list?])
+                     ['?x '?y '?z ['seq-of '?s]] (t/and-t [(t/cat-t ['?x '?y '?z ['seq-of '?s]]) #'list?])}))
 
 (ann #'seq (t/fn-t {[(t/seq-of '?x)] (t/seq-of '?x)
                     [(t/class-t Iterable)] (t/seq-of '?x)

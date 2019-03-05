@@ -298,7 +298,7 @@
 (defmethod get-equations* :const [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    [(eq/eq t (t/value-t (:val a*)))]))
+    [(eq/eq t (t/canonicalize (t/value-t (:val a*))))]))
 
 (defmethod get-equations* :binding [context a path]
   (let [a* (get-in a path)
@@ -644,16 +644,21 @@
     (->> (t/type-value f)
          (mapcat (fn [[f-args f-ret]]
                    (->>
-                   (maybe-replace-invoke-t invoke-args ret-t f-ret)
+                    (maybe-replace-invoke-t invoke-args ret-t f-ret)
                     (map (fn [ret-eq]
-                           (eq/conde (eq/eq f-args invoke-args)
-                                     ret-eq))))))
+                           [(eq/eq f-args invoke-args) ret-eq])))))
+         (into {})
+         (eq/conde!)
+         (vector)
          (concat [(eq/eq agg-args invoke-args)]))))
 
 (s/fdef get-eq-thunk-invoke :args (s/cat :t t/invoke-t? :ret-t ::t/type) :ret ::eq/equations)
 (defn get-eq-thunk-invoke [t ret-t]
   (let [[_ fn-t invoke-args] t]
     (get-eq-invoke-t fn-t invoke-args ret-t)))
+
+(defn get-eq-invoke-ifn [t ret-t]
+  [(eq/eq ret-t #'any?)])
 
 (s/fdef get-eq-invoke-t :args (s/cat :t ::t/type :ia t/cat-t? :ret-t ::t/type) ::ret ::eq/equations)
 (defn get-eq-invoke-t
@@ -830,9 +835,10 @@
   "Return an fn-t for this class constructor"
   [cls arity]
   {:post [(do (when-not % (println "get-constructor failed:" cls arity)) true) %]}
-  (->> (j/get-java-constructors cls arity)
-       (map constructor->fn-t)
-       (t/merge-fns)))
+  (or (data/get-ann cls)
+      (->> (j/get-java-constructors cls arity)
+           (map constructor->fn-t)
+           (t/merge-fns))))
 
 (defmethod get-equations* :new [context a path]
   (let [a* (get-in a path)
@@ -979,20 +985,27 @@
             (assoc state :fail eq)))
         state))))
 
-(defn unify-conditional-eqs [state cond-eqs]
-  (let [cond-eq-states (->> cond-eqs
-                            (map (fn [eq]
-                                   (unify-equation state eq))))]
-    (or
-     (when (:fail state)
-       state)
-     (->> cond-eq-states
-          (filter :fail)
-          first)
-     (->> cond-eq-states
-          (mapcat :substs)
-          ((fn [substs]
-             (assoc state :substs [(c/merge-substs substs)])))))))
+(defmethod unify-equation :conde! [{:keys [substs fail] :as state} eq]
+  (if fail
+    state
+    (let [pairs (nth eq 1)
+          states (->> pairs
+                      (map (fn [[test then]]
+                             (unify-equation state (eq/conde test then)))))]
+      (or
+       (->> states
+            (filter :fail)
+            first)
+       (when (->> states
+                  (remove :fail)
+                  seq
+                  nil?)
+         (assoc state :fail eq))
+       (->> states
+            (remove :fail)
+            (mapcat :substs)
+            ((fn [substs]
+               (assoc state :substs [(c/merge-substs substs)]))))))))
 
 (s/fdef unify-all-equations :args (s/cat :eqs ::eq/equations) :ret ::unify-state)
 (defn unify-all-equations [eqs]
@@ -1000,12 +1013,8 @@
 
   (let [state {:substs [{}] :fail nil}]
     (->> eqs
-         (partition-by first)
-         (reduce (fn [state eqs]
-                   (let [{:keys [substs] :as state} (if (= :eq (-> eqs first first))
-                                                      (reduce (fn [state eq]
-                                                                (unify-equation state eq)) state eqs)
-                                                      (unify-conditional-eqs state eqs))]
+         (reduce (fn [state eq]
+                   (let [{:keys [substs] :as state} (unify-equation state eq)]
                      (if (not (:fail state))
                        (let [subst (c/merge-substs substs)]
                          (assoc-in state [:substs] [subst]))

@@ -15,5 +15,5 @@
 
 (comment
   (deftest parse-everything
-   (doseq [[k v] (-> #'s/registry-ref deref deref)]
-     (is (ps/parse-spec v) (format "failed to parse %s %s" k (s/form (s/spec k)))))))
+    (doseq [[k v] (-> #'s/registry-ref deref deref)]
+      (is (ps/parse-spec v) (format "failed to parse %s %s" k (s/form (s/spec k)))))))

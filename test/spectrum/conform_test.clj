@@ -109,17 +109,19 @@
       #'int?)))
 
 (deftest dx
-  (are [x y ret] (do
-                   (println "ct/dx" x y)
-                   (= ret (c/dx x y [{}])))
+  (are [x y ret] (= ret (c/dx x y [{}]))
 
     (t/cat-t [#'a?]) #'a? [{:state nil :substs [{}]}]
-    ;; (t/cat-t [#'string?]) (t/value-t ["foo"]) [{:state nil :substs [{}]}]
-    (t/cat-t [(t/seq-of #'a?) #'b?]) #'a? [{:state (t/cat-t [#'b?]) :substs [{}]}
-                                           {:state (t/cat-t [(t/seq-of #'a?) #'b?]) :substs [{}]}]
+    (t/cat-t [(t/seq-of #'a?) #'b?]) #'a? [{:state (t/cat-t [(t/seq-of #'a?) #'b?]) :substs [{}]}
+                                           {:state (t/cat-t [#'b?]) :substs [{}]}]
     (t/cat-t [(t/seq-of #'a?) #'b?]) #'b? [{:state nil :substs [{}]}]
 
-    ;; (t/value-t ["foo"]) (t/value-t ["foo"]) [{:state nil :substs [{}]}]
+    (t/seq-of (t/class-t Character)) ['value \f] [{:state (t/seq-of (t/class-t Character)) :substs [{}]}
+                                                  {:state nil :substs [{}]}]
+
+    #'int? #'int? [{:state nil :substs [{}]}]
+    (t/value-t 1) (t/value-t 1) [{:state nil :substs [{}]}]
+    (t/cat-t [(t/value-t 1)]) (t/value-t 1) [{:state nil :substs [{}]}]
     ))
 
 (deftest valid?
@@ -181,10 +183,15 @@
       (t/seq-of #'a?) (t/cat-t [])
       (t/seq-of #'a?) (t/cat-t [#'a?])
       (t/seq-of #'a?) (t/cat-t [#'a? #'a?])
+      (t/seq-of #'any?) (t/value-t nil)
 
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'b?])
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'b?])
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a? #'b?])
+
+      ;; seq string vs char
+      (t/seq-of [#'char?]) ['value "foo"]
+      (t/seq-of [#'string?]) ['value "foo"]
 
       (t/or-t #{(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])}) (t/cat-t ['?x])
 
@@ -197,13 +204,19 @@
       (t/seq-of (t/class-t Character)) (t/value-t "foo")
       (t/cat-t [#'int? #'string?]) (t/value-t [3 "foo"])
       (t/cat-t [(t/cat-t [#'int?]) #'string?]) (t/value-t [3 "foo"])
-      (t/cat-t [(t/spec-t (t/cat-t [#'int?])) #'string?]) (t/value-t [[3] "foo"])
 
-      '?a '[invoke ?x [cat ?y]]
-      ))
+      ;; spec
+      (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?x))
+      (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?y))
+      (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t ['?y])
+      (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/cat-t [(t/spec-t (t/cat-t [#'int?]))])
+
+      '?a '[invoke ?x [cat ?y]]))
 
   (testing "falsey"
-    (are [x y] (= false (c/valid? x y))
+    (are [x y] (do
+                 (println "valid?" x y)
+                 (= false (c/valid? x y)))
       1 2
       [1] [2]
       ['?x] [1 2]
@@ -243,8 +256,7 @@
       ;; value
       #'string? (t/value-t 3)
 
-      (t/cat-t [#'int? #'string?]) [3 "foo"] ;; missing value-t
-      (t/cat-t [#'int? #'string?]) (t/value-t [[3] "foo"])
+      (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/cat-t [#'int?])
       )))
 
 (deftest and-logic
