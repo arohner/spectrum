@@ -55,7 +55,6 @@
 
       (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{} {'?a #'int?}]
 
-      ['cat ['seq-of '?x]] ['cat '?y] [{'?y ['seq-of '?x]}]
       ))
 
   (testing "truthy substs"
@@ -110,7 +109,7 @@
 
 (deftest dx
   (are [x y ret] (= ret (c/dx x y [{}]))
-
+    (t/cat-t []) #'a? nil
     (t/cat-t [#'a?]) #'a? [{:state nil :substs [{}]}]
     (t/cat-t [(t/seq-of #'a?) #'b?]) #'a? [{:state (t/cat-t [(t/seq-of #'a?) #'b?]) :substs [{}]}
                                            {:state (t/cat-t [#'b?]) :substs [{}]}]
@@ -182,6 +181,8 @@
       ;; seq-of
       (t/seq-of #'a?) (t/cat-t [])
       (t/seq-of #'a?) (t/cat-t [#'a?])
+      (t/cat-t [(t/seq-of '?x)]) (t/cat-t ['?y])
+
       (t/seq-of #'a?) (t/cat-t [#'a? #'a?])
       (t/seq-of #'any?) (t/value-t nil)
 
@@ -190,18 +191,18 @@
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a? #'b?])
 
       ;; seq string vs char
-      (t/seq-of [#'char?]) ['value "foo"]
-      (t/seq-of [#'string?]) ['value "foo"]
+      (t/seq-of #'char?) ['value "foo"]
+      (t/seq-of #'string?) ['value "foo"]
 
       (t/or-t #{(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])}) (t/cat-t ['?x])
 
       ;; ;; value
       '?x (t/value-t 3)
-      :foo (t/value-t :foo)
       (t/value-t 3) '?x
       #'int? (t/value-t 3)
       #'string? (t/value-t "foo")
       (t/seq-of (t/class-t Character)) (t/value-t "foo")
+      (t/cat-t [#'any?]) (t/cat-t [(t/value-t 1)])
       (t/cat-t [#'int? #'string?]) (t/value-t [3 "foo"])
       (t/cat-t [(t/cat-t [#'int?]) #'string?]) (t/value-t [3 "foo"])
 

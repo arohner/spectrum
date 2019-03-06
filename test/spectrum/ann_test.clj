@@ -53,6 +53,7 @@
     (t/or-t [(t/class-t Byte) (t/class-t Long) (t/class-t Integer) (t/class-t Short) (t/class-t String)]) #'int?
 
     ;; spec
+    (t/cat-t [(t/seq-of #'int?)]) (t/cat-t [(t/value-t 1)])
     (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t [[3]])
     (t/cat-t [(t/spec-t (t/cat-t [#'int?])) #'string?]) (t/value-t [[3] "foo"])
     ;; fn
@@ -70,6 +71,9 @@
 
       (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t [[]])
       (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t [[1 2]])
+
+      (t/cat-t [(t/seq-of #'int?)]) (t/value-t :foo)
+      (t/cat-t [(t/seq-of (t/not-t #'int?))]) (t/value-t 1)
 
       )))
 
@@ -119,6 +123,9 @@
       '(apply keyword ["foo"]) #'simple-keyword?
       '(apply keyword ["foo" "bar"]) #'qualified-keyword?
       '(apply keyword "foo" "bar") nil
+      '(apply keyword "foo" ["bar"]) #'qualified-keyword?
+      '(apply keyword "foo" "bar" []) #'qualified-keyword?
+
       '(apply true? [1]) ['or #{['value true] ['value false] ['class Boolean/TYPE]}]
       '(apply true? 1) nil
       ))
@@ -135,7 +142,5 @@
         '(inc "foo") nil
         '(= 1 2) ['value false]
         '(= 3 3) ['value true]
-
-        '(apply keyword "foo" ["bar"]) #'qualified-keyword
 
         '(list 1 :a :b "foo") '[and [cat [seq-of [or #'int? #'keyword? #'string?]]] #'list?])?)))

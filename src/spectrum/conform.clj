@@ -375,12 +375,10 @@
                    [t])))))
 
 (defmethod first-t 'value [val-t]
+  {:post [(validate! (s/nilable (s/coll-of t/value-t?)) %)]}
   (let [val (t/type-value val-t)]
     (when (and (seqable? val) (seq val))
-      (if (string? val)
-        [(t/value-t (first val))
-         val]
-        [(t/value-t (first val))]))))
+      [(t/value-t (first val))])))
 
 (s/def :dx/state (s/nilable ::t/type))
 (s/def ::dx-ret (s/keys :req-un [:dx/state ::substs]))
@@ -407,14 +405,20 @@
           (when (accept-nil? x)
             (dx (t/cat-t xr) y substs))]
          (apply concat)
-         (filter identity))))
+         (filter identity)
+         (seq))))
 
 (defmethod dx 'seq-of [seq-x y substs]
   {:post [(validate! ::dx-rets %)]}
   (let [x (t/seq-value seq-x)]
-    (when-let [substs (or (unify seq-x y substs) (unify x y substs))]
-      [{:state seq-x :substs substs}
-       {:state nil :substs substs}])))
+    (->>
+     [(when (nil? y)
+        [{:state nil :substs substs}])
+      (when-let [substs (unify x y substs)]
+        [{:state seq-x :substs substs}
+         {:state nil :substs substs}])]
+     (apply concat)
+     (distinct))))
 
 (defmethod dx 'alt [alt-x y substs]
   (->> (t/alt-types alt-x)
@@ -424,19 +428,19 @@
 (defmethod dx 'value [val-x y substs]
   {:post [(validate! ::dx-rets %)]}
   (let [val (t/type-value val-x)]
-    (or
-     (when-let [substs* (unify val y substs)]
-       [{:state nil :substs substs*}])
-     (when (and (seqable? val) (seq val))
-       (let [[v & vr] val
-             substs (unify v y substs)]
-         (when (seq substs)
-           [{:state (when (seq vr)
-                      (t/value-t (seq vr))) :substs substs}]))))))
+    (->>
+     [(when-let [substs* (unify val-x y substs)]
+        [{:state nil :substs substs*}])
+      (when (and (seqable? val) (seq val))
+        (let [[v & vr] val
+              substs (unify (t/value-t v) y substs)]
+          (when (seq substs)
+            [{:state (when (seq vr)
+                       (t/value-t (seq vr))) :substs substs}])))]
+     (apply concat))))
 
 (defn unify-dx-dx [tx ty substs]
-  {;; :post [(do (println "dx dx" tx ty "=>" %) true)]
-   }
+  ;; {:post [(do (println "unify dx dx" tx ty "=>" %) true)]}
   (let [ys (first-t ty)]
     (or
      (some->> ys
@@ -459,6 +463,22 @@
               (seq))
      (when (and (accept-nil? tx) (nil? (first-t ty)))
        substs))))
+
+(defmethod unify-terms [#'dx? #'dx?] [tx ty substs]
+  (unify-dx-dx tx ty substs))
+
+(defmethod unify-terms [#'dx? 'value] [x y substs]
+  {:post [(validate! ::substs %)]}
+  (let [val (t/type-value y)]
+    ;;; have to deal with string/char duality here
+    (->> [(when (seqable? val)
+            (unify-dx-dx x y substs))
+          (when (not (coll? val))
+            (->> (dx x y substs)
+                 (filter (fn [ret]
+                           (= nil (:state ret))))
+                 (mapcat :substs)))]
+         (apply concat))))
 
 (defmethod unify-terms ['seq-of 'seq-of] [x y substs]
   ;; can't use dxdx here, because both could accept nil, and [seq-of a?] [seq-of b?] shouldn't unify
@@ -490,9 +510,6 @@
             xs))
          (map (fn [xs]
                 (t/cat-t (filter identity xs)))))))
-
-(defmethod unify-terms [#'dx? #'dx?] [tx ty substs]
-  (unify-dx-dx tx ty substs))
 
 (defmethod unify-terms [#'dx? nil] [x y substs]
   (when (accept-nil? x)
@@ -749,10 +766,14 @@
   (add-value-pred-whitelist! v))
 
 (defmethod unify-terms [#'any? 'value] [x y substs]
-  (let [val (t/type-value y)]
+  {:post [(validate! ::substs %)]}
+  (let [val (t/type-value y)
+        spread (when (and (seqable? val) (seq val))
+                 (t/spec-t (t/cat-t (map t/value-t val))))]
     (->> [(when (and (contains? @value-pred-whitelist x) (x val))
             substs)
-          (unify x val substs)]
+          (when spread
+            (unify x spread substs))]
          (apply concat))))
 
 (defmethod unify-terms [#'t/logic? 'value] [x y substs]
@@ -788,16 +809,14 @@
     (unify val y substs)))
 
 (defmethod unify-terms ['class 'value] [x v substs]
+  {:post [(validate! ::substs %)]}
   (let [cls (t/type-value x)
         val (t/type-value v)]
     (or
      (when (t/logic? cls)
-       (unify cls val substs))
+       (unify-logic-any cls val substs))
      (when (instance? cls val)
        substs))))
-
-(defmethod unify-terms [#'dx? 'value] [x y substs]
-  (unify-dx-dx x y substs))
 
 (defmethod unify-terms ['value 'value] [x y substs]
   (unify (t/type-value x) (t/type-value y) substs))
@@ -831,6 +850,7 @@
 (prefer-method unify-terms [#'any? 'and] ['value #'any?])
 (prefer-method unify-terms ['not #'any?] [#'any? 'and])
 (prefer-method unify-terms [#'any? 'and] ['sequential #'any?])
+(prefer-method unify-terms [#'dx? 'value] [#'dx? #'dx?])
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))

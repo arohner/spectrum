@@ -151,10 +151,13 @@
 (ann #'rest (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t [(t/seq-of '?a) #'nil?])
                      [#'seqable?] (t/or-t ['?x #'nil?])}))
 
+;; TODO incomplete
 (ann #'apply (t/fn-t {['?f (t/spec-t (t/cat-t ['?a]))] (t/invoke-t '?f (t/cat-t ['?a]))
                       ['?f (t/spec-t (t/cat-t ['?a '?b]))] (t/invoke-t '?f (t/cat-t ['?a '?b]))
-                      ['?f (t/spec-t (t/cat-t ['?a '?b '?c]))] (t/invoke-t '?f (t/cat-t ['?a '?b '?c]))
-                      ['?f '?a (t/spec-t (t/seq-of '?b))] (t/invoke-t '?f (t/cat-t ['?a (t/seq-of '?b)]))}))
+                      ['?f '?a (t/spec-t (t/cat-t []))] (t/invoke-t '?f (t/cat-t ['?a]))
+                      ['?f '?a (t/spec-t (t/cat-t ['?b]))] (t/invoke-t '?f (t/cat-t ['?a '?b]))
+                      ['?f '?a '?b (t/spec-t (t/cat-t []))] (t/invoke-t '?f (t/cat-t ['?a '?b]))
+                      ['?f (t/spec-t (t/cat-t ['?a '?b '?c]))] (t/invoke-t '?f (t/cat-t ['?a '?b '?c]))}))
 
 (ann #'keyword (t/fn-t {[(t/or-t [#'keyword? #'symbol? #'string?])] #'simple-keyword?
                         [(t/not-t (t/or-t [#'keyword? #'symbol? #'string?]))] #'nil?

@@ -221,8 +221,7 @@
        (vals)))
 
 ;; things that appear to be named predicates, but aren't. We can automate this once we infer better
-(def not-core-predicates #{#'any?
-                           #'bound?
+(def not-core-predicates #{#'bound?
                            #'contains?
                            #'distinct?
                            #'empty?
@@ -244,6 +243,7 @@
                            #'some?
                            #'thread-bound?
                            #'zero?})
+
 (defn core-predicates []
   (-> 'clojure.core
       (ns-predicates)
@@ -258,7 +258,7 @@
 
 Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   ([h parent type]
-   (assert (not= type parent))
+   (assert (not= type parent) (format "derive-type: can't derive %s -> %s" parent type))
    (assert h)
    (let [tp (:parents h)
          td (:descendants h)
@@ -329,7 +329,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (derive-type #'ifn? 'fn)
 
 (defn load-type-hierarchy []
-  (doseq [p (core-predicates)]
+  (doseq [p (disj (core-predicates) #'any?)]
     (derive-type #'any? p)))
 
 (load-type-hierarchy)
