@@ -1,4 +1,4 @@
-(defproject spectrum "0.2.1"
+(defproject spectrum "0.2.2-SNAPSHOT"
   :description "Static 'type' checking for clojure.spec"
   :url "http://github.com/arohner/spectrum"
   :license {:name "Attribution-NonCommercial-NoDerivs 3.0 Unported"
