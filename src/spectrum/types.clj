@@ -490,7 +490,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   nil)
 
 (defn class-cast
-  "cast to class-t If the type can be cast without losing precision, else nil"
+  "cast to class-t if the type can be cast _without losing precision_, else nil"
   [t]
   (let [ts (conj (get-equiv-types t) t)]
     (->> (concat (filter class-t? ts)

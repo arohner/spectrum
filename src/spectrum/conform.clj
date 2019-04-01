@@ -502,7 +502,7 @@
   (boolean (seq (unify x y))))
 
 (defn first-dispatch [t]
-  (t/type-tag t))
+  (unify-term-value t))
 
 (defmulti first-t
   "For regexes, returns a seq of possible values of calling `first` on
@@ -544,6 +544,9 @@
                  (if (t/regex? t)
                    (first-t t)
                    [t])))))
+
+(defmethod first-t #'dx? [t]
+  nil)
 
 (defmethod first-t 'value [val-t]
   {:post [(validate! (s/nilable (s/coll-of t/value-t?)) %)]}

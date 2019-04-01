@@ -12,7 +12,7 @@
                          ISeq
                          LazySeq
                          Seqable)
-           (java.util Map)))
+           (java.util Map Iterator)))
 
 
 (s/fdef ann-instance? :args (s/cat :v var? :c class?))
@@ -169,6 +169,10 @@
 (ann-method clojure.lang.Util 'equiv (t/fn-t {['[value ?x] '[value ?x]] ['value true]
                                               ['[value ?x] '[value ?y]] ['value false]
                                               ['?a '?b] ['class Boolean/TYPE]} ))
+
+;; (ann-method clojure.lang.RT 'iter (t/fn-t {[['class Iterable]] ['class Iterator]
+;;                                            [#'nil?] ['class Iterator]}))
+
 
 ;; we'd prefer to infer map, but it needs dependent types to handle the chunked-seq case
 (ann #'map (t/fn-t {[(t/fn-t {['?x] '?y}) (t/spec-t (t/seq-of '?x))] (t/and-t [(t/seq-of '?y) (t/class-t LazySeq)])
