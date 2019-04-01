@@ -1,11 +1,19 @@
 (ns spectrum.types
-  (:refer-clojure :exclude [vector-of * + parents ancestors])
+  (:refer-clojure :exclude [vector-of * + parents ancestors descendants])
   (:require [clojure.core :as core]
             [clojure.set :as set]
             [clojure.spec.alpha :as s]
             [clojure.walk :as walk]
             [spectrum.java :as j]
             [spectrum.util :refer [instrument-ns defn-memo]]))
+
+(declare cat-t)
+(declare sort-ts)
+(declare or-t)
+(declare regex?)
+(declare derive-type)
+(declare class-cast)
+(declare sort-ts)
 
 (def ignore? (partial = '_))
 
@@ -17,7 +25,7 @@
 (defn logic-name [x]
   (as-> x %
     (name %)
-    (re-find #"^\?(.*)$" %)
+    (re-find #"^\?(\p{Lower})+" %)
     (second %)))
 
 (def type-counter (atom -1))
@@ -131,7 +139,6 @@
 
 (defn-tagged-type not-t 'not)
 
-(declare cat-t)
 (defn-type-pred cat-t? 'cat)
 (defn-type-pred alt-t? 'alt)
 
@@ -202,9 +209,6 @@
 (defn object-t? [t]
   (and (class-t? t) (-> t second (= Object))))
 
-(declare or-t)
-(declare regex?)
-
 (def types-hierarchy (atom (make-hierarchy)))
 
 (defn predicate-symbol? [x]
@@ -249,8 +253,6 @@
       (ns-predicates)
       (set)
       (set/difference not-core-predicates)))
-
-(declare derive-type)
 
 (s/fdef derive-type :args (s/cat :h (s/? any?) :parent (s/or :t ::type :s symbol?) :type (s/or :t ::type :s symbol?)))
 (defn derive-type
@@ -303,6 +305,21 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
        (distinct)
        seq))
 
+(defn derived?
+  "True when (derive-type parent type) already exists"
+  [parent type]
+  (contains? (set (parents type)) parent))
+
+(defn ensure-derive-type
+  [parent type]
+  (when-not (derived? parent type)
+    (derive-type parent type)))
+
+(defn descendants [t]
+  (-> @types-hierarchy
+      :descendants
+      (get t)))
+
 (s/fdef ancestors :args (s/cat :t ::type) :ret (s/nilable (s/coll-of ::type)))
 (defn ancestors [t]
   (->> t
@@ -311,6 +328,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                  (concat [p] (parents p))))
        (distinct)
        (filter identity)))
+
+(defn load-type-hierarchy []
+  (doseq [p (disj (core-predicates) #'any?)]
+    (ensure-derive-type #'any? p)))
+
+(load-type-hierarchy)
 
 (derive-type #'any? 'or)
 (derive-type #'any? 'and)
@@ -326,13 +349,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (derive-type #'any? 'value)
 (derive-type #'any? 'invoke)
 
-(derive-type #'ifn? 'fn)
-
-(defn load-type-hierarchy []
-  (doseq [p (disj (core-predicates) #'any?)]
-    (derive-type #'any? p)))
-
-(load-type-hierarchy)
+(derive-type #'ifn? #'fn?)
+(derive-type #'fn? 'fn)
 
 (derive-type (class-t clojure.lang.ISeq) 'seq-of)
 
@@ -341,15 +359,14 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (s/fdef cat-t :args (s/cat :t (s/nilable ::types)) :ret ::type)
 (defn cat-t [ts]
   (->> ts
-       (map (fn [t]
-              (when-not t
-                (println "invalid cat-t:" ts))
-              (assert t)
-              (if (accept-t? t)
-                (type-value t))
-              t))
+       (mapv (fn [t]
+               (when-not t
+                 (println "invalid cat-t:" ts))
+               (assert t)
+               (if (accept-t? t)
+                 (type-value t))
+               t))
        (apply vector 'cat)))
-
 
 (s/fdef cat-types :args (s/cat :x cat-t?) :ret (s/coll-of ::type))
 (defn cat-types [x]
@@ -425,46 +442,20 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (s/fdef or-types :args (s/cat :t or-t?) :ret any?)
 (def or-types type-value)
 
-(s/fdef join-not-pairs :args (s/cat :ts (s/coll-of any?)) :ret (s/coll-of any?))
-(defn join-not-pairs
-  "If two types in ts are (not x) and x, replace them with any?"
-  [ts]
-  (let [ts (set ts)
-        {nots true
-         _ false} (group-by not-t? ts)]
-    (if (seq nots)
-      (reduce (fn [ts nott]
-                (if-let [s (contains? ts (not-value nott))]
-                  (-> ts
-                      (disj ts (not-value nott))
-                      (disj ts nott)
-                      (conj #'any?))
-                  ts)) (set ts) nots)
-      ts)))
-
 (s/fdef class-value :args (s/cat :t class-t?) :ret (s/or :c class? :t ::type))
 (def class-value type-value)
 
 (def equiv-types
   (atom {}))
 
-(s/fdef set-equiv-types! :args (s/cat :x ::type :x ::type))
-(defn set-equiv-types!
-  "Define types x and y as being equivalent"
-  [x y]
-  (swap! equiv-types update x (fnil conj #{}) y)
-  (swap! equiv-types update y (fnil conj #{}) x)
-  nil)
-
-(s/fdef get-equiv-types :args (s/cat :t any?) :ret (s/nilable (s/coll-of any?)))
+(s/fdef get-equiv-types :args (s/cat :hm (s/? (s/map-of any? any?)) :t any?) :ret (s/nilable (s/coll-of any?)))
 (defn get-equiv-types
-  ""
-  [t]
-  (or (get @equiv-types t)
-      (when (tagged? t)
-        (get @equiv-types (type-tag t)))))
-
-(declare class-cast)
+  ([t]
+   (get-equiv-types @equiv-types t))
+  ([equiv-types t]
+   (or (get equiv-types t)
+       (when (tagged? t)
+         (get equiv-types (type-tag t))))))
 
 (defn instance-or-t?
   [t]
@@ -473,11 +464,9 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                  (or (class-t? t)
                      (class-cast t))) (or-types t))))
 
-(s/fdef canonicalize :args (s/cat :t any?) :ret any?)
-(defn-memo canonicalize
-  "Given a type, convert to it's most precise version"
-  [t]
-  (let [ts (conj (get-equiv-types t) t)]
+(defn-memo canonicalize*
+  [equiv-types t]
+  (let [ts (conj (get-equiv-types equiv-types t) t)]
     (->> (concat (filter value-t? ts)
                  (filter var? ts)
                  (filter (fn [t*] (and (tagged? t*)
@@ -485,6 +474,20 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                                        (not (instance-or-t? t*)))) ts)
                  [t])
          (first))))
+
+(s/fdef canonicalize :args (s/cat :t any?) :ret any?)
+(defn canonicalize
+  "Given a type, convert to it's most precise version"
+  [t]
+  (canonicalize* @equiv-types t))
+
+(s/fdef set-equiv-types! :args (s/cat :x ::type :x ::type))
+(defn set-equiv-types!
+  "Define types x and y as being equivalent"
+  [x y]
+  (swap! equiv-types update x (fnil conj #{}) y)
+  (swap! equiv-types update y (fnil conj #{}) x)
+  nil)
 
 (defn class-cast
   "cast to class-t If the type can be cast without losing precision, else nil"
@@ -496,6 +499,25 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (s/fdef maybe-value :args (s/cat :m maybe-t?) :ret ::type)
 (def maybe-value type-value)
+
+(s/fdef join-not-pairs :args (s/cat :ts (s/coll-of any?)) :ret (s/coll-of any?))
+(defn join-not-pairs
+  "If two types in ts are (not x) and x, replace them with any?"
+  [ts]
+  (let [ts (set ts)
+        {nots true
+         _ false} (group-by not-t? ts)
+        nots (map (fn [nt]
+                    (not-t (canonicalize (not-value nt)))) nots)]
+    (if (seq nots)
+      (reduce (fn [ts nott]
+                (if-let [s (contains? ts (not-value nott))]
+                  (-> ts
+                      (disj ts (not-value nott))
+                      (disj ts nott)
+                      (conj #'any?))
+                  ts)) (set ts) nots)
+      ts)))
 
 (s/fdef or-consolidate :args (s/cat :ts (s/coll-of any?)) :ret (s/coll-of any?))
 (defn or-consolidate [ts]
@@ -521,14 +543,16 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                ;;   (println "WARNING: or-t" ts "=>" #'any?))
                (take 1 (filterv any-t? ts)))
              ts)
-        ts (set ts)]
+        ts (distinct ts)
+
+        ts (sort-ts ts)]
     ts))
 
 (s/fdef or-t :args (s/cat :ts (s/coll-of any?)) :ret any?)
 (defn or-t [ts]
   (let [ts (or-consolidate ts)]
     (cond
-      (>= (count ts) 2) ['or (set ts)]
+      (>= (count ts) 2) ['or (vec ts)]
       (= 1 (count ts)) (first ts)
       :else nil)))
 
@@ -563,7 +587,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   {:post [(do (when-not %
                 (println "and-nots:" ts "=>" %)) true)]}
   (let [nots (filter not-t? ts)
-        not-preds (set (map second nots))]
+        not-preds (distinct (map second nots))]
     (not (some (fn [p]
                  (some (fn [np]
                          (= np p)) not-preds)) ts))))
@@ -586,8 +610,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   "Given the types for an `and`, simplify and consolidate types, returning a seq of types"
   [ts]
   (let [ts-orig ts
-        ts (distinct ts)
         ts (map canonicalize ts)
+        ts (distinct ts)
         {values true not-values false} (group-by value-t? ts)
         ts (if (seq values)
              values
@@ -615,7 +639,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
              [(invalid {:message (format "and nots are incompatible: %s" ts)})])
         ts (if (and-values-compatible? ts)
              ts
-             [(invalid {:message (format "and values are incompatible: %s" ts)})])]
+             [(invalid {:message (format "and values are incompatible: %s" ts)})])
+        ts (sort-ts ts)]
     ts))
 
 (s/fdef and-t :args (s/cat :ts ::types) :ret ::type)
@@ -624,7 +649,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
          and-ts false} (->> ts
                             (and-consolidate)
                             (group-by maybe-t?))
-        and-ts (set and-ts)]
+        and-ts (vec and-ts)]
     (cond
       (> (count (filter regex? and-ts)) 1) (invalid {:message (format "can't `and` multiple regexes, got %s" (map print-str ts))})
       (and (seq maybe-ts) (>= (count and-ts) 2)) (or-t (conj (mapv maybe-value maybe-ts) ['and and-ts]))
@@ -654,5 +679,73 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (defmethod regex? 'alt [x]
   true)
+
+(defn depth-dispatch [t]
+  (cond
+    (var? t) :var
+    (logic? t) :logic
+    (tagged? t) (type-tag t)
+    :else :any))
+
+(defmulti depth
+  "If the type is composite, return the depth of type nodes in
+  tree. Return 0 for vars. Returns 1 for logic vars that resolve to
+  vars with one substition. Returns ##Inf for recursive types"
+  #'depth-dispatch)
+
+(defmethod depth :var [t]
+  0)
+
+(defmethod depth :any [t]
+  0)
+
+(defmethod depth :logic [t]
+  1)
+
+(defn depth-tagged-1 [t]
+  {:post [(nat-int? %)]}
+  (->> t
+       type-value
+       depth
+       inc))
+
+(defn depth-tagged-n [t]
+  {:post [(nat-int? %)]}
+  (or
+   (some->> t
+            type-values
+            (map (fn [t*]
+                   (depth t*)))
+            (seq)
+            (apply max)
+            (inc))
+   1))
+
+(defn depth-tagged-default [t]
+  (if (coll? (type-value t))
+    (depth-tagged-n t)
+    (depth-tagged-1 t)))
+
+(defmethod depth :default [t]
+  (cond
+    (tagged? t) (depth-tagged-default t)
+    :else (assert false (format "don't know how to depth %s" (or (type-tag t) t)))))
+
+(defmethod depth 'cat [t]
+  (or
+   (some->> t
+            rest
+            (map (fn [t*]
+                   (depth t*)))
+            (seq)
+            (apply max)
+            (inc))
+   1))
+
+(defn sort-ts-compare [a b]
+  (compare (depth a) (depth b)))
+
+(defn sort-ts [ts]
+  (sort-by depth ts))
 
 (instrument-ns)

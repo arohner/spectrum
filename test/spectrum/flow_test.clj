@@ -9,16 +9,17 @@
   (:import [clojure.lang IChunk]))
 
 (deftest infer-var
-  (are [v] (boolean (f/infer-var v {:dependencies? true}))
+  (are [v] (boolean (do
+                      (println "infer-var" v)
+                      (f/infer-var v {:dependencies? true})))
     #'str
+    #'list*
     #'apply
     #'clojure.core/spread
     #'clojure.core/reduce1))
 
 (deftest branch-prediction
   (are [f ret] (= ret (f/infer-form f))
-    '(fn [s] (if (chunked-seq? s) (chunk-first s))) (t/fn-t {['cat ['or #{#'clojure.core/chunked-seq?
-                                                                     ['not ['class clojure.lang.IChunkedSeq]]}]]
-                                                             ['or
-                                                              #{['value nil]
-                                                                ['class clojure.lang.IChunk]}]})))
+    '(fn [s] (if (chunked-seq? s) (chunk-first s))) ['fn
+                                                     {['cat #'clojure.core/any?]
+                                                      ['or [['value nil] ['class clojure.lang.IChunk]]]}]))

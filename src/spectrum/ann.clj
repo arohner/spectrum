@@ -96,6 +96,7 @@
 (t/set-equiv-types! (t/value-t true) #'true?)
 (t/set-equiv-types! (t/value-t false) #'false?)
 (t/set-equiv-types! (t/value-t 0) #'zero?)
+(t/set-equiv-types! (t/seq-of #'any?) (t/class-t LazySeq))
 
 (t/derive-type #'number? #'integer?)
 (t/derive-type #'number? #'double?)
@@ -119,8 +120,6 @@
 (ann-instance-or? #'int? [Long Integer Short Byte])
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or? #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
-
-(t/set-equiv-types! (t/seq-of #'any?) (t/class-t LazySeq))
 
 (ann-constructors LazySeq (t/fn-t {[(t/fn-t {[] '?x})] (t/and-t ['?x (t/class-t ISeq)]) }))
 

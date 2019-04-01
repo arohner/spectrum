@@ -967,7 +967,7 @@
     (let [[_ l r] eq]
       (let [substs* (seq (c/unify l r substs))]
         (if substs*
-          (assoc state :substs [(c/merge-substs substs*)])
+          (assoc state :substs (c/merge-substs substs*))
           (assoc state :fail eq))))))
 
 (defmethod unify-equation :conde [{:keys [substs fail] :as state} eq]
@@ -978,10 +978,10 @@
           [_ test-l test-r] test]
       (if-let [substs* (c/unify test-l test-r substs)]
         (let [[_ then-l then-r] then
-              substs (c/unify then-l then-r substs)]
+              substs (c/unify then-l then-r substs*)]
           (assert (or (seq substs) (nil? substs)))
           (if substs
-            (assoc state :substs [(c/merge-substs substs)])
+            (assoc state :substs (c/merge-substs substs))
             (assoc state :fail eq)))
         state))))
 
@@ -991,7 +991,8 @@
     (let [pairs (nth eq 1)
           states (->> pairs
                       (map (fn [[test then]]
-                             (unify-equation state (eq/conde test then)))))]
+                             (unify-equation state (eq/conde test then))))
+                      (doall))]
       (or
        (->> states
             (filter :fail)
@@ -1005,19 +1006,23 @@
             (remove :fail)
             (mapcat :substs)
             ((fn [substs]
-               (assoc state :substs [(c/merge-substs substs)]))))))))
+               (assoc state :substs (c/merge-substs substs)))))))))
 
 (s/fdef unify-all-equations :args (s/cat :eqs ::eq/equations) :ret ::unify-state)
 (defn unify-all-equations [eqs]
   ;; important to keep ordering here. Weird. Why is order important?
-
-  (let [state {:substs [{}] :fail nil}]
+  (let [state {:substs [{}] :fail nil :i 0}]
     (->> eqs
          (reduce (fn [state eq]
-                   (let [{:keys [substs] :as state} (unify-equation state eq)]
+                   (println "unify-all eq" (:i state) eq)
+                   (def state state)
+                   (def eq eq)
+                   (let [{:keys [substs] :as state} (unify-equation state eq)
+                         state (update-in state [:i] inc)]
                      (if (not (:fail state))
-                       (let [subst (c/merge-substs substs)]
-                         (assoc-in state [:substs] [subst]))
+                       (let [substs (c/merge-substs substs)]
+
+                         (assoc state :substs substs))
                        state))) state))))
 
 (defn store-var-inference-results [context a substs]
@@ -1027,7 +1032,7 @@
                     v (get-in a (conj def-p :var))
                     init-p (conj def-p :init)
                     t (get-type! context a init-p)
-                    subst (c/merge-substs substs)
+                    subst (c/merge-substs-1 substs)
                     _ (println "resolving" t)
                     v-s (c/resolve-type t subst)]
                 (assert v-s)
@@ -1234,11 +1239,13 @@
     (println "expected" l (if-let [form (::form l-meta)] form "") "=>" (c/resolve-type r subst))
 
     (when existing-l
-    (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r "subst:" subst))
+      (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r "subst:" subst)
+      (prn "form:" l r [subst]))
+
   (doseq [lv (t/get-lvars eq)]
-    (println lv "=>" (c/resolve-type lv subst)))
+    (println lv "=>" (c/resolve-type lv subst) (if (c/cyclic-t? lv subst) "cyclic" "")))
   (doseq [lv (t/get-lvars existing-l)]
-    (println lv "=>" (c/resolve-type lv subst)))))
+    (println lv "=>" (c/resolve-type lv subst) (if (c/cyclic-t? lv subst) "cyclic" "")))))
 
 (defmethod debug-failed-eq :conde [context eq subst]
   (let [[eq-op when then] eq
@@ -1278,7 +1285,7 @@
           _ (println "infer" (count eqs) "equations")
           _ (pprint eqs)
           {:keys [substs fail]} (unify-all-equations eqs)
-          subst (c/merge-substs substs)
+          subst (c/merge-substs-1 substs)
           _ (println "infer" "done unifying" (count substs) (count (distinct substs)))
           ;; substs (->> substs (filter valid-subst?) distinct seq)
           t (get-type! context a [])]
@@ -1297,6 +1304,7 @@
 
 (defn infer-form
   ([form]
+   (println "infer-form:" form)
    (-> form
        (analyze-form)
        infer))

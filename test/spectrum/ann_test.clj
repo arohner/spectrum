@@ -4,7 +4,8 @@
             [spectrum.conform :as c]
             [spectrum.flow :as f]
             [spectrum.types :as t])
-  (:import [clojure.lang IChunkedSeq ISeq]))
+  (:import [clojure.lang IChunkedSeq ISeq]
+           [java.util Map]))
 
 (def a?)
 (def b?)
@@ -43,13 +44,22 @@
     (t/coll-of '?x) (t/vector-of '?x)
     (t/coll-of #'a?) (t/vector-of #'a?)
 
+    #'seqable? #'seq?
+    #'seqable? (t/class-t ISeq)
     (t/class-t ISeq) (t/seq-of '?x)
     (t/class-t IChunkedSeq) #'chunked-seq?
     #'chunked-seq? (t/class-t IChunkedSeq)
 
+    #'float? (t/class-t Double)
+    #'float? (t/class-t Float)
+    #'double? (t/class-t Double)
+    (t/class-t Double) #'double?
+
     (t/class-t ISeq) (t/class-t IChunkedSeq)
 
     (t/and-t [#'int? #'any?]) #'int?
+
+    (t/or-t [#'int? (t/class-t String)]) #'int?
     (t/or-t [(t/class-t Byte) (t/class-t Long) (t/class-t Integer) (t/class-t Short) (t/class-t String)]) #'int?
 
     ;; spec
@@ -57,10 +67,17 @@
     (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/value-t [[3]])
     (t/cat-t [(t/spec-t (t/cat-t [#'int?])) #'string?]) (t/value-t [[3] "foo"])
     ;; fn
-      ['class clojure.lang.IFn] ['fn {['?t2] '?t3}])
+    ['class clojure.lang.IFn] ['fn {['?t2] '?t3}]
+    #'fn? ['fn {['?t2] '?t3}]
+    #'ifn? ['fn {['?t2] '?t3}]
+    #'ifn? #'fn?
+    )
 
   (testing "invalid"
     (are [a b] (not (c/valid? a b))
+
+      #'int? ['class Map]
+
       (t/seq-of '?x) (t/class-t IChunkedSeq)
 
       ;;spec
@@ -75,11 +92,17 @@
       (t/cat-t [(t/seq-of #'int?)]) (t/value-t :foo)
       (t/cat-t [(t/seq-of (t/not-t #'int?))]) (t/value-t 1)
 
+      ;; fn
+      ['fn {['?t2] '?t3}] ['class clojure.lang.IFn]
+      ['fn {['?t2] '?t3}] #'fn?
+      ['fn {['?t2] '?t3}] #'ifn?
       )))
 
 (deftest integration-tests
   (testing "truthy"
-    (are [form] (boolean (f/infer-form form))
+    (are [form] (do
+                  (println "infer-form" form)
+                  (boolean (f/infer-form form)))
       '(fn [x] (seq x))
       '(fn [x] (seq (seq x)))
       '(fn [x] (first x))
@@ -87,15 +110,19 @@
       '(fn [x] (rest (seq x)))
       '(fn [x] (next (seq x)))))
   (testing "falsey"
-    (are [form] (not (boolean (f/infer-form form)))
+    (are [form] (do
+                  (println "infer-form" form)
+                  (not (boolean (f/infer-form form))))
 
       '(first 1)
       '(rest 2)))
 
   (testing "return value"
-    (are [form ret] (= ret (f/infer-form form))
-      '(list 1) ['and #{['cat ['value 1]] #'list?}]
-      '(list 1 :a) ['and #{['cat ['value 1] ['value :a]] #'list?}]
+    (are [form ret] (do
+                      (println "infer-form" form)
+                      (= ret (f/infer-form form)))
+      '(list 1) ['and [#'list? ['cat ['value 1]]]]
+      '(list 1 :a) ['and [#'list? ['cat ['value 1] ['value :a]]]]
 
       '(first 3) nil
       '(keyword 3) ['value nil]
@@ -105,17 +132,16 @@
       '(fn [x] (keyword x)) ['fn
                              {['cat
                                ['or
-                                #{#'clojure.core/keyword?
-                                  #'clojure.core/symbol?
-                                  #'clojure.core/string?
-                                  ['not
-                                   ['or
-                                    #{#'clojure.core/keyword?
-                                      #'clojure.core/symbol?
-                                      #'clojure.core/string?}]]}]]
-                              ['or
-                               #{#'clojure.core/simple-keyword?
-                                 ['value nil]}]}]
+                                [#'clojure.core/keyword?
+                                 #'clojure.core/string?
+                                 #'clojure.core/symbol?
+                                 ['not
+                                  ['or
+                                   [#'clojure.core/keyword?
+                                    #'clojure.core/string?
+                                    #'clojure.core/symbol?]]]]]]
+                              ['or [#'clojure.core/simple-keyword? ['value nil]]]}]
+
       '(fn [x y] (keyword x y)) ['fn {['cat #'string? #'string?] #'clojure.core/qualified-keyword?}]
 
       ;; apply
@@ -126,7 +152,7 @@
       '(apply keyword "foo" ["bar"]) #'qualified-keyword?
       '(apply keyword "foo" "bar" []) #'qualified-keyword?
 
-      '(apply true? [1]) ['or #{['value true] ['value false] ['class Boolean/TYPE]}]
+      '(apply true? [1]) ['or [['value true] ['value false] ['class Boolean/TYPE]]]
       '(apply true? 1) nil
       ))
 
