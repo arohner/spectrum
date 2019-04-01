@@ -17,8 +17,7 @@ Kind-of. It finds errors at compile time, and predicates kind of look like types
 
 ## Current Status
 
-Developer Preview, not yet ready for any kind of use. `master` may not
-compile. Tests definitely won't pass.
+Developer Preview, not yet ready for any kind of use.
 
 Current development is working towards making spectrum self-check.
 
@@ -109,5 +108,4 @@ Spectrum is still very early, and not ready for production use. Current developm
 
 Copyright © 2019 Allen Rohner
 
-Distributed under the Eclipse Public License either version 1.0 or (at
-your option) any later version.
+Creative Commons Attribution-NonCommercial-NoDerivs 3.0 Unported
