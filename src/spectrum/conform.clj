@@ -164,8 +164,6 @@
           substs*)))))
 
 (defn assoc-subst [subst x y]
-  (when (occurs? x y subst)
-    (println "assoc-substs warn" x "occurs?" y))
   (assoc subst x y))
 
 (defn unify-any-logic-1 [x y subst]
