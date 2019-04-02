@@ -120,7 +120,7 @@
   (testing "return value"
     (are [form ret] (do
                       (println "infer-form" form)
-                      (= ret (f/infer-form form)))
+                      (c/unify ret (f/infer-form form)))
       '(list 1) ['and [#'list? ['cat ['value 1]]]]
       '(list 1 :a) ['and [#'list? ['cat ['value 1] ['value :a]]]]
 
@@ -152,7 +152,7 @@
       '(apply keyword "foo" ["bar"]) #'qualified-keyword?
       '(apply keyword "foo" "bar" []) #'qualified-keyword?
 
-      '(apply true? [1]) ['or [['value true] ['value false] ['class Boolean/TYPE]]]
+      '(apply true? [1]) (t/or-t [['value true] ['value false] ['class Boolean/TYPE]])
       '(apply true? 1) nil
       ))
 
