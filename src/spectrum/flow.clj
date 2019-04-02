@@ -988,7 +988,9 @@
 (defmethod unify-equation :conde! [{:keys [substs fail] :as state} eq]
   (if fail
     state
-    (let [pairs (nth eq 1)
+    (let [pairs (-> eq
+                    (nth 1)
+                    t/sort-ts)
           states (->> pairs
                       (map (fn [[test then]]
                              (unify-equation state (eq/conde test then))))
