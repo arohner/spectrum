@@ -28,12 +28,14 @@
 
 (defn parse-spec*-dispatch [x]
   {:post [(do (when (nil? %)
-                (println "don't know how to parse" x)) true)
+                (println "don't know how to parse" x))
+              true)
+
           %]}
   (cond
     (s/spec? x) :spec
     (s/regex? x) (::s/op x)
-    (t/type? x) :literal
+    (t/logic? x) :literal
     (and (form? x) (known-form? x)) (first x)
     (and (form? x) (not (known-form? x)) (macro? (resolve (first x)))) :macro
     (symbol? x) :sym
@@ -74,7 +76,7 @@
   {:post [%]}
   (try
     (cond
-      (t/type? x) x
+      (t/logic? x) x
       (and (symbol? x) (maybe-resolve x)) (parse-spec* (s/spec-impl x (resolve x) nil nil))
       (var? x) (parse-spec* (s/spec-impl (var-name x) x nil nil))
       (= ::s/nil x) nil
@@ -297,7 +299,6 @@
 ;;                  (parse-keys (unquote-form (:opt-un args)))))))
 
 (defn parse-spec-seq [x]
-  (println "parse-spec-seq" x)
   (let [v (mapv parse-spec* x)]
     (if (list? x)
       (t/value-t (list* v))
