@@ -12,11 +12,13 @@
   (are [v] (boolean (do
                       (println "infer-var" v)
                       (f/infer-var v {:dependencies? true})))
-    #'str
-    #'list*
     #'apply
+    #'clojure.core/reduce1
     #'clojure.core/spread
-    #'clojure.core/reduce1))
+    #'list*
+    #'str
+    #'map
+    ))
 
 (deftest branch-prediction
   (are [f ret] (= ret (f/infer-form f))

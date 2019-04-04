@@ -8,6 +8,8 @@
             [spectrum.util :refer (print-once validate!)])
   (:import (clojure.lang BigInt
                          Ratio
+                         IChunk
+                         IChunkedSeq
                          IPersistentCollection
                          ISeq
                          LazySeq
@@ -48,7 +50,8 @@
   (data/ann cls t))
 
 (def pred->class
-  {#'associative? clojure.lang.Associative
+  {#'any? Object
+   #'associative? clojure.lang.Associative
    #'boolean? Boolean
    #'char? Character
    #'chunked-seq? clojure.lang.IChunkedSeq
@@ -109,6 +112,7 @@
 (t/derive-type #'ifn? #'fn?)
 
 (t/derive-type 'coll-of 'vector-of)
+(t/derive-type 'coll-of 'seq-of)
 
 (t/derive-type #'keyword? #'simple-keyword?)
 (t/derive-type #'keyword? #'qualified-keyword?)
@@ -140,6 +144,13 @@
 (ann #'cons (t/fn-t {['?x #'nil?] (t/and-t [(t/cat-t ['?x]) (t/class-t ISeq)])
                      ['?x (t/seq-of '?y)] (t/and-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/class-t ISeq)])
                      ['?x #'seqable?] (t/and-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/class-t ISeq)])}))
+
+(ann #'conj (t/fn-t {[['cat]] ['value []]
+                     ['?x] '?x
+                     [['coll-of '?x] (t/+ '?x)] ['coll-of '?x]
+                     [['coll-of '?x] (t/+ '?y)] ['coll-of (t/or-t ['?x '?y])]
+                     ;; [['class IPersistentCollection] (t/+ '?y)] ['class IPersistentCollection]
+                     }))
 
 (ann #'first (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t ['?a #'nil?])
                       [#'seqable?] (t/or-t ['?x #'nil?])}))
@@ -174,6 +185,4 @@
 ;;                                            [#'nil?] ['class Iterator]}))
 
 
-;; we'd prefer to infer map, but it needs dependent types to handle the chunked-seq case
-(ann #'map (t/fn-t {[(t/fn-t {['?x] '?y}) (t/spec-t (t/seq-of '?x))] (t/and-t [(t/seq-of '?y) (t/class-t LazySeq)])
-                    [(t/fn-t {['?x1 '?x2] '?y}) (t/spec-t (t/seq-of '?x1)) (t/spec-t (t/seq-of '?x2))] (t/and-t [(t/seq-of '?y) (t/class-t LazySeq)])}))
+(ann #'chunk-first (t/fn-t {[['class IChunkedSeq]] ['class IChunk]}))

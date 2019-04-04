@@ -30,12 +30,23 @@
 
 (def type-counter (atom -1))
 
+(s/def ::mutable? boolean?)
+(s/fdef new-logic :args (s/or :a (s/cat)
+                              :b (s/cat :opts (s/? (s/keys :opt-un [::mutable?])) :prefix (s/or :str string? :sym symbol?))) :ret logic?)
 (defn new-logic
   ([]
    (new-logic "t"))
   ([prefix]
-   (let [next (swap! type-counter inc)]
-     (symbol (str "?" prefix next)))))
+   (new-logic {} prefix))
+  ([{:keys [mutable?] :as options} prefix]
+   (let [next (swap! type-counter inc)
+         t (symbol (str "?" prefix next))]
+     (if mutable?
+       (with-meta t {:mutable? true})
+       t))))
+
+(defn mutable-t? [t]
+  (-> t meta :mutable? boolean))
 
 (s/fdef get-lvars :ret (s/nilable (s/coll-of symbol? :kind set?)))
 (defn get-lvars
@@ -68,7 +79,7 @@
     (println "freshen" replace-map)
     (rename replace-map form)))
 
-(s/def ::type-atom (s/or :lvar logic? :v var?))
+(s/def ::type-atom (s/or :s symbol? :v var?))
 
 (defn tagged? [t]
   (and (vector? t)
@@ -322,12 +333,20 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (s/fdef ancestors :args (s/cat :t ::type) :ret (s/nilable (s/coll-of ::type)))
 (defn ancestors [t]
-  (->> t
-       (parents)
-       (mapcat (fn [p]
-                 (concat [p] (parents p))))
-       (distinct)
-       (filter identity)))
+  (some->> t
+           (parents)
+           (mapcat (fn [p]
+                     (concat [p] (parents p))))
+           (filter identity)
+           (set)))
+
+(defn isa-t?
+  "True if b isa a. Does not check logic variables"
+  [a b]
+  (cond
+    (and (tagged? a) (tagged? b)) (contains? (conj (ancestors b) (type-tag b)) (type-tag a))
+    (contains? (ancestors a) b) true
+    :else false))
 
 (defn load-type-hierarchy []
   (doseq [p (disj (core-predicates) #'any?)]
@@ -335,6 +354,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (load-type-hierarchy)
 
+(derive-type #'any? 'class)
 (derive-type #'any? 'or)
 (derive-type #'any? 'and)
 (derive-type #'any? 'cat)
@@ -496,6 +516,19 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
     (->> (concat (filter class-t? ts)
                  (filter instance-or-t? ts))
          (first))))
+
+(defn class-ancestors
+  "ancestors that are also class-t, or convertible to class-t"
+  [t]
+  (let [ts (conj (ancestors t) (class-cast t))]
+    (->>
+     ts
+     (mapcat get-equiv-types)
+     (concat ts)
+     (distinct)
+     (filter (fn [t]
+               (or (class-t? t)
+                   (instance-or-t? t)))))))
 
 (s/fdef maybe-value :args (s/cat :m maybe-t?) :ret ::type)
 (def maybe-value type-value)

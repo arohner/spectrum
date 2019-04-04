@@ -170,7 +170,7 @@
   (store-type! context (t/new-logic) a path))
 
 (defmethod create-typename :binding [context a path]
-  (let [t (t/new-logic)
+  (let [t (t/new-logic {:mutable? true} "t")
         a* (get-in a path)]
     (assert (:atom a*))
     (swap! (:atom a*) assoc ::t t ::path path)
@@ -779,20 +779,21 @@
   (let [a* (get-in a path)
         {:keys [class method instance]} a*]
     (if (and class method)
-      (let [cls-type (when (:instance a*)
-                       (get-type! context a (conj path :instance)))
+      (let [instance-type (when (:instance a*)
+                            (get-type! context a (conj path :instance)))
             cls-class (:class a*)
             invoke-args (t/cat-t (map-sequential-children get-type! context a path :args))
             ret-t (get-type! context a path)
             method-t (get-method-t cls-class method)]
         (if method-t
           (->> (conj (get-eq-invoke-fn-t method-t invoke-args ret-t)
-                     (when (and cls-type cls-class)
-                       (eq/eq cls-type (t/class-t cls-class))))
+                     (when (and instance-type cls-class)
+                       (eq/eq (t/class-t cls-class) instance-type )))
                (filter identity))
           (assert false (format "no matching method: %s %s %s" class method instance))))
       (do
         (println "infer java call:" (:form a*) class method instance "unknown")
+        (assert false)
         []))))
 
 (defmethod get-equations* :static-call [context a path]

@@ -196,19 +196,16 @@
         default (.defaultDispatchVal mm)
         method-table (.getMethodTable mm)
         hierarchy (deref (.hierarchy mm))]
-    (println "dispatch-val:" dispatch-val)
     (->> method-table
          (reduce (fn [best entry]
                    (let [ek (.getKey entry)
                          bk (when best (.getKey best))]
                      (if (isa? hierarchy dispatch-val ek)
                        (if (or (nil? best) (dominates? mm ek bk))
-                         (do
-                           (println ek ">" bk)
-                           entry)
+                         entry
                          best)
                        best))) nil)
          ((fn [best]
             (if (nil? best)
-              (println "best=nil, default:" default)
+              default
               (key best)))))))

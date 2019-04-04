@@ -105,7 +105,7 @@
 (defn get-var-spec [v]
   (get @var-specs v))
 
-(s/def ::ann-arg (s/or :v var? :method (s/tuple class? symbol?) :constructor class?))
+(s/def ::ann-arg (s/or :v var? :class-method (s/tuple class? symbol?) :constructor class?))
 (s/fdef ann :args (s/cat :a ::ann-arg  :t ::t/type))
 (defn ann
   "Define a more specific type for the var. `ann` types are preferred

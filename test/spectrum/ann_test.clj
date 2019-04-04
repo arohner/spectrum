@@ -27,6 +27,11 @@
     #'chunked-seq? (t/class-t IChunkedSeq)
     #'seqable? (t/or-t (map t/class-t [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]))))
 
+(deftest parents-t
+  (testing "invalid"
+    (are [t] (nil? (t/parents t))
+      #'any?)))
+
 (deftest types
   (are [a b] (c/valid? a b)
 
@@ -39,6 +44,7 @@
     #'int? (t/value-t 1)
 
     (t/seq-of '?x) (t/seq-of '?x)
+    (t/coll-of '?x) (t/seq-of '?x)
     (t/seq-of '?z) (t/seq-of '?z)
     #'seqable? (t/seq-of '?x)
     (t/coll-of '?x) (t/vector-of '?x)
@@ -46,6 +52,7 @@
 
     #'seqable? #'seq?
     #'seqable? (t/class-t ISeq)
+    (t/class-t Object) #'any?
     (t/class-t ISeq) (t/seq-of '?x)
     (t/class-t IChunkedSeq) #'chunked-seq?
     #'chunked-seq? (t/class-t IChunkedSeq)
@@ -170,3 +177,37 @@
         '(= 3 3) ['value true]
 
         '(list 1 :a :b "foo") '[and [cat [seq-of [or #'int? #'keyword? #'string?]]] #'list?])?)))
+
+(deftest numbers
+  (are [x y] (c/unify x y)
+    ['class Long/TYPE] ['value 0]
+    ['class Integer/TYPE] ['value 0]))
+
+(deftest chunk-tests
+  (testing "truthy"
+    (are [form] (f/infer-form form)
+      '(fn [s]
+         (if (chunked-seq? s)
+           (let [c (chunk-first s)
+                 size (int (count c))
+                 b (chunk-buffer size)]
+             (dotimes [i size]
+               (chunk-append b (.nth c i))))))))
+
+  (testing "falsey"
+    ;; (are [form] (not (f/infer-form form))
+    ;;   '(fn [x] (chunk-first x))
+    ;;   )
+    ))
+
+(deftest conj-tests
+  (testing "truthy"
+    (are [form args ret] (= ret (f/infer-form form args))
+      '(conj x y) {:x ['coll-of #'int?] :y #'int?} ['coll-of #'int?]
+      '(conj x y) {:x ['coll-of #'int?] :y #'string?} ['coll-of ['or [#'int? #'string?]]]))
+
+  (testing "falsey"
+    (are [form args] (not (f/infer-form form args))
+      '(conj x y) {:x ['value 1] :y ['value 2]}
+      )
+    ))

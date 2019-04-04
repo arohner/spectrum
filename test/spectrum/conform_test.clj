@@ -112,6 +112,7 @@
 (deftest first-t
   (are [t ret] (= (set ret) (set (c/first-t t)))
     (t/seq-of #'a?) [#'a? nil]
+    (t/cat-t []) []
     (t/cat-t [(t/seq-of #'a?) #'b?]) [#'a? #'b?]
     (t/cat-t [(t/seq-of #'a?) (t/? #'b?)]) [#'a? #'b? nil]))
 
