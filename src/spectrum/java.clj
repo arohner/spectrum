@@ -3,7 +3,7 @@
             [clojure.set :as set]
             [clojure.reflect :as reflect]
             [clojure.string :as str]
-            [spectrum.util :refer (predicate-spec)]))
+            [spectrum.util :refer (predicate-spec instrument-ns)]))
 
 (def symbol->primitive- {'boolean Boolean/TYPE
                          'byte Byte/TYPE
@@ -183,7 +183,7 @@
     (box x)
     x))
 
-(s/fdef box :args (s/cat :x class?) :ret primitive?)
+(s/fdef unbox :args (s/cat :x class?) :ret primitive?)
 (defn unbox [x]
   (or (get unboxing-conversions x)
       (assert false (format "can't unbox %s, not a primitive" x))))
@@ -214,14 +214,15 @@
       (unbox-and-widen?  a b)
       false))
 
-(s/fdef primitive-or-boxed? :args (s/cat :x class?) :ret boolean?)
+(s/fdef primitive-or-boxed? :args (s/cat :x (s/nilable class?)) :ret boolean?)
 (defn primitive-or-boxed?
   "True if class x is a primitive, or the boxed version of a primitive, i.e. long or Long"
   [x]
-  (or (get primitive->class- x)
-      (get class->primitive x)))
+  (boolean
+   (or (get primitive->class- x)
+       (get class->primitive x))))
 
-(s/fdef castable? :args (s/cat :a class? :b class?) :ret boolean?)
+(s/fdef castable? :args (s/cat :a (s/nilable class?) :b (s/nilable class?)) :ret boolean?)
 (defn castable?
   "True if class a can be implicitly cast to class b"
   [a b]
@@ -285,3 +286,5 @@
                       (and (reflect-constructor? m)
                            (contains? (:flags m) :public)
                            (= arity (count (:parameter-types m))))))))
+
+(instrument-ns)
