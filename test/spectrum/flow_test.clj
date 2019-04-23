@@ -18,10 +18,10 @@
     #'list*
     #'str
     #'map
+    #'true?
     ))
 
 (deftest branch-prediction
-  (are [f ret] (= ret (f/infer-form f))
+  (are [f ret] (c/valid? ret (f/infer-form f))
     '(fn [s] (if (chunked-seq? s) (chunk-first s))) ['fn
-                                                     {['cat #'clojure.core/any?]
-                                                      ['or [['value nil] ['class clojure.lang.IChunk]]]}]))
+                                                     {['cat '?x] ['or [#'nil? ['chunk '?y]]]}]))

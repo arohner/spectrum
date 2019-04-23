@@ -52,6 +52,7 @@
 (defn store-shadow-type!
   "Store that t-new is shadowing t-orig at and below path"
   [context t-orig t-new a path]
+
   (-> context :shadow-types (swap! update-in [t-orig] (fnil conj []) [path t-new])))
 
 (defn subpath?
@@ -101,7 +102,7 @@
                                             :form binding
                                             :env {}
                                             :local :let
-                                            :atom (atom {::t (t/new-logic)})
+                                            :atom (atom {::t (t/new-logic (name binding))})
                                             ::ret-spec s
                                             }])) specs))]
      (analyzer/analyze form (assoc (ana.jvm/empty-env) :locals locals)))))
@@ -169,8 +170,16 @@
 (defmethod create-typename :default [context a path]
   (store-type! context (t/new-logic) a path))
 
+(defn binding-variance [a path]
+  {:post [(do (println "binding" path %) true)]}
+  (condp = (get-in a (conj path :local))
+    :arg :bivariant
+    :let :covariant
+    :loop :bivariant
+    :invariant))
+
 (defmethod create-typename :binding [context a path]
-  (let [t (t/new-logic {:mutable? true} "t")
+  (let [t (t/new-logic (str "t" (t/variance-suffix (binding-variance a path))))
         a* (get-in a path)]
     (assert (:atom a*))
     (swap! (:atom a*) assoc ::t t ::path path)
@@ -178,20 +187,20 @@
     t))
 
 (defmethod create-typename :local [context a path]
-  )
+  nil)
 
 (defmethod create-typename :fn [context a path]
   ;; we need an extra type on the :ret of a fn, in case it is called locally
-  (let [fn-t (t/new-logic)
-        ret-t (t/new-logic)
+  (let [fn-t (t/new-logic "t-")
+        ret-t (t/new-logic "t+")
         a* (get-in a path)]
     (store-type! context fn-t a path)
     (store-type! context ret-t a (conj path :ret))
     fn-t))
 
 (defmethod create-typename :fn-method [context a path]
-  (let [fn-t (t/new-logic)
-        ret-t (t/new-logic)
+  (let [fn-t (t/new-logic "t-")
+        ret-t (t/new-logic "t+")
         a* (get-in a path)]
     (store-type! context fn-t a path)
     (store-type! context ret-t a (conj path :ret))
@@ -218,6 +227,23 @@
 
 (defmulti get-equations* #'get-equations-dispatch)
 
+(defn get-equations
+  ([context a path]
+   {;; :pre [(do (println "get-eq" path) true)]
+    :post [(validate! ::eq/equations % {:form (get-in a (conj path :form))})]}
+   (get-equations* context a path))
+  ([context a path key]
+   (get-equations context a (conj path key)))
+  ([context a]
+   (get-equations context a [])))
+
+(s/fdef get-equations-sequential :args (s/cat :c ::context :a ::a :bp ::path :k keyword?) :ret ::eq/equations)
+(defn get-equations-sequential [context a path key]
+  (let [a* (get-in a (conj path key))]
+    (assert (sequential? a*) path)
+    (mapcat (fn [i]
+              (get-equations context a (conj path key) i)) (range (count a*)))))
+
 (defmethod get-equations* :default [context a path]
   (let [a* (get-in a path)]
     (assert a*)
@@ -242,10 +268,17 @@
   (let [a* (get-in a path)
         t (-> a* :atom deref ::t)]
     (assert a*)
-    (or (get-shadow-type context a path t)
+    (or (when t
+          (get-shadow-type context a path t))
         t
         ;; workaround https://dev.clojure.org/jira/browse/TANAL-127
         (-> a* :env :locals (get (:name a*)) :atom deref ::t))))
+
+(defn get-unshadowed-type [context a path]
+  (let [a* (get-in a path)]
+    (or (some-> a* :atom deref ::t)
+        (get-type-default context a path)
+        (some-> a* :env :locals (get (:name a*)) :atom deref ::t))))
 
 (defn get-type-path
   "Given a type, return its path"
@@ -277,10 +310,12 @@
     (when (invoke-var-predicate? a (conj path :test))
       (let [orig-t (get-type! context a (conj path :test :args 0))
             else? (boolean (get-in a (conj path :else)))
-            then-t (t/new-logic)
+            then-t (t/new-logic orig-t)
             else-t (when else?
-                     (t/new-logic))]
+                     (t/new-logic orig-t))]
         (assert orig-t)
+        ;; use the :then path for :tests, so (if (foo? x)) doesn't contaminate the :else branch
+        (store-shadow-type! context orig-t then-t a (conj path :test))
         (store-shadow-type! context orig-t then-t a (conj path :then))
         (when else?
           (store-shadow-type! context orig-t else-t a (conj path :else)))))
@@ -288,44 +323,73 @@
 
 (defn ensure-type!
   "Create or return the existing type at [a path]"
-  [context a path]
+  [context a path & [{:keys [variance]
+                      :or {variance :invariant}}]]
   (if-let [t (get-type context a path)]
     t
-    (let [t (t/new-logic)]
+    (let [t (t/new-logic (str "t" (t/variance-suffix variance)))]
       (store-type! context t a path)
       t)))
 
-(defmethod get-equations* :const [context a path]
+(s/fdef with-form-meta :args (s/cat :c ::context :a ::ana.jvm/analysis :p ::path :eqs (s/coll-of (s/nilable ::eq/equation))) :ret ::eq/equations)
+(defn with-form-meta
+  "add metatdata about the form the equation came from"
+  [context a path eqs]
   (let [a* (get-in a path)
-        t (get-type! context a path)]
-    [(eq/eq t (t/canonicalize (t/value-t (:val a*))))]))
+        t (get-type context a path)
+        _ (assert (map? a*) path)
+        {:keys [form op]} a*]
+    (assert a*)
+    (->> eqs
+         (filter identity)
+         (map (fn [e]
+                (if (-> e meta (select-keys [::form ::op ::type]) seq)
+                  e
+                  (with-meta e (merge {::form form
+                                       ::op op
+                                       ::type t}
+                                      (a-loc a*)))))))))
+
+(s/fdef get-equations :args (s/or :four (s/cat :c ::context :a ::a :p ::path :k (s/or :k keyword? :i int?))
+                                  :three (s/cat :c ::context :a ::a :p ::path)
+                                  :two (s/cat :c ::context :a ::a))
+        :ret ::eq/equations)
 
 (defmethod get-equations* :binding [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    (cond
-      (::ret-spec a*) [(eq/eq t (::ret-spec a*))]
-      (:init a*) [(eq/eq t (get-type! context a (conj path :init)))]
-      :else [])))
+    (->>
+     (cond
+       (::ret-spec a*) [(eq/eq t (::ret-spec a*))]
+       (:init a*) (concat (get-equations context a path :init)
+                          [(eq/eq t (get-type! context a (conj path :init)))])
+       :else [])
+     (with-form-meta context a path))))
 
-(defmethod get-equations* :local [context a path]
-  ;; workaround https://dev.clojure.org/jira/browse/TANAL-127
+(defmethod get-equations* :const [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    (if-let [binding (-> a* :env :locals (get (:name a*)))]
-      (do
-        (assert (::ret-spec binding))
-        [(eq/eq t (::ret-spec binding))])
-      [])))
+    (->> [(eq/eq t (t/canonicalize (t/value-t (:val a*))))]
+         (with-form-meta context a path))))
 
-(defmethod get-equations* :the-var [context a path]
+(defmethod get-equations* :def [context a path]
   (let [a* (get-in a path)
-        v (-> a* :var)
         t (get-type! context a path)]
-    [(eq/eq t #'var?)]))
+    (->>
+     (concat (when (get a* :init)
+               (get-equations context a path :init))
+             [(eq/eq t #'var?)])
+     (with-form-meta context a path))))
 
-(defmethod get-equations* :quote [context a path]
-  [])
+(defmethod get-equations* :do [context a path]
+  (let [a* (get-in a path)
+        t (get-type! context a path)]
+    (->>
+     (concat
+      (get-equations-sequential context a path :statements)
+      (get-equations context a path :ret)
+      [(eq/eq t (get-type! context a (conj path :ret)))])
+     (with-form-meta context a path))))
 
 (defn map-sequential-children
   "Call `(f context a $path)` on each sequential child of (-> a (get-in path) key)"
@@ -333,10 +397,19 @@
   (mapv (fn [i]
           (f context a (conj path key i))) (-> a (get-in (conj path key)) count range)))
 
-(defmethod get-equations* :def [context a path]
+(defmethod get-equations* :fn [context a path]
   (let [a* (get-in a path)
-        t (get-type! context a path)]
-    [(eq/eq t #'var?)]))
+        t (get-type! context a path)
+        ret-t (get-type! context a (conj path :ret))
+        fn-type (t/or-t (map-sequential-children get-type! context a path :methods))
+        ret-type (t/or-t (map-sequential-children (fn [context a path]
+                                                    (get-type! context a (conj path :ret))) context a path :methods))]
+    (->>
+     (concat
+      (get-equations-sequential context a path :methods)
+      [(eq/eq t fn-type)
+       (eq/eq ret-t ret-type)])
+     (with-form-meta context a path))))
 
 (defn get-recur-paths
   "Given a node at `[a path]`, return paths to all `recur` nodes that recur to here"
@@ -363,34 +436,48 @@
         arg-eqs (map (fn [t recur-t]
                        ;; TODO look up fn spec here and apply
                        (eq/eq t (if recur-t
-                                  (t/or-t [#'any? recur-t])
-                                  #'any?))) arg-ts (or (seq recur-args) (repeat (count arg-ts) nil)))]
-    (println "get-eq fn-method:" (:form a*) arg-eqs)
-    (concat
-     ;; arg-eqs
-     [(eq/eq t (t/fn-t {arg-ts
-                  ret-type}))
-      (eq/eq ret-t ret-type)])))
+                                  (t/or-t [(t/new-logic "arg") recur-t])
+                                  (t/new-logic "arg")))) arg-ts (or (seq recur-args) (repeat (count arg-ts) nil)))]
+    (->>
+     (concat
+      (get-equations-sequential context a path :params)
+      (get-equations context a path :body)
+      [(eq/eq t (t/fn-t {arg-ts
+                         ret-type}))
+       (eq/eq ret-t ret-type)])
+     (with-form-meta context a path))))
 
-(defmethod get-equations* :fn [context a path]
+(defmethod get-equations* :local [context a path]
+  ;; workaround https://dev.clojure.org/jira/browse/TANAL-127
   (let [a* (get-in a path)
-        t (get-type! context a path)
-        ret-t (get-type! context a (conj path :ret))
-        fn-type (t/or-t (map-sequential-children get-type! context a path :methods))
-        ret-type (t/or-t (map-sequential-children (fn [context a path]
-                                                   (get-type! context a (conj path :ret))) context a path :methods))]
-    [(eq/eq t fn-type)
-     (eq/eq ret-t ret-type)]))
+        t (get-type! context a path)]
+    (->>
+     (if-let [binding (-> a* :env :locals (get (:name a*)))]
+       (do
+         (assert (::ret-spec binding))
+         [(eq/eq t (::ret-spec binding))])
+       [])
+     (with-form-meta context a path))))
+
+(defmethod get-equations* :the-var [context a path]
+  (let [a* (get-in a path)
+        v (-> a* :var)
+        t (get-type! context a path)]
+    (->> [(eq/eq t #'var?)]
+         (with-form-meta context a path))))
+
+(defmethod get-equations* :quote [context a path]
+  [])
 
 (defmethod get-equations* :let [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    [(eq/eq t (get-type! context a (conj path :body)))]))
-
-(defmethod get-equations* :do [context a path]
-  (let [a* (get-in a path)
-        t (get-type! context a path)]
-    [(eq/eq t (get-type! context a (conj path :ret)))]))
+    (->>
+     (concat
+      (get-equations-sequential context a path :bindings)
+      (get-equations context a path :body)
+      [(eq/eq t (get-type! context a (conj path :body)))])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :try [context a path]
   (let [a* (get-in a path)
@@ -401,7 +488,11 @@
         finally-t (when (get-in a (conj path :finally))
                     (get-type! context a (conj path :finally)))
         ret-t (t/or-t (concat [body-t finally-t] catches-t))]
-    [(eq/eq t ret-t)]))
+    (->>
+     (concat
+      (get-equations context a path :exception)
+      [(eq/eq t ret-t)])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :catch [context a path]
   (let [a* (get-in a path)
@@ -409,8 +500,14 @@
         ex (get-in a (conj path :class :val))
         _ (assert (class? ex))
         ex-class-spec (t/class-t ex)]
-    [(eq/eq t ex-class-spec)
-     (eq/eq (get-type! context a (conj path :local)) ex-class-spec)]))
+    (->>
+     (concat
+      (get-equations context a path :class)
+      (get-equations context a path :local)
+      (get-equations context a path :body)
+      [(eq/eq t ex-class-spec)
+       (eq/eq (get-type! context a (conj path :local)) ex-class-spec)])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :map [context a path]
   (let [a* (get-in a path)
@@ -432,7 +529,13 @@
                           :req-un {}} (range (count (:keys a*))))
         _ (println "get-eq :map" ret-keys)
         ret-t (t/keys-t ret-keys)]
-    [(eq/eq t ret-t)]))
+    (->>
+     (concat
+      ;; TODO interleave?
+      (get-equations-sequential context a path :keys)
+      (get-equations-sequential context a path :vals)
+      [(eq/eq t ret-t)])
+     (with-form-meta context a path))))
 
 (defn resolve-java-class-spec [x]
   (t/class-t (j/resolve-java-class x)))
@@ -444,12 +547,17 @@
         f (j/get-java-field class field {:static? true})
         s (resolve-java-class-spec (:type f))]
     (assert s)
-    [(eq/eq t s)]))
+    (->> [(eq/eq t s)]
+         (with-form-meta context a path))))
 
 (defmethod get-equations* :with-meta [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    [(eq/eq t (get-type! context a (conj path :expr)))]))
+    (->>
+     (concat
+      (get-equations context a path :expr)
+      [(eq/eq t (get-type! context a (conj path :expr)))])
+     (with-form-meta context a path))))
 
 (s/fdef method-class->t :args (s/cat :c class?) :ret ::t/type)
 (defn method-class->t
@@ -571,7 +679,7 @@
     (or (when v
           (let [v-t (c/get-var-type v)]
             (assert v-t (format "get-spec-for-invoke couldn't find spec for %s" v))
-            v-t))
+            (t/freshen v-t)))
         (assert false (format "get-spec-for-invoke couldn't find spec for %s %s" (:form a*))))))
 
 (defn a-def-paths
@@ -609,7 +717,8 @@
         t (get-type! context a path)]
     (if (self-var-reference? a path)
       []
-      [(eq/eq t (c/get-var-type v))])))
+      (->> [(eq/eq t (c/get-var-type v))]
+           (with-form-meta context a path)))))
 
 (defn invoke-local?
   "Returns true if the invoke at [a path] is a local fn contained within a"
@@ -625,7 +734,7 @@
 (defn get-eq-invoke-logic
   "Invoke on ?x"
   [f invoke-args ret-t]
-  (let [ret (t/new-logic "ret")]
+  (let [ret (t/new-logic "ret+")]
     [(eq/eq f (t/fn-t {invoke-args ret-t}))]))
 
 (defn maybe-replace-invoke-t [invoke-args ret-t t]
@@ -638,19 +747,15 @@
 (s/fdef get-eq-invoke-fn-t :args (s/cat :f t/fn-t? :i ::t/type :r ::t/type) :ret ::eq/equations)
 (defn get-eq-invoke-fn-t
   [f invoke-args ret-t]
-  (let [f (t/fn-t (nth f 1))
-        f (t/freshen f)
-        agg-args (t/fn-args f)]
-    (->> (t/type-value f)
-         (mapcat (fn [[f-args f-ret]]
-                   (->>
-                    (maybe-replace-invoke-t invoke-args ret-t f-ret)
-                    (map (fn [ret-eq]
-                           [(eq/eq f-args invoke-args) ret-eq])))))
-         (into {})
-         (eq/conde!)
-         (vector)
-         (concat [(eq/eq agg-args invoke-args)]))))
+  (->> (-> f (nth 1) t/fn-t t/type-value)
+       (mapcat (fn [[f-args f-ret]]
+                 (->>
+                  (maybe-replace-invoke-t invoke-args ret-t f-ret)
+                  (map (fn [ret-eq]
+                         [(eq/eq f-args invoke-args) ret-eq])))))
+       (into {})
+       (eq/conde!)
+       (vector)))
 
 (s/fdef get-eq-thunk-invoke :args (s/cat :t t/invoke-t? :ret-t ::t/type) :ret ::eq/equations)
 (defn get-eq-thunk-invoke [t ret-t]
@@ -722,11 +827,14 @@
         t (get-type! context a path)
         f (get-type! context a (conj path :fn))
         f-path (get-type-path context f)
-        f-ret (ensure-type! context a (conj f-path :ret))
-        invoke-args (map-sequential-children get-type! context a path :args)]
+        invoke-args (map-sequential-children get-type! context a path :args)
+        f-args (t/cat-t (mapv (fn [i]
+                                (ensure-type! context a (conj f-path :args i) {:variance :contravariant})) (range (count invoke-args))))
+        f-ret (ensure-type! context a (conj f-path :ret))]
     (assert f)
-    [(eq/eq t f-ret)
-     (eq/eq f (t/fn-t {invoke-args f-ret}))]))
+    (concat (make-equations f-args (t/cat-t invoke-args))
+            [(eq/eq t f-ret)
+             (eq/eq f (t/fn-t {f-args f-ret}))])))
 
 (defn self-var-call?
   "True if the invoke at [a path] is a call to a var defined in a. Returns the path to the :def or nil"
@@ -753,23 +861,29 @@
         _ (assert fn-method)
         fn-method-ret (conj fn-method :ret)
         var-fn-ret-path (-> var-path (conj :init) (#(maybe-with-meta a %)) (conj :ret))]
-    [(eq/eq (get-type! context a fn-method-ret) t)]))
+    [(eq/eq t (get-type! context a fn-method-ret))]))
 
 (defmethod get-equations* :invoke [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)
         invoke-op (get-in a* [:fn :op])]
-    (cond
-      (= :fn invoke-op) (get-eq-invoke-literal-fn context a path)
-      (= :local invoke-op) (get-eq-invoke-local context a path)
-      (self-var-call? a path) (get-eq-invoke-self-var context a path)
-      :else (get-eq-invoke-f context a path))))
+    (concat
+     (get-equations-sequential context a path :args)
+     (get-equations context a path :fn)
+     (->>
+      (cond
+        (= :fn invoke-op) (get-eq-invoke-literal-fn context a path)
+        (= :local invoke-op) (get-eq-invoke-local context a path)
+        (self-var-call? a path) (get-eq-invoke-self-var context a path)
+        :else (get-eq-invoke-f context a path))
+      (with-form-meta context a path)))))
 
 (defn get-method-t
   "Return a fn-t for the java method; includes all arity overloads"
   [cls method]
   (or
-   (data/get-ann [cls method])
+   (some-> (data/get-ann [cls method])
+           (t/freshen))
    (->> (j/get-java-method cls method)
         (mapv method->fn-t)
         (t/merge-fns))))
@@ -786,10 +900,15 @@
             ret-t (get-type! context a path)
             method-t (get-method-t cls-class method)]
         (if method-t
-          (->> (conj (get-eq-invoke-fn-t method-t invoke-args ret-t)
-                     (when (and instance-type cls-class)
-                       (eq/eq (t/class-t cls-class) instance-type )))
-               (filter identity))
+          (->> (concat
+                (get-equations-sequential context a path :args)
+                (when (get a* :instance)
+                  (get-equations context a path :instance))
+                (get-eq-invoke-fn-t method-t invoke-args ret-t)
+                (when (and instance-type cls-class)
+                  [(eq/eq (t/class-t cls-class) instance-type)]))
+               (filter identity)
+               (with-form-meta context a path))
           (assert false (format "no matching method: %s %s %s" class method instance))))
       (do
         (println "infer java call:" (:form a*) class method instance "unknown")
@@ -802,35 +921,154 @@
 (defmethod get-equations* :instance-call [context a path]
   (get-equations-java-call context a path))
 
-(s/fdef get-if-shadow-type-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret (s/nilable ::eq/equations))
-(defn get-if-shadow-type-eqs
-  "If the :if :test is (foo? x), return additional equations for the shadowed type x"
+(defn invoke-equiv?
+  "true if if the expression at path is a call to #'= or clojure.lang.Util/equiv"
+  [a path]
+  (let [a* (get-in a path)
+        {cls :class method :method op :op} a*]
+    (or (and (= :static-call op)
+             (= clojure.lang.Util cls)
+             (= 'equiv method))
+        (and (= :invoke op)
+             (= #'= (-> a* :fn :var))))))
+
+(defn test-truthy?
+  "true if the :if test expression is testing for a variable being truthy"
+  [a path]
+  (let [a* (get-in a path)]
+    (and (= :local (:op a*)))))
+
+(defn if-test-type
+  "given the path to an :if test, return a keyword representing the kind of test"
   [context a path]
-  (when-let [v (invoke-var-predicate? a (conj path :test))]
-    (let [t-orig (get-type! context a (conj path :test :args 0))
-          t-then (get-shadow-type context a (conj path :then) t-orig)
-          else? (boolean (get-in a (conj path :else)))
-          t-else (get-shadow-type context a (conj path :else) t-orig)]
-      (assert t-then)
-      (when else?
-        (assert t-else))
-      [(eq/eq t-then (t/and-t [t-orig v]))
-       (eq/eq t-else (t/and-t [t-orig (t/not-t v)]))])))
+  (cond
+    (invoke-var-predicate? a path) :predicate
+    (invoke-equiv? a path) :equiv
+    (test-truthy? a path) :truthy
+    :else :unknown))
+
+(s/fdef if-test-predicate-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-test-predicate-eqs [context a path]
+  (assert (= :if (:op (get-in a path))))
+  (let [v (invoke-var-predicate? a (conj path :test))
+        arg-path (conj path :args 0)
+        arg-t (get-type! context a arg-path)]
+    (assert (var? v))
+    (assert arg-t)
+    [(eq/eq v arg-t)]))
+
+(s/fdef if-test-equiv-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-test-equiv-eqs [context a path]
+  (assert (= :if (:op (get-in a path))))
+  (let [a* (get-in a path)
+        arg-count (-> a* :test :args count)]
+    (assert (:args a*))
+    (->> arg-count
+         dec
+         (range)
+         (map (fn [i]
+                (let [l (get-type! context a (conj path :args i))
+                      r (get-type! context a (conj path :args (inc i)))]
+                  (eq/eq l r)))))))
+
+(s/fdef if-test-truthy-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-test-truthy-eqs [context a path]
+  (assert (= :if (:op (get-in a path))))
+  (let [test* (get-in a (conj path :test))
+        _ (assert (= :local (:op test*)))
+        t (get-type! context a (conj path :test))]
+    [(eq/eq (t/and-t [(t/not-t #'nil?) (t/not-t #'false?)]) t)]))
+
+(s/fdef if-test-default-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-test-default-eqs [context a path]
+  (let [t (get-type! context a (conj path :test))]
+    [(eq/eq (t/and-t [(t/not-t #'nil?) (t/not-t #'false?)]) t)]))
+
+(defn if-test-equation
+  "Given the path to an :if test expression, return the equation that,
+  if it unifies, the :then branch is taken"
+  [context a path test-type]
+  (condp =
+      :predicate (if-test-predicate-eqs context a path)
+      :equiv (if-test-equiv-eqs context a path)
+      :truthy (if-test-truthy-eqs context a path)
+      :unknown (if-test-default-eqs context a path)))
+
+(s/fdef if-else-predicate-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-else-predicate-eqs [context a path]
+  (assert (= :if (:op (get-in a path))))
+  (let [v (invoke-var-predicate? a (conj path :test))
+        arg-path (conj path :args 0)
+        arg-t (get-type! context a arg-path)]
+    (assert (var? v))
+    (assert arg-t)
+    [(eq/eq (t/not-t v) arg-t)]))
+
+(s/fdef if-else-equiv-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-else-equiv-eqs [context a path]
+  (assert (= :if (:op (get-in a path))))
+  ;; TODO can we assert anything here?
+  [])
+
+(s/fdef if-else-truthy-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-else-truthy-eqs [context a path]
+  (assert (= :if (:op (get-in a path))))
+  (let [test* (get-in a (conj path :test))
+        _ (assert (= :local (:op test*)))
+        t (get-type! context a (conj path :test))]
+    [(eq/eq (t/or-t [#'nil? #'false?]) t)]))
+
+(s/fdef if-else-default-eqs :args (s/cat :c ::context :a ::a :p ::path) :ret ::eq/equations)
+(defn if-else-default-eqs [context a path]
+  (let [t (get-type! context a (conj path :test))]
+    [(eq/eq (t/or-t [#'nil? #'false?]) t)]))
+
+(defn if-else-equation
+  "Given the path to an :if test expression, return the equation that,
+  if it unifies, the :else branch is taken"
+  [context a path test-type]
+  (condp =
+      :predicate (if-else-predicate-eqs context a path)
+      :equiv (if-else-equiv-eqs context a path)
+      :truthy (if-else-truthy-eqs context a path)
+      :unknown (if-else-default-eqs context a path)))
 
 (defmethod get-equations* :if [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)
-        eqs (if (get-in a (conj path :else))
-              [(eq/eq t (t/or-t [(get-type! context a (conj path :then))
+        var-pred (invoke-var-predicate? a (conj path :test))
+        else? (get-type context a (conj path :else))]
+    (concat
+     (when var-pred
+       (let [t-orig (get-unshadowed-type context a (conj path :test :args 0))
+             t-then (get-shadow-type context a (conj path :then) t-orig)
+             t-else (get-shadow-type context a (conj path :else) t-orig)]
+         (println "get-if-shadow-type unshadowed:" t-orig)
+         (assert t-then)
+         (when else?
+           (assert t-else))
+         (->>
+          [(eq/eq t-then var-pred)
+           (when else?
+             (eq/eq t-else (t/not-t var-pred)))])))
+     (get-equations context a path :then)
+     (when else?
+       (get-equations context a path :else))
+     (->>
+      (if else?
+        [(eq/eq t (t/or-t [(get-type! context a (conj path :then))
                            (get-type! context a (conj path :else))]))]
-              [(eq/eq t (get-type! context a (conj path :then)))])]
-    (concat eqs
-            (get-if-shadow-type-eqs context a path))))
+        [(eq/eq t (get-type! context a (conj path :then)))])
+      (with-form-meta context a path)))))
 
 (defmethod get-equations* :throw [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    [(eq/eq t (t/throw-t (get-type! context a (conj path :exception))))]))
+    (concat
+     (get-equations context a path :exception)
+     (->>
+      [(eq/eq t (t/throw-t (get-type! context a (conj path :exception))))]
+      (with-form-meta context a path)))))
 
 (defn get-constructor-t
   "Return an fn-t for this class constructor"
@@ -850,8 +1088,13 @@
         invoke-args (t/cat-t (map-sequential-children get-type! context a path :args))
         constructor-fn-t (get-constructor-t cls (count (t/cat-types invoke-args)))]
     (println "constructor fn-t:" constructor-fn-t)
-    (concat [(eq/eq t (t/class-t cls))]
-            (get-eq-invoke-fn-t constructor-fn-t invoke-args t))))
+    (concat
+     (get-equations-sequential context a path :args)
+     (->>
+      [(get-equations context a path :class)
+       (get-eq-invoke-fn-t constructor-fn-t invoke-args t)]
+      (apply concat)
+      (with-form-meta context a path)))))
 
 (defn find-loop-path
   "Given a recur at `path`, return the path to the recur destination"
@@ -874,81 +1117,91 @@
         dest-arg-key ({:fn-method :params
                        :loop :bindings} dest-op)
         _ (assert dest-arg-key)
-        dest-args (map-sequential-children get-type! context a dest-path dest-arg-key)]
-    (if (= (count recur-args) (count dest-args))
-      [] ;; (mapv (fn [d r]
-         ;;         [d (t/maybe-t r)]) dest-args recur-args)
-      [(t/invalid {:message (format  "mismatch recur args: %s vs. %s" (count recur-args) (count dest-args))})])))
+        dest-args (map-sequential-children get-type! context a dest-path dest-arg-key)
+        eqs (if (= (count recur-args) (count dest-args))
+              []
+              [(t/invalid {:message (format  "mismatch recur args: %s vs. %s" (count recur-args) (count dest-args))})])]
+    (concat
+     (get-equations-sequential context a path :exprs)
+     eqs)))
 
 (defmethod get-equations* :instance? [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
     ;; TODO return value true/false when we know the check is true
-    [(eq/eq t (t/class-t Boolean/TYPE))]))
+    (concat
+     (get-equations context a path :target)
+     (->> [(eq/eq t (t/class-t Boolean/TYPE))]
+          (with-form-meta context a path)))))
 
 (defmethod get-equations* :vector [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    [(eq/eq t (t/cat-t (map-sequential-children get-type! context a path :items)))]))
+    (->>
+     (concat
+      (get-equations-sequential context a path :items)
+      [(eq/eq t (t/cat-t (map-sequential-children get-type! context a path :items)))])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :loop [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    [(eq/eq t (get-type! context a (conj path :body)))]))
+    (->>
+     (concat
+      (get-equations-sequential context a path :bindings)
+      (get-equations context a path :body)
+      [(eq/eq t (get-type! context a (conj path :body)))])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :protocol-invoke [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
     ;; TODO verify arg count
-    [(eq/eq t #'any?)
-     (eq/eq (get-type! context a (conj path :target)) (t/protocol-t (-> a* :protocol)))]))
+    (->>
+     (concat
+      (get-equations context a path :target)
+      (get-equations context a path :protocol-fn)
+      (get-equations context a path :args)
+      [(eq/eq t #'any?)
+       (eq/eq (get-type! context a (conj path :target)) (t/protocol-t (-> a* :protocol)))])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :keyword-invoke [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
     ;; TODO more specific, validate arg count
-    [(eq/eq t #'any?)]))
+    (->>
+     (concat
+      (get-equations context a path :keyword)
+      (get-equations context a path :target)
+      [(eq/eq t #'any?)])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :instance-field [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)
         {:keys [field class]} a*
         f (j/get-java-field class field)]
-    [(eq/eq t (resolve-java-class-spec (:type f)))]))
+    (->>
+     (concat
+      (get-equations context a path :instance)
+      [(eq/eq t (resolve-java-class-spec (:type f)))])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :set [context a path]
   (let [a* (get-in a path)
         t (get-type! context a path)]
-    [(eq/eq t (t/value-t (map-sequential-children get-type! context a path :items)))]))
+    (->>
+     (concat
+      (get-equations-sequential context a path :set)
+      [(eq/eq t (t/value-t (map-sequential-children get-type! context a path :items)))])
+     (with-form-meta context a path))))
 
 (defmethod get-equations* :host-interop [context a path]
   [])
 
 (s/def :state/fail (s/nilable ::eq/equation))
 (s/def ::unify-state (s/keys :req-un [:state/fail ::c/substs]))
-
-(s/fdef get-equations :args (s/cat :c ::context :a ::a) :ret ::eq/equations)
-(defn get-equations [context a]
-  (->> (walk-a-rec-post
-        (fn [a path]
-          (let [a* (get-in a path)
-                t (get-type context a path)
-                _ (assert a*)
-                {:keys [form op]} a*]
-            (println "get-eq" op form)
-            (->> (get-equations* context a path)
-                 ((fn [eqs]
-                    (validate! ::eq/equations eqs {:form (:form a*)})
-                    (when (seq eqs)
-                      (println "get-eq" (:op a*) (:form a*) "=>" eqs))
-                    eqs))
-                 (mapv (fn [e]
-                         (with-meta e (merge {::form form
-                                              ::op op
-                                              ::type t}
-                                             (a-loc a*)))))))) a)
-       (apply concat)
-       (doall)))
 
 (defn logic-n
   "If v is a logic variable, return its number, else nil"
@@ -971,21 +1224,6 @@
           (assoc state :substs (c/merge-substs substs*))
           (assoc state :fail eq))))))
 
-(defmethod unify-equation :conde [{:keys [substs fail] :as state} eq]
-  {:post [(validate! (s/nilable ::unify-state) %)]}
-  (if fail
-    state
-    (let [[_ test then] eq
-          [_ test-l test-r] test]
-      (if-let [substs* (c/unify test-l test-r substs)]
-        (let [[_ then-l then-r] then
-              substs (c/unify then-l then-r substs*)]
-          (assert (or (seq substs) (nil? substs)))
-          (if substs
-            (assoc state :substs (c/merge-substs substs))
-            (assoc state :fail eq)))
-        state))))
-
 (defmethod unify-equation :conde! [{:keys [substs fail] :as state} eq]
   (if fail
     state
@@ -994,9 +1232,16 @@
                     t/sort-ts)
           states (->> pairs
                       (map (fn [[test then]]
-                             (unify-equation state (eq/conde test then))))
+                             (validate! ::eq/equation test)
+                             (validate! ::eq/equation then)
+                             (let [state (unify-equation state test)]
+                               (if (not (:fail state))
+                                 (unify-equation state then)
+                                 nil))))
                       (doall))]
       (or
+       (when (every? nil? states)
+         (assoc state :fail eq))
        (->> states
             (filter :fail)
             first)
@@ -1005,11 +1250,14 @@
                   seq
                   nil?)
          (assoc state :fail eq))
-       (->> states
-            (remove :fail)
-            (mapcat :substs)
-            ((fn [substs]
-               (assoc state :substs (c/merge-substs substs)))))))))
+       (do
+         (assert (nil? (seq (filter :fail states))))
+         (assert (some :substs states))
+         (->> states
+              (remove :fail)
+              (mapcat :substs)
+              ((fn [substs]
+                 (assoc state :substs substs)))))))))
 
 (s/fdef unify-all-equations :args (s/cat :eqs ::eq/equations) :ret ::unify-state)
 (defn unify-all-equations [eqs]
@@ -1017,15 +1265,15 @@
   (let [state {:substs [{}] :fail nil :i 0}]
     (->> eqs
          (reduce (fn [state eq]
-                   (println "unify-all eq" (:i state) eq)
+                   ;; (println "unify-all eq" (:i state) eq)
                    (def state state)
                    (def eq eq)
-                   (let [{:keys [substs] :as state} (unify-equation state eq)
+                   (let [substs-old (:substs state)
+                         {:keys [substs] :as state} (unify-equation state eq)
                          state (update-in state [:i] inc)]
                      (if (not (:fail state))
-                       (let [substs (c/merge-substs substs)]
-
-                         (assoc state :substs substs))
+                       (let [substs* (c/merge-substs substs)]
+                         (assoc state :substs substs*))
                        state))) state))))
 
 (defn store-var-inference-results [context a substs]
@@ -1035,9 +1283,9 @@
                     v (get-in a (conj def-p :var))
                     init-p (conj def-p :init)
                     t (get-type! context a init-p)
-                    subst (c/merge-substs-1 substs)
+                    substs (c/merge-substs substs)
                     _ (println "resolving" t)
-                    v-s (c/resolve-type t subst)]
+                    v-s (c/resolve-type t substs)]
                 (assert v-s)
                 (println "storing" t v v-s)
                 (data/store-var-spec v v-s)
@@ -1172,13 +1420,13 @@
   "Given a type lvar, return its metadata"
   [context t]
   (->> context
-      :typenames
-      deref
-      vals
-      (filter (fn [t*]
-                (= t t*)))
-      first
-      meta))
+       :typenames
+       deref
+       vals
+       (filter (fn [t*]
+                 (= t t*)))
+       first
+       meta))
 
 (defn debug-form-eqs
   "Print each form, and its associated equations"
@@ -1189,9 +1437,7 @@
                        (->> eqs
                             (filterv (fn [eq]
                                        (-> eq meta ::type (= t))))))]
-    (->> context
-         :typenames
-         deref
+    (->> @(:typenames context)
          set/map-invert
          (sort-by (fn [[t _]]
                     (logic-n t)))
@@ -1202,6 +1448,7 @@
          (dorun))))
 
 (defn debug-all-types [context]
+  (println "debug-all-types")
   (->> context
        :typenames
        deref
@@ -1209,7 +1456,7 @@
        (sort-by (fn [[t _]]
                   (logic-n t)))
        (map (fn [[t [a path]]]
-              (println t (get-in a (conj path :op)) (get-in a (conj path :form)))))
+              (println t (get-in a (conj path :op)) (or (get-in a (conj path :form)) path))))
        (dorun))
   (when (->> context
              :shadow-types
@@ -1242,20 +1489,22 @@
     (println "expected" l (if-let [form (::form l-meta)] form "") "=>" (c/resolve-type r subst))
 
     (when existing-l
-      (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" existing-r "subst:" subst)
+      (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" r "->" existing-r "subst:" subst)
       (prn "form:" l r [subst]))
 
-  (doseq [lv (t/get-lvars eq)]
-    (println lv "=>" (c/resolve-type lv subst) (if (c/cyclic-t? lv subst) "cyclic" "")))
-  (doseq [lv (t/get-lvars existing-l)]
-    (println lv "=>" (c/resolve-type lv subst) (if (c/cyclic-t? lv subst) "cyclic" "")))))
+    (doseq [lv (t/get-lvars eq)]
+      (println lv "=>" (c/resolve-type lv subst)))
+    (doseq [lv (t/get-lvars existing-l)]
+      (println lv "=>" (c/resolve-type lv subst)))))
 
-(defmethod debug-failed-eq :conde [context eq subst]
-  (let [[eq-op when then] eq
-        [when-op when-l when-r] when
-        [then-op then-l then-r] then]
+(defmethod debug-failed-eq :conde! [context eq subst]
+  (let [[eq-op pairs] eq]
     (println eq "failed")
-    (debug-failed-eq context then subst)))
+    (println "could not unify any of" (map first pairs))
+
+    (doseq [lv (t/get-lvars eq)]
+      (println lv "=>" (c/resolve-type lv subst)))
+    ))
 
 (defn debug-failure
   "Given a unify failure, print relevant debugging"
@@ -1288,22 +1537,23 @@
           _ (println "infer" (count eqs) "equations")
           _ (pprint eqs)
           {:keys [substs fail]} (unify-all-equations eqs)
-          subst (c/merge-substs-1 substs)
+          substs (c/merge-substs substs)
           _ (println "infer" "done unifying" (count substs) (count (distinct substs)))
-          ;; substs (->> substs (filter valid-subst?) distinct seq)
           t (get-type! context a [])]
-      (def subst subst)
+      (def context context)
+      (def substs substs)
       (def t t)
+      (def eqs eqs)
       (debug-all-types context)
       (debug-form-eqs context eqs)
       (if fail
-        (debug-failure context a eqs subst fail)
+        (debug-failure context a eqs substs fail)
         (when substs
           ;; (println substs)
           (let [type-map (time (store-var-inference-results context a substs))]
             (println (keys type-map))
             (or (some-> type-map first val)
-                (c/resolve-type t subst))))))))
+                (c/resolve-type t substs))))))))
 
 (defn infer-form
   ([form]

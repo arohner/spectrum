@@ -4,7 +4,8 @@
             [spectrum.conform :as c]
             [spectrum.flow :as f]
             [spectrum.types :as t])
-  (:import [clojure.lang IChunkedSeq ISeq]
+  (:import [clojure.lang IChunkedSeq ISeq LazySeq]
+           [java.lang Iterable]
            [java.util Map]))
 
 (def a?)
@@ -32,6 +33,14 @@
     (are [t] (nil? (t/parents t))
       #'any?)))
 
+(deftest isa-t
+  (are [a b] (t/isa-t? a b)
+    (t/coll-of '?x) (t/vector-of '?x))
+
+  (testing "falsey"
+    (are [a b] (not (t/isa-t? a b))
+      (t/vector-of '?x) (t/seq-of '?x))))
+
 (deftest types
   (are [a b] (c/valid? a b)
 
@@ -46,16 +55,23 @@
     (t/seq-of '?x) (t/seq-of '?x)
     (t/coll-of '?x) (t/seq-of '?x)
     (t/seq-of '?z) (t/seq-of '?z)
-    #'seqable? (t/seq-of '?x)
+
     (t/coll-of '?x) (t/vector-of '?x)
     (t/coll-of #'a?) (t/vector-of #'a?)
 
     #'seqable? #'seq?
     #'seqable? (t/class-t ISeq)
+    #'seqable? (t/class-t Iterable)
+    #'seqable? (t/class-t CharSequence)
+    #'seqable? (t/seq-of '?x)
+    #'seqable? (t/vector-of '?x)
+    #'seqable? (t/map-of '?x '?y)
+
     (t/class-t Object) #'any?
     (t/class-t ISeq) (t/seq-of '?x)
     (t/class-t IChunkedSeq) #'chunked-seq?
     #'chunked-seq? (t/class-t IChunkedSeq)
+    #'chunked-seq? ['chunked-seq-of '?x]
 
     #'float? (t/class-t Double)
     #'float? (t/class-t Float)
@@ -199,6 +215,12 @@
     ;;   '(fn [x] (chunk-first x))
     ;;   )
     ))
+
+(deftest chunk-buffer-tests
+  (are [x y substs] (c/unify x y)
+    ['chunk-buffer '?x] '?t1 [{}]
+    ['chunk-buffer '?x] '?t1 [{'?t1 #'any?}]
+    (t/cat-t [['chunk-buffer '?x4645] '?x4645]) (t/cat-t ['?t4428 '?t4436]) [{}]))
 
 (deftest conj-tests
   (testing "truthy"

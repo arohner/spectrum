@@ -23,8 +23,9 @@
 (s/def ::conde! (s/tuple #{:conde!} (s/map-of ::test ::then)))
 (s/fdef conde! :args (s/cat :p (s/map-of ::test ::then)) :ret ::conde!)
 (defn conde!
-  "Take a map of `when` `then` keyvalues. Behaves similar to conde, but
-  fails if no `test` unifies"
+  "Take a map of `test` `then` key/values. Tests _may_ unify, but isn't
+  required. If a `test` unifies, its `then` _must_ unify. Fails if
+  no `test` unifies"
   [pairs]
   [:conde! pairs])
 

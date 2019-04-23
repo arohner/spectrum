@@ -1,6 +1,7 @@
 (ns spectrum.types
   (:refer-clojure :exclude [vector-of * + parents ancestors descendants])
   (:require [clojure.core :as core]
+            [clojure.math.combinatorics :as combo]
             [clojure.set :as set]
             [clojure.spec.alpha :as s]
             [clojure.walk :as walk]
@@ -25,28 +26,54 @@
 (defn logic-name [x]
   (as-> x %
     (name %)
-    (re-find #"^\?(\p{Lower})+" %)
+    (re-find #"^\?(\p{Lower}+[-+±]?)" %)
     (second %)))
+
+(defn free-t?
+  ([t subst]
+   (and (logic? t) (nil? (get subst t)))))
+
+(defn bound-t? [t subst]
+  (and (logic? t) (not (free-t? t subst))))
 
 (def type-counter (atom -1))
 
-(s/def ::mutable? boolean?)
-(s/fdef new-logic :args (s/or :a (s/cat)
-                              :b (s/cat :opts (s/? (s/keys :opt-un [::mutable?])) :prefix (s/or :str string? :sym symbol?))) :ret logic?)
+(defn reset-type-counter! []
+  (reset! type-counter -1))
+
+(s/def ::variance #{:covariant :contravariant :invariant :bivariant})
+
+(def default-variance :invariant)
+
+(s/fdef variance :args (s/cat :t logic?) :ret ::variance)
+(defn variance [t]
+  (let [[_ name var-sym] (re-find #"^\?(\p{Lower}+)([-+±]?)" (name t))]
+    (condp = var-sym
+      "+" :covariant
+      "-" :contravariant
+      "±" :bivariant
+      default-variance)))
+
+(defn covariant? [t]
+  (contains? #{:covariant :bivariant} (variance t)))
+
+(defn contravariant? [t]
+  (contains? #{:contravariant :bivariant} (variance t)))
+
+(defn variance-suffix [variance]
+  (condp = variance
+    :contravariant "-"
+    :covariant "+"
+    :bivariant "±"
+    ""))
+
+(s/fdef new-logic :args (s/cat :prefix (s/? (s/or :str string? :l logic?))) :ret logic?)
 (defn new-logic
   ([]
    (new-logic "t"))
-  ([prefix]
-   (new-logic {} prefix))
-  ([{:keys [mutable?] :as options} prefix]
-   (let [next (swap! type-counter inc)
-         t (symbol (str "?" prefix next))]
-     (if mutable?
-       (with-meta t {:mutable? true})
-       t))))
-
-(defn mutable-t? [t]
-  (-> t meta :mutable? boolean))
+  ([t]
+   (let [next (swap! type-counter inc)]
+     (symbol (str "?" (if (logic? t) (logic-name t) t) next)))))
 
 (s/fdef get-lvars :ret (s/nilable (s/coll-of symbol? :kind set?)))
 (defn get-lvars
@@ -86,7 +113,7 @@
        (-> t first symbol?)
        (not (logic? (first t)))))
 
-(s/def ::type (s/or :ta ::type-atom :tagged-type tagged? :n nil?))
+(s/def ::type (s/or :ta ::type-atom :tagged-type tagged?))
 
 (defn type? [x]
   (s/valid? ::type x))
@@ -153,8 +180,12 @@
 (defn-type-pred cat-t? 'cat)
 (defn-type-pred alt-t? 'alt)
 
-(defn-tagged-type seq-of 'seq-of)
 (defn-type-pred seq-t? 'seq-of)
+
+(defn seq-of [x]
+  (if (seq-t? x)
+    ['seq-of (type-value x)]
+    ['seq-of x]))
 
 (defn-tagged-type maybe-t 'maybe)
 (defn-type-pred maybe-t? 'maybe)
@@ -181,8 +212,8 @@
 (s/fdef keys-t :args (s/cat :k (s/keys :opt-un [:keys/req :keys/req-un :keys/opt :keys/opt-un])))
 (defn-tagged-type keys-t 'keys)
 
-(s/def ::fn-args-in (s/or :ta (s/coll-of ::type :kind vector?) ::t ::type))
-(s/def :fn/args ::type)
+(s/def ::fn-args-in (s/or :ta (s/coll-of ::type :kind vector?) :cat cat-t?))
+(s/def :fn/args cat-t?)
 (s/def :fn/ret ::type)
 (s/def ::fn-args (s/map-of :fn/args :fn/ret))
 (s/def ::fn-tag #{'fn})
@@ -368,11 +399,10 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (derive-type #'any? #'logic?)
 (derive-type #'any? 'value)
 (derive-type #'any? 'invoke)
+(derive-type #'any? 'spec)
 
 (derive-type #'ifn? #'fn?)
 (derive-type #'fn? 'fn)
-
-(derive-type (class-t clojure.lang.ISeq) 'seq-of)
 
 (def seq-value type-value)
 
@@ -406,18 +436,67 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn alt-types [x]
   (vec (rest x)))
 
+(defmulti disentangle* #'type-tag)
+
+(defn disentangle
+  "Given a type containing possible choices, such as `alt` or `or`,
+  resolve the choices and return a seq of all possible concrete specs
+  that don't contain ambiguity.
+
+(disentangle (cat [(c/? ?t1) ?t2])
+=>
+([cat ?t1 ?t2] [cat ?t2])"
+  [x]
+  (disentangle* x))
+
+(defmethod disentangle* :default [t]
+  [t])
+
+(defmethod disentangle* 'alt [t]
+  (let [xs (alt-types t)]
+    (->> xs
+         (mapcat disentangle)
+         (vec))))
+
+(defmethod disentangle* 'or [t]
+  (let [xs (type-value t)]
+    (->> xs
+         (mapcat disentangle)
+         (vec))))
+
+(defmethod disentangle* 'cat [t]
+  (let [xs (cat-types t)]
+    (->> xs
+         (mapv disentangle)
+         (apply combo/cartesian-product)
+         (map cat-t))))
+
+(defn interleave-cats
+  "Given several cats of the same length, return a single cat with each
+  arg or-t'd together"
+  [& cats]
+  (->> cats
+       (map cat-types)
+       (apply map (fn [& ts] (or-t ts)))
+       (cat-t)))
+
 (s/fdef simplify-arities :args (s/cat :m (s/map-of ::type ::type)) :ret (s/map-of ::type ::type))
 (defn simplify-arities
   "Merge fn arities with the same return type and same number of arguments"
   [fn-map]
   (->> fn-map
+       (mapcat (fn [[args ret]]
+                 (->> (disentangle args)
+                      (map (fn [d]
+                             [d ret])))))
        (group-by (fn [[args ret]]
                    (assert (cat-t? args))
                    [ret (count args)]))
        (map (fn [[[_  arg-count] arities]]
               (let [args (map first arities)
-                    ret (-> arities first val)]
-                [(or-t args) ret])))
+                    args (apply interleave-cats args)
+                    ret (-> arities first second)]
+                [args ret])))
        (into {})))
 
 (s/fdef merge-fns :args (s/cat :fns (s/coll-of ::fn-t)) :ret (s/nilable ::fn-t))
@@ -459,7 +538,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (s/fdef not-value :args (s/cat :t not-t?) :ret ::type)
 (def not-value type-value)
 
-(s/fdef or-types :args (s/cat :t or-t?) :ret any?)
+(s/fdef or-types :args (s/cat :t or-t?) :ret (s/coll-of any?))
 (def or-types type-value)
 
 (s/fdef class-value :args (s/cat :t class-t?) :ret (s/or :c class? :t ::type))
@@ -560,6 +639,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
         maybe-ts (->> ts
                       (filter maybe-t?)
                       (map maybe-value))
+        fn-ts (->> ts
+                   (filter fn-t?))
+        ts (->> ts (remove fn-t?))
+        ts (if (seq fn-ts)
+             (conj ts (merge-fns fn-ts))
+             ts)
         ts (->> ts
                 (remove or-t?)
                 (remove maybe-t?))
@@ -571,13 +656,9 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                     #'any?
                     t)) ts)
         ts (if (some any-t? ts)
-             (do
-               ;; (when (> (count ts) 1)
-               ;;   (println "WARNING: or-t" ts "=>" #'any?))
-               (take 1 (filterv any-t? ts)))
+             (take 1 (filterv any-t? ts))
              ts)
         ts (distinct ts)
-
         ts (sort-ts ts)]
     ts))
 
@@ -775,10 +856,33 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
             (inc))
    1))
 
-(defn sort-ts-compare [a b]
-  (compare (depth a) (depth b)))
+(defn sort-ts-value [x]
+  (cond
+    (logic? x) #'logic?
+    (tagged? x) (if (parents x)
+                    (type-tag x)
+                    #'any?)
+    :else #'any?))
 
+(defn sort-ts-compare-dispatch [x y]
+  [(sort-ts-value x) (sort-ts-value y)])
+
+(defmulti sort-ts-compare #'sort-ts-compare-dispatch :hierarchy types-hierarchy :default [#'any? #'any?])
+
+(defmethod sort-ts-compare [#'any? #'any?] [x y]
+  (compare (depth x) (depth y)))
+
+(defmethod sort-ts-compare [#'logic? #'logic?] [x y]
+  (let [ret (compare (depth x) (depth y))]
+    (if (= 0 ret)
+      (compare (str x) (str y))
+      ret)))
+
+(def sort-comparator (reify
+                       java.util.Comparator
+                       (compare [this x y]
+                         (sort-ts-compare x y))))
 (defn sort-ts [ts]
-  (sort-by depth ts))
+  (sort sort-comparator ts))
 
 (instrument-ns)

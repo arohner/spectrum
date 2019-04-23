@@ -122,9 +122,9 @@
 (defn reset-cache!
   "Clear cache. Useful for dev"
   []
-  (swap! var-analysis (constantly {}))
-  (swap! var-specs (constantly {}))
-  (swap! analyzed-nses (constantly #{}))
+  (reset! var-analysis {})
+  (reset! var-specs {})
+  (reset! analyzed-nses #{})
   (memo/memo-clear! (ns-resolve 'spectrum.flow 'flow))
   (memo/memo-clear! (ns-resolve 'spectrum.flow 'cached-infer)))
 

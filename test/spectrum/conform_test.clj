@@ -3,7 +3,7 @@
             [clojure.set :as set]
             [spectrum.conform :as c]
             [spectrum.types :as t])
-  (:import [clojure.lang Keyword]))
+  (:import [clojure.lang Keyword LazySeq]))
 
 (def a?)
 (def b?)
@@ -60,7 +60,10 @@
 
       (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{} {'?a #'int?}]
 
-      (t/cat-t [(t/seq-of '?x)]) (t/cat-t ['?y]) [{'?y (t/seq-of '?x)}]))
+      (t/cat-t [(t/seq-of '?x)]) (t/cat-t ['?y]) [{'?y (t/seq-of '?x)}]
+
+      (t/cat-t [(t/seq-of '?x) '?x]) (t/cat-t [#'int? #'int? #'int?]) [{'?x #'int?}]
+      ))
 
   (testing "truthy substs"
     (are [x y substs-in] (seq (c/unify x y substs-in))
@@ -70,18 +73,9 @@
     (are [x y in out] (do
                         (println "substs in out" x y in out)
                         (= out (c/unify x y in)))
-      ;; narrowing
-      #'seqable? '?x [{'?x #'any?}] [{'?x #'seqable?}]
-      ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'any?}] [{'?x #'string? '?y '?x}]
       ;; '?t1 #'nil? [{'?t1 ['or #{#'a? #'nil?}]}] [{'?t1 ['value nil]}]
 
-      ;; narrow negatives
-      ['seq-of ['class java.lang.Character]] '?x [{'?x ['value nil]}] nil
-
-      #'seqable? '?x [{'?x #'int?}] nil
       ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'int?}] nil
-
-      #'a? '?x [{'?x ['or #{#'a? #'b?}]}] [{'?x #'a?}]
 
       ;; fn
       (t/fn-t {['?a] '?b}) (t/fn-t {['?c] '?d ['?e '?f] '?g}) [{}] [{'?c '?a '?d '?b}]
@@ -93,6 +87,7 @@
 
       '?x #'b? [{'?x ['seq-of '?y] '?y ['or #{'?x #'nil?}]}] nil
       '?x ['seq-of #'b?] [{'?x ['seq-of '?y] '?y ['or #{'?x #'nil?}]}] nil
+
       ))
 
   (testing "substs contains"
@@ -147,8 +142,7 @@
     (are [x y] (do
                  (println "valid?" x y)
                  (= true (c/valid? x y)))
-      '?x 3
-      ['?x] [1]
+      '?x ['value 3]
       nil nil
       '_ '?x
       #'any? #'a?
@@ -196,8 +190,6 @@
       (t/cat-t [#'a? (t/? #'b?) #'a?]) (t/cat-t [#'a? #'a?])
       (t/cat-t [#'a? (t/? #'b?) #'a?]) (t/cat-t [#'a? #'b? #'a?])
 
-      (t/or-t [(t/cat-t [#'a?]) (t/cat-t [#'b?])]) (t/cat-t [(t/or-t [#'a? #'b?])])
-
       ;; seq-of
       (t/seq-of #'a?) (t/cat-t [])
       (t/seq-of #'a?) (t/cat-t [#'a?])
@@ -229,6 +221,8 @@
       (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?y))
       (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t ['?y])
       (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/cat-t [(t/spec-t (t/cat-t [#'int?]))])
+
+      (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t [(t/value-t nil)])
 
       '?a '[invoke ?x [cat ?y]]))
 
@@ -269,7 +263,6 @@
       (t/seq-of #'b?) (t/cat-t [#'a?])
       ['seq-of #'int?] #'int?
       ['seq-of '?a] #'any?
-      (t/seq-of #'any?) (t/value-t nil)
 
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a?])
 
@@ -284,6 +277,25 @@
 
       (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/cat-t [#'int?])
       )))
+
+(deftest variance
+  (testing "truthy"
+    (are [x y in out] (= out (c/unify x y in))
+      #'seqable? '?x+ [{'?x+ #'any?}] [{'?x+ #'seqable?}]
+
+      ['seq-of '?x] ['seq-of '?y+] [{'?x #'string? '?y+ #'any?}] [{'?x #'string? '?y+ '?x}]
+
+      #'a? '?x+ [{'?x+ ['or [#'a? #'b?]]}] [{'?x+ #'a?}]
+
+      '?x- #'int? [{'?x- #'string?}] [{'?x- ['or [#'int? #'string?]]}]
+      ))
+
+  (testing "falsey"
+    (are [x y substs] (nil? (c/unify x y substs))
+      #'seqable? '?x [{'?x #'any?}]
+
+      ;; ['seq-of ['class java.lang.Character]] '?x+ [{'?x+ ['value nil]}]
+      #'seqable? '?x+ [{'?x+ #'int?}])))
 
 (deftest and-logic
   (are [ts ret] (= ret (t/and-t ts))
@@ -303,9 +315,9 @@
     [['maybe '?y]] '?y))
 
 (deftest no-infinite-loops
-  (is (c/unify ['seq-of '?e] '?b [{'?b ['cat ['seq-of '?d]],
-                                   '?e ['or ['?b '?c]],
-                                   '?d ['or
-                                        [['seq-of '?g]
-                                         ['seq-of '?e]
-                                         ['cat ['or [#'clojure.core/seqable? ['seq-of '?h]]]]]]}])))
+  (is (c/unify ['seq-of '?e] '?b+ [{'?b+ ['cat ['seq-of '?d]],
+                                    '?e ['or ['?b+ '?c]],
+                                    '?d ['or
+                                         [['seq-of '?g]
+                                          ['seq-of '?e]
+                                          ['cat ['or [#'clojure.core/seqable? ['seq-of '?h+]]]]]]}])))
