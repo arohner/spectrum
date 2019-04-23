@@ -658,9 +658,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
         ts (if (some any-t? ts)
              (take 1 (filterv any-t? ts))
              ts)
-        ts (distinct ts)
-        ts (sort-ts ts)]
-    ts))
+        ts (distinct ts)]
+    (sort-ts ts)))
 
 (s/fdef or-t :args (s/cat :ts (s/coll-of any?)) :ret any?)
 (defn or-t [ts]
@@ -862,6 +861,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
     (tagged? x) (if (parents x)
                     (type-tag x)
                     #'any?)
+    (var? x) #'var?
     :else #'any?))
 
 (defn sort-ts-compare-dispatch [x y]
@@ -871,6 +871,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (defmethod sort-ts-compare [#'any? #'any?] [x y]
   (compare (depth x) (depth y)))
+
+(defn var-name [v]
+  (str (.ns v) "/" (.sym v)))
+
+(defmethod sort-ts-compare [#'var? #'var?] [x y]
+  (compare (var-name x) (var-name y)))
 
 (defmethod sort-ts-compare [#'logic? #'logic?] [x y]
   (let [ret (compare (depth x) (depth y))]

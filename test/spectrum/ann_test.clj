@@ -224,12 +224,10 @@
 
 (deftest conj-tests
   (testing "truthy"
-    (are [form args ret] (= ret (f/infer-form form args))
+    (are [form args ret] (c/valid? ret (f/infer-form form args))
       '(conj x y) {:x ['coll-of #'int?] :y #'int?} ['coll-of #'int?]
       '(conj x y) {:x ['coll-of #'int?] :y #'string?} ['coll-of ['or [#'int? #'string?]]]))
 
   (testing "falsey"
     (are [form args] (not (f/infer-form form args))
-      '(conj x y) {:x ['value 1] :y ['value 2]}
-      )
-    ))
+      '(conj x y) {:x ['value 1] :y ['value 2]})))

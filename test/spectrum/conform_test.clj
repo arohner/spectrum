@@ -287,8 +287,7 @@
 
       #'a? '?x+ [{'?x+ ['or [#'a? #'b?]]}] [{'?x+ #'a?}]
 
-      '?x- #'int? [{'?x- #'string?}] [{'?x- ['or [#'int? #'string?]]}]
-      ))
+      '?x- #'int? [{'?x- #'string?}] [{'?x- (t/or-t [#'int? #'string?])}]))
 
   (testing "falsey"
     (are [x y substs] (nil? (c/unify x y substs))
