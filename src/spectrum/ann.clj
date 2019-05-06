@@ -73,8 +73,6 @@
    #'map-entry? java.util.Map$Entry
    #'map? clojure.lang.IPersistentMap
    #'number? Number
-   #'qualified-symbol? clojure.lang.Symbol
-   #'qualified-keyword? clojure.lang.Keyword
    #'ratio? clojure.lang.Ratio
    #'reader-conditional? clojure.lang.ReaderConditional
    #'reversible? clojure.lang.Reversible
@@ -83,8 +81,6 @@
    #'set? clojure.lang.IPersistentSet
    #'sorted? clojure.lang.Sorted
    #'string? String
-   #'simple-symbol? clojure.lang.Symbol
-   #'simple-keyword? clojure.lang.Keyword
    #'symbol? clojure.lang.Symbol
    #'tagged-literal? clojure.lang.TaggedLiteral
    #'uri? java.net.URI
@@ -110,14 +106,22 @@
 (t/derive-type #'number? #'neg?)
 (t/derive-type #'number? #'pos?)
 
+(t/derive-type #'keyword? #'simple-keyword?)
+(t/derive-type #'keyword? #'qualified-keyword?)
+
+(t/derive-type #'symbol? #'simple-symbol?)
+(t/derive-type #'symbol? #'qualified-symbol?)
+
 (t/derive-type #'ifn? #'fn?)
 
-(t/derive-type (t/class-t clojure.lang.ISeq) 'seq-of)
-(t/derive-type (t/class-t IPersistentCollection) 'coll-of)
-(t/derive-type (t/class-t IPersistentVector) 'vector-of)
+(t/derive-type #'seq? 'seq-of)
+(t/derive-type #'coll? 'coll-of)
+(t/derive-type #'vector? 'vector-of)
+(t/derive-type #'map? 'map-of)
 (t/derive-type 'coll-of 'seq-of)
 (t/derive-type 'coll-of 'vector-of)
 (t/derive-type 'coll-of 'map-of)
+(t/derive-type 'coll-of 'set-of)
 
 (t/derive-type #'keyword? #'simple-keyword?)
 (t/derive-type #'keyword? #'qualified-keyword?)
