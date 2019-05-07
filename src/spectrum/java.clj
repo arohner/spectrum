@@ -125,7 +125,6 @@
 ;;; 4. boxing + widening
 ;;;; 5. unboxing + widening
 
-
 (def widening-primitives
   {Byte/TYPE #{Short/TYPE Integer/TYPE Long/TYPE Float/TYPE Double/TYPE}
    Short/TYPE #{Integer/TYPE Long/TYPE Float/TYPE Double/TYPE}
@@ -160,6 +159,11 @@
   [a b]
   (contains? (get widening-primitives a) b))
 
+(defn narrowing-primitive-conversion?
+  "True if casting a -> b is a widening primitive conversion"
+  [a b]
+  (contains? (get narrowing-primitives a) b))
+
 (defn widening-reference-conversion?
   "True if casting a -> b is a widening reference conversion"
   [a b]
@@ -174,7 +178,9 @@
   (boolean (get boxed-primitives x)))
 
 (s/fdef box :args (s/cat :x primitive?) :ret class?)
-(defn box [x]
+(defn box
+  "Given a primitive, return its boxed version"
+  [x]
   (get boxing-conversions x))
 
 (s/fdef maybe-box :args (s/cat :x class?) :ret class?)
@@ -185,8 +191,7 @@
 
 (s/fdef unbox :args (s/cat :x class?) :ret primitive?)
 (defn unbox [x]
-  (or (get unboxing-conversions x)
-      (assert false (format "can't unbox %s, not a primitive" x))))
+  (get unboxing-conversions x))
 
 (defn maybe-unbox [x]
   (if (boxed? x)
@@ -211,10 +216,10 @@
         (widening-primitive-conversion? a b))
       (widening-reference-conversion? a b)
       (box-and-widen? a b)
-      (unbox-and-widen?  a b)
+      (unbox-and-widen? a b)
       false))
 
-(s/fdef primitive-or-boxed? :args (s/cat :x (s/nilable class?)) :ret boolean?)
+(s/fdef primitive-or-boxed? :args (s/cat :x class?) :ret boolean?)
 (defn primitive-or-boxed?
   "True if class x is a primitive, or the boxed version of a primitive, i.e. long or Long"
   [x]
@@ -222,11 +227,16 @@
    (or (get primitive->class- x)
        (get class->primitive x))))
 
-(s/fdef castable? :args (s/cat :a (s/nilable class?) :b (s/nilable class?)) :ret boolean?)
+(s/fdef castable? :args (s/cat :a class? :b class?) :ret boolean?)
 (defn castable?
   "True if class a can be implicitly cast to class b"
   [a b]
-  (boolean (and (primitive-or-boxed? a) (primitive-or-boxed? b))))
+  (let [a* (maybe-unbox a)
+        b* (maybe-unbox b)]
+    (boolean (and (primitive-or-boxed? a) (primitive-or-boxed? b)
+                  (or (= a* b*)
+                      (widening-primitive-conversion? a* b*)
+                      (narrowing-primitive-conversion? a* b*))))))
 
 (s/fdef narrowing? :args (s/cat :a class? :b class?) :ret boolean?)
 (defn narrowing?

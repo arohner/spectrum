@@ -41,18 +41,16 @@
       '?a #'int? [{'?a #'int?}]
       ;; or
       (t/or-t ['?a '?b]) '?a '[{}]
-      (t/or-t ['?a '?b]) '?x '[{?x ?a} {?x ?b}]
+      (t/or-t ['?a '?b]) '?x [{'?x (t/or-t ['?a '?b])}]
       (t/or-t [#'int?]) '?x [{'?x #'int?}]
 
       (t/or-t ['?a '?b]) #'int? [{'?a #'int?}
                                  {'?b #'int?}]
 
-      (t/or-t ['?a '?b]) (t/or-t [#'int? #'string?]) [{'?a #'clojure.core/int?}
-                                                      {'?b #'clojure.core/int?}
-                                                      {'?a #'clojure.core/string?}
-                                                      {'?b #'clojure.core/string?}]
+      (t/or-t ['?a '?b]) (t/or-t [#'int? #'string?]) [{'?a (t/or-t [#'clojure.core/int? #'clojure.core/string?])}
+                                                      {'?b (t/or-t [#'clojure.core/int? #'clojure.core/string?])}]
 
-      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '#{{?a ?x} {?a ?y} {?a ?z} {?b ?x} {?b ?y} {?b ?z}}
+      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '[{?a [or [?x ?y ?z]]} {?b [or [?x ?y ?z]]}]
 
       ;; cat
       (t/cat-t [(t/? '?a)]) (t/cat-t [(t/? #'int?)]) [{'?a #'int?}
@@ -158,11 +156,11 @@
       '?y '?y
 
       ;; or
-      (t/or-t #{'?a}) '?a
-      (t/or-t #{#'a? #'b?}) #'a?
-      (t/or-t #{#'a? #'b?}) (t/or-t #{#'a? #'b?})
-      (t/or-t #{#'a? '?x}) #'a?
-      (t/or-t #{#'a? '?x}) '?x
+      (t/or-t ['?a]) '?a
+      (t/or-t [#'a? #'b?]) #'a?
+      (t/or-t [#'a? #'b?]) (t/or-t [#'a? #'b?])
+      (t/or-t [#'a? '?x]) #'a?
+      (t/or-t [#'a? '?x]) '?x
 
       ;; and
       #'string? (t/and-t ['?x #'string?])
@@ -204,7 +202,7 @@
       ;; seq string vs char
       (t/seq-of #'char?) ['value "foo"]
 
-      (t/or-t #{(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])}) (t/cat-t ['?x])
+      (t/or-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])]) (t/cat-t ['?x])
 
       ;; ;; value
       '?x (t/value-t 3)
@@ -239,10 +237,10 @@
       #'a? #'b?
       (t/vector-of '?x) (t/seq-of '?x)
       (t/coll-of #'a?) (t/vector-of #'b?)
-      #'a? (t/or-t #{#'a? #'b?})
+      #'a? (t/or-t [#'a? #'b?])
 
       ;; or
-      (t/or-t #{#'a? #'b?}) #'c?
+      (t/or-t [#'a? #'b?]) #'c?
       ;; and
       (t/and-t ['?x '?y]) '?x
       (t/and-t [#'a? #'b? #'c?]) (t/and-t [#'a? #'b?])
@@ -300,23 +298,27 @@
   (are [ts ret] (= ret (t/and-t ts))
     ['?x] '?x
     ['?x '?y] ['and ['?x '?y]]
-    [['maybe '?y]] '?y
-    ['?x ['maybe '?y]] ['or ['?x '?y]]
     [#'any?] #'any?
-    ['?x '?y ['maybe '?z]] ['or ['?z ['and ['?x '?y]]]]))
+
+    ;; (t/and-t [#'a? (t/or-t [#'a? #'b?])]) #'a?
+    ;; (t/and-t [#'int? (t/or-t [#'even? #'odd?])]) #'a?
+    ))
 
 (deftest or-logic
   (are [ts ret] (= ret (t/or-t ts))
     ['?x] '?x
     ['?x '?y] ['or ['?x '?y]]
-    ['?x ['or ['?y '?z]]] ['or ['?x '?y '?z]]
-    ['?x ['maybe '?y]] ['or ['?x '?y]]
-    [['maybe '?y]] '?y))
+    ['?x ['or ['?y '?z]]] ['or ['?x '?y '?z]]))
 
 (deftest no-infinite-loops
-  (is (c/unify ['seq-of '?e] '?b+ [{'?b+ ['cat ['seq-of '?d]],
-                                    '?e ['or ['?b+ '?c]],
-                                    '?d ['or
-                                         [['seq-of '?g]
-                                          ['seq-of '?e]
-                                          ['cat ['or [#'clojure.core/seqable? ['seq-of '?h+]]]]]]}])))
+  (are [x y sub] (c/unify x y sub)
+    ['seq-of '?e] '?b+ [{'?b+ ['cat ['seq-of '?d]],
+                         '?e ['or ['?b+ '?c]],
+                         '?d ['or
+                              [['seq-of '?g]
+                               ['seq-of '?e]
+                               ['cat ['or [#'clojure.core/seqable? ['seq-of '?h+]]]]]]}]))
+
+(deftest perm-cache-works
+  (c/unify #'int? #'string?)
+  (is (seq @c/perm-cache)))

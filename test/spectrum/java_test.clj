@@ -42,3 +42,20 @@
       Double Double/TYPE
       Byte Long
       Byte/TYPE Long/TYPE)))
+
+(deftest castable-works
+  (testing "truthy"
+    (are [a b] (j/castable? a b)
+      Long/TYPE Long
+      Long Long/TYPE
+      Long Byte
+      Long/TYPE Byte/TYPE
+      Double Long/TYPE
+      Double/TYPE Long))
+
+  (testing "false"
+    (are [a b] (= false (j/castable? a b))
+      Long/TYPE String
+      String Long
+      Long Boolean
+      )))

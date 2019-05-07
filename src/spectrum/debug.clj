@@ -4,6 +4,7 @@
             [clojure.set :as set]
             [clojure.walk :as walk]
             [spectrum.conform :as c]
+            [spectrum.debug :as d]
             [spectrum.types :as t]
             [spectrum.util :refer [validate!]]))
 
@@ -24,10 +25,13 @@
                  (combo/subsets)
                  (butlast)
                  (map (fn [subset]
-                           (fn [subst]
-                             (println "shrink cat" path t "=>" (vec subset))
-                             (assert (get-in subst path))
-                             (assoc-in subst path (t/cat-t (vec subset)))))))
+                        (with-meta
+                          (fn [subst]
+                           (println "shrink cat" path t "=>" (vec subset))
+                           (assert (get-in subst path))
+                            (assoc-in subst path (t/cat-t (vec subset))))
+                          {::path path
+                           ::op 'cat}))))
             (->> vals
                  (map-indexed (fn [i t]
                                 (shrink-type-ops t (conj path (inc i)))))
@@ -44,13 +48,17 @@
                  (mapcat (fn [subset]
                            (->> subset
                                 (combo/permutations)
+                                (filter (fn [p]
+                                          (boolean (t/or-t (vec p)))))
                                 (mapcat (fn [p]
                                           (concat
-                                           [(fn [subst]
-                                              (println "shrink or" path t "=>" p)
-                                              (assert (get-in subst path))
-                                              (assoc-in subst path (t/or-t (vec p))))]
-                                           )))))))
+                                           [(with-meta
+                                              (fn [subst]
+                                               (println "shrink or" path t "=>" p)
+                                               (assert (get-in subst path))
+                                                (assoc-in subst path (t/or-t (vec p))))
+                                              {::path path
+                                               ::op 'or})])))))))
             (->> vals
                  (map-indexed (fn [i t]
                                 (shrink-type-ops t (conj path 1 i))))
@@ -68,10 +76,12 @@
                            (->> subset
                                 (combo/permutations)
                                 (map (fn [p]
-                                       (fn shrink-and [subst]
-                                         (println "shrink and" path t "=>" p)
-                                         (assert (get-in subst path))
-                                         (assoc-in subst path (t/and-t (vec p))))))))))
+                                       (with-meta (fn shrink-and [subst]
+                                                    (println "shrink and" path t "=>" p)
+                                                    (assert (get-in subst path))
+                                                    (assoc-in subst path (t/and-t (vec p))))
+                                         {::path path
+                                          ::op 'and})))))))
             (->> vals
                  (map-indexed (fn [i t]
                                 (shrink-type-ops t (conj path 1 i))))
@@ -87,8 +97,11 @@
   [subst]
   (let [ks (keys subst)]
     (->> [(map (fn [k]
-                 (fn [s]
-                   (dissoc s k))) ks)
+                 (with-meta
+                   (fn [s]
+                     (dissoc s k))
+                   {::path [k]
+                    ::op 'key})) ks)
           (mapcat (fn [k]
                     (shrink-substs-key subst [k])) ks)]
          (apply concat))))
@@ -118,13 +131,17 @@
   (< (subst-size a) (subst-size b)))
 
 (defn shrink
-  "Given f, a fn {subst truthy}, shrink subst until arriving at the smallest subst that still returns truthy"
+  "Given f, a fn of [subst -> bool], shrink subst until arriving at the smallest subst that still returns truthy"
   [f subst]
   (let [ops (shrink-substs-operations subst)]
     (let [op (->> ops
-               (filter (fn [op]
-                         (f (op subst))))
-               (first))]
+                  (filter (fn [op]
+                            (let [subst* (op subst)]
+                              (when-not (s/valid? ::c/subst subst*)
+                                (println "shrink invalid subst:" (-> f meta) subst*))
+                             (validate! ::c/subst subst*)
+                             (f subst*))))
+                  (first))]
       (if op
         (do
           (println "shrinking!")
@@ -132,7 +149,8 @@
           (recur f (op subst)))
         subst))))
 
-(defn with-assert? [f]
+(defn with-assert?
+  [f]
   (fn [subst]
     (try
       (f subst)

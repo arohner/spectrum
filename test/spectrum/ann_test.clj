@@ -3,7 +3,7 @@
             [spectrum.ann :as ann]
             [spectrum.conform :as c]
             [spectrum.flow :as f]
-            [spectrum.types :as t])
+            [spectrum.types :as t :refer [value-t class-t]])
   (:import [clojure.lang IChunkedSeq ISeq LazySeq]
            [java.lang Iterable]
            [java.util Map]))
@@ -35,7 +35,9 @@
 
 (deftest isa-t
   (are [a b] (t/isa-t? a b)
-    (t/coll-of '?x) (t/vector-of '?x))
+    (t/coll-of '?x) (t/vector-of '?x)
+    (t/vector-of '?x) (t/vector-of '?y)
+    ['chunk-buffer '?x] ['chunk-buffer '?y])
 
   (testing "falsey"
     (are [a b] (not (t/isa-t? a b))
@@ -51,6 +53,11 @@
     #'nil? (t/value-t nil)
     (t/value-t true) #'true?
     #'int? (t/value-t 1)
+    #'t/value-t? (t/value-t 1)
+
+    #'int? (class-t Integer/TYPE)
+
+    #'boolean? (class-t Boolean/TYPE)
 
     (t/seq-of '?x) (t/seq-of '?x)
     (t/coll-of '?x) (t/seq-of '?x)
@@ -58,6 +65,9 @@
 
     (t/coll-of '?x) (t/vector-of '?x)
     (t/coll-of #'a?) (t/vector-of #'a?)
+
+    #'keyword? #'simple-keyword?
+    #'keyword? #'qualified-keyword?
 
     #'seqable? #'seq?
     #'seqable? (t/class-t ISeq)
@@ -99,6 +109,9 @@
   (testing "invalid"
     (are [a b] (not (c/valid? a b))
 
+      #'qualified-keyword? #'keyword?
+      #'simple-keyword? #'qualified-keyword?
+
       #'int? ['class Map]
 
       (t/seq-of '?x) (t/class-t IChunkedSeq)
@@ -120,6 +133,10 @@
       ['fn {['?t2] '?t3}] #'fn?
       ['fn {['?t2] '?t3}] #'ifn?
       )))
+
+(deftest hierarchy
+  (is (seq (t/descendants #'number?)))
+  (is (seq (t/parents #'even?))))
 
 (deftest integration-tests
   (testing "truthy"
@@ -226,8 +243,24 @@
   (testing "truthy"
     (are [form args ret] (c/valid? ret (f/infer-form form args))
       '(conj x y) {:x ['coll-of #'int?] :y #'int?} ['coll-of #'int?]
-      '(conj x y) {:x ['coll-of #'int?] :y #'string?} ['coll-of ['or [#'int? #'string?]]]))
+      '(conj x y) {:x ['vector-of #'int?] :y #'int?} ['coll-of #'int?]
+      '(conj x y) {:x ['set-of #'int?] :y #'int?} ['coll-of #'int?]
+      '(conj x y) {:x ['coll-of #'int?] :y #'string?} ['coll-of ['or [#'int? #'string?]]]
+
+      ;; '(conj x y) {:x ['vector-of #'int?] :y #'int?} ['vector-of #'int?]
+      ;; '(conj x y) {:x ['set-of #'int?] :y #'int?} ['set-of #'int?]
+      ))
 
   (testing "falsey"
     (are [form args] (not (f/infer-form form args))
       '(conj x y) {:x ['value 1] :y ['value 2]})))
+
+(deftest equiv-tests
+  (are [a b ret] (c/valid? ret (f/infer-form '(= x y) {:x a :y b}))
+    (t/value-t true) (t/value-t true) (t/value-t true)
+    (t/value-t true) (t/value-t false) (t/value-t false)
+    (t/value-t false) (t/value-t true) (t/value-t false)
+
+    (t/value-t 3) #'int? #'boolean?
+
+    #'int? #'string? #'boolean?))

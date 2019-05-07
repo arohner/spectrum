@@ -170,8 +170,19 @@
 (defmethod create-typename :default [context a path]
   (store-type! context (t/new-logic) a path))
 
+(defn binding-fn-method-analysis?
+  "True if we have analysis for the :fn-method this :binding belongs to"
+  [a path]
+  {:post [(do (println "binding-fn-method-analysis?" path "=>" %) true)]}
+  (-> (get-in a (-> path pop pop))
+      :op
+      (= :fn-method)))
+
 (defn binding-variance [a path]
-  {:post [(do (println "binding" path %) true)]}
+  {:post [(do (println "binding-variance" path (get-in a (conj path :local)) "=>" %) true)]}
+  ;;; TODO we want 'normal' fn args to be covariant, but parameters
+  ;;; that are called as fns to be contra or bivariant, but it's hard
+  ;;; to determine that when creating the type
   (condp = (get-in a (conj path :local))
     :arg :bivariant
     :let :covariant
@@ -366,10 +377,35 @@
        :else [])
      (with-form-meta context a path))))
 
+(def const-type-pred {:vector #'vector?
+                      :map #'map?
+                      :set #'set?})
+
+(def const-type-dispatch :type)
+
+(defmulti const-type
+  "Given a :const node, return the spectrum type" #'const-type-dispatch)
+
+(defmethod const-type :vector [a]
+  (println "const-type vector" a)
+  (println "const-type :vector a:" (t/or-t (map t/value-t (:val a))))
+
+  (t/and-t [(if (seq (:val a))
+              (t/vector-of (t/or-t (map t/value-t (:val a))))
+              (t/and-t [(t/cat-t []) #'vector?]))
+            (t/value-t (:val a))]))
+
+(defmethod const-type :default [a]
+  {:post [(do (println "const-type :default" (:form a) "=>" %) true)]}
+  (t/canonicalize (t/value-t (:val a))))
+
 (defmethod get-equations* :const [context a path]
+  {:post [(do (println "get-eq :const" path "=>" %) true)]}
   (let [a* (get-in a path)
-        t (get-type! context a path)]
-    (->> [(eq/eq t (t/canonicalize (t/value-t (:val a*))))]
+        t (get-type! context a path)
+        tv-pred (get const-type-pred (:type a*))
+        tv (const-type a*)]
+    (->> [(eq/eq t tv)]
          (with-form-meta context a path))))
 
 (defmethod get-equations* :def [context a path]
@@ -427,24 +463,25 @@
         t (get-type! context a path)
         ret-t (get-type! context a (conj path :ret))
         ret-type (get-type! context a (conj path :body))
+        params (:params a*)
+        variadic? (-> params last :variadic?)
         arg-ts (map-sequential-children get-type! context a path :params)
         recur-paths (get-recur-paths a path)
         recur-ts (map (fn [p]
                         (map-sequential-children get-type! context a p :exprs)) recur-paths)
         recur-args (when (seq recur-ts)
-                     (apply map (fn [& args] (t/or-t args)) recur-ts))
-        arg-eqs (map (fn [t recur-t]
-                       ;; TODO look up fn spec here and apply
-                       (eq/eq t (if recur-t
-                                  (t/or-t [(t/new-logic "arg") recur-t])
-                                  (t/new-logic "arg")))) arg-ts (or (seq recur-args) (repeat (count arg-ts) nil)))]
+                     (apply map (fn [& args] (t/or-t args)) recur-ts))]
     (->>
      (concat
       (get-equations-sequential context a path :params)
       (get-equations context a path :body)
-      [(eq/eq t (t/fn-t {arg-ts
+      (when variadic?
+        [(eq/eq (get-type! context a (conj path :params (dec (count params)))) (t/spec-t (t/seq-of (t/freshen '?x+))))])
+      [
+       (eq/eq t (t/fn-t {arg-ts
                          ret-type}))
        (eq/eq ret-t ret-type)])
+     (filter identity)
      (with-form-meta context a path))))
 
 (defmethod get-equations* :local [context a path]
@@ -1140,7 +1177,8 @@
     (->>
      (concat
       (get-equations-sequential context a path :items)
-      [(eq/eq t (t/cat-t (map-sequential-children get-type! context a path :items)))])
+      [(eq/eq t (t/and-t [(t/cat-t (map-sequential-children get-type! context a path :items))
+                          (t/vector-of (c/value-coll-type (map-sequential-children get-type! context a path :items)))]))])
      (with-form-meta context a path))))
 
 (defmethod get-equations* :loop [context a path]
@@ -1221,7 +1259,7 @@
     (let [[_ l r] eq]
       (let [substs* (seq (c/unify l r substs))]
         (if substs*
-          (assoc state :substs (c/merge-substs substs*))
+          (assoc state :substs substs*)
           (assoc state :fail eq))))))
 
 (defmethod unify-equation :conde! [{:keys [substs fail] :as state} eq]
@@ -1236,8 +1274,12 @@
                              (validate! ::eq/equation then)
                              (let [state (unify-equation state test)]
                                (if (not (:fail state))
-                                 (unify-equation state then)
-                                 nil))))
+                                 (do
+                                   (println "conde:" test "matched")
+                                   (unify-equation state then))
+                                 (do
+                                   (println "conde" test "failed")
+                                   nil)))))
                       (doall))]
       (or
        (when (every? nil? states)
@@ -1265,15 +1307,14 @@
   (let [state {:substs [{}] :fail nil :i 0}]
     (->> eqs
          (reduce (fn [state eq]
-                   ;; (println "unify-all eq" (:i state) eq)
+                   (println "unify-all eq" (:i state) eq)
                    (def state state)
                    (def eq eq)
                    (let [substs-old (:substs state)
                          {:keys [substs] :as state} (unify-equation state eq)
                          state (update-in state [:i] inc)]
                      (if (not (:fail state))
-                       (let [substs* (c/merge-substs substs)]
-                         (assoc state :substs substs*))
+                       (assoc state :substs substs)
                        state))) state))))
 
 (defn store-var-inference-results [context a substs]
@@ -1283,7 +1324,6 @@
                     v (get-in a (conj def-p :var))
                     init-p (conj def-p :init)
                     t (get-type! context a init-p)
-                    substs (c/merge-substs substs)
                     _ (println "resolving" t)
                     v-s (c/resolve-type t substs)]
                 (assert v-s)
@@ -1537,7 +1577,6 @@
           _ (println "infer" (count eqs) "equations")
           _ (pprint eqs)
           {:keys [substs fail]} (unify-all-equations eqs)
-          substs (c/merge-substs substs)
           _ (println "infer" "done unifying" (count substs) (count (distinct substs)))
           t (get-type! context a [])]
       (def context context)

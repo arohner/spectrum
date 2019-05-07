@@ -4,7 +4,7 @@
             [spectrum.conform :as c]
             [spectrum.data :as data :refer [ann]]
             [spectrum.java :as j]
-            [spectrum.types :as t]
+            [spectrum.types :as t :refer [class-t not-t value-t value-t? and-t or-t]]
             [spectrum.util :refer (print-once validate!)])
   (:import (clojure.lang BigInt
                          Ratio
@@ -187,8 +187,11 @@
                                                   ['[value ?x] '[not [value '?x]]] ['value false]
                                                   [#'any? #'any?] ['class Boolean/TYPE]}))
 
-(ann-method clojure.lang.Util 'equiv (t/fn-t {['[value ?x] '[value ?x]] ['value true]
-                                              [#'any? #'any?] ['class Boolean/TYPE]}))
+(ann-method clojure.lang.Util 'equiv (t/fn-t {[(value-t '?x) (value-t '?x)] (value-t true)
+                                              [(value-t '?x) (and-t [(value-t '?y) (not-t (value-t '?x))])] (value-t false)
+                                              [(t/value-t '?x) (not-t #'t/value-t?)] (class-t Boolean/TYPE)
+                                              [(not-t #'t/value-t?) (not-t (t/value-t '?x))] (class-t Boolean/TYPE)
+                                              [(not-t #'t/value-t?) (not-t #'t/value-t?)] (class-t Boolean/TYPE)}))
 
 ;; (ann-method clojure.lang.RT 'iter (t/fn-t {[['class Iterable]] ['class Iterator]
 ;;                                            [#'nil?] ['class Iterator]}))

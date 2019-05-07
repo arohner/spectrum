@@ -188,6 +188,14 @@
       (str)
       (Boolean/getBoolean)))
 
+(defn get-prefers-table [mm]
+  (.getPreferTable mm))
+
+(defn prefers? [mm x y]
+  (-> (private-method clojure.lang.MultiFn :prefers [Object Object] mm x y)
+      (str)
+      (Boolean/getBoolean)))
+
 (defn debug-multimethod-dispatch
   "Given the arguments to call a multimethod with, print debugging information about why a method was chosen"
   [mm args]
@@ -204,7 +212,8 @@
                        (if (or (nil? best) (dominates? mm ek bk))
                          entry
                          best)
-                       best))) nil)
+                       best)))
+                 nil)
          ((fn [best]
             (if (nil? best)
               default
