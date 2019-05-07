@@ -44,19 +44,19 @@
       (t/or-t ['?a '?b]) '?x [{'?x (t/or-t ['?a '?b])}]
       (t/or-t [#'int?]) '?x [{'?x #'int?}]
 
-      (t/or-t ['?a '?b]) #'int? [{'?a #'int?}
-                                 {'?b #'int?}]
+      (t/or-t ['?a '?b]) #'int? [{'?a (t/or-t [#'int? '?a])
+                                  '?b (t/or-t [#'int? '?b])}]
 
-      (t/or-t ['?a '?b]) (t/or-t [#'int? #'string?]) [{'?a (t/or-t [#'clojure.core/int? #'clojure.core/string?])}
-                                                      {'?b (t/or-t [#'clojure.core/int? #'clojure.core/string?])}]
+      (t/or-t ['?a '?b]) (t/or-t [#'int? #'string?]) [{'?a (t/or-t [#'clojure.core/int? #'clojure.core/string? '?a])
+                                                       '?b (t/or-t [#'clojure.core/int? #'clojure.core/string? '?b])}]
 
-      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '[{?a [or [?x ?y ?z]]} {?b [or [?x ?y ?z]]}]
+      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '[{?a [or [?a ?x ?y ?z]]
+                                                   ?b [or [?b ?x ?y ?z]]}]
 
       ;; cat
-      (t/cat-t [(t/? '?a)]) (t/cat-t [(t/? #'int?)]) [{'?a #'int?}
-                                                      {}]
+      (t/cat-t [(t/? '?a)]) (t/cat-t [(t/? #'int?)]) [{'?a ['or [#'int? '?a]]}]
 
-      (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{} {'?a #'int?}]
+      (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{'?a ['or [#'int? '?a]]}]
 
       (t/cat-t [(t/seq-of '?x)]) (t/cat-t ['?y]) [{'?y (t/seq-of '?x)}]
 

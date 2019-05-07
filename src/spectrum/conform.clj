@@ -142,20 +142,18 @@
 (defmethod unify-terms [#'any? #'any?] [x y subst]
   (unify-any-any x y subst))
 
-(s/fdef merge-substs :args (s/cat :s ::substs) :ret ::substs)
 (defn merge-substs
   [substs]
-  ;;; can't merge substs that differ by keys, because e.g. [{?x
-  ;;; foo?}{}] will lose the fact that x is possibly free
-  (if (> (count substs) 1)
+  (let [ks (apply set/union (map (comp set keys) substs))]
     (->> substs
-         (group-by (fn [s] (-> s keys set)))
-         (mapv (fn [[ks ss]]
-                 (->> ks
-                      (map (fn [k]
-                             [k (t/or-t (map (fn [s] (get s k)) ss))]))
-                      (into {})))))
-    substs))
+         (reduce (fn [final s]
+                   (reduce (fn [final k]
+                             (let [v (get s k k)]
+                               (update-in final [k] (fnil conj #{}) v))) final ks)) {})
+         (map (fn [[k vs]]
+                [k (t/or-t (vec vs))]))
+         (into {})
+         (conj []))))
 
 (defmethod unify-terms [#'any? nil] [x y subst]
   nil)
