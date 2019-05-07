@@ -624,7 +624,7 @@
     (when x
       (if (t/regex? x)
         (->>
-         (concat (first-t x) (when (accept-nil? x)
+         (concat (first-t x) (when (and (accept-nil? x) xr)
                                (first-t (t/cat-t xr))))
          (filter identity)
          ((fn [ts]
@@ -703,7 +703,7 @@
                                     (seq xr) (t/cat-t xr)
                                     :else nil)
                            :substs substs})))))
-          (when (accept-nil? x)
+          (when (and (accept-nil? x) xr)
             (dx (t/cat-t xr) y substs))]
          (apply concat)
          (filter identity)

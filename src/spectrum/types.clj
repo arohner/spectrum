@@ -628,7 +628,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
         ts (distinct ts)]
     (vec (sort-ts ts))))
 
-(s/fdef or-t :args (s/cat :ts (s/coll-of any? :kind vector?)) :ret any?)
+(s/fdef or-t :args (s/cat :ts (s/coll-of any?)) :ret any?)
 (defn or-t [ts]
   (let [ts (if (> (count ts) 1)
              (or-consolidate ts)
