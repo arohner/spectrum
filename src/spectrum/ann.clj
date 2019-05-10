@@ -183,15 +183,30 @@
                         [(t/not-t (t/or-t [#'keyword? #'symbol? #'string?]))] #'nil?
                         [#'string? #'string?] #'qualified-keyword?}))
 
+(def bool-t (class-t Boolean/TYPE))
+(def long-t (class-t Long/TYPE))
+(def double-t (class-t Double/TYPE))
+(def Number-t (class-t Number))
+
 (ann-method clojure.lang.Util 'identical (t/fn-t {['[value ?x] '[value ?x]] ['value true]
                                                   ['[value ?x] '[not [value '?x]]] ['value false]
-                                                  [#'any? #'any?] ['class Boolean/TYPE]}))
+                                                  [#'any? #'any?] ['class bool-t]}))
 
 (ann-method clojure.lang.Util 'equiv (t/fn-t {[(value-t '?x) (value-t '?x)] (value-t true)
                                               [(value-t '?x) (and-t [(value-t '?y) (not-t (value-t '?x))])] (value-t false)
-                                              [(t/value-t '?x) (not-t #'t/value-t?)] (class-t Boolean/TYPE)
-                                              [(not-t #'t/value-t?) (not-t (t/value-t '?x))] (class-t Boolean/TYPE)
-                                              [(not-t #'t/value-t?) (not-t #'t/value-t?)] (class-t Boolean/TYPE)}))
+                                              [(t/value-t '?x) (not-t #'t/value-t?)] bool-t
+                                              [(not-t #'t/value-t?) (not-t (t/value-t '?x))] bool-t
+                                              [(not-t #'t/value-t?) (not-t #'t/value-t?)] bool-t}))
+
+(ann-method clojure.lang.Numbers 'add (t/fn-t {[long-t double-t] double-t
+                                               [double-t Number-t] double-t
+                                               [Number-t double-t] double-t
+                                               [Number-t Number-t] Number-t
+                                               [long-t long-t] long-t
+                                               [Number-t long-t] Number-t
+                                               [double-t double-t] double-t
+                                               [double-t long-t] double-t
+                                               [long-t Number-t] Number-t}))
 
 ;; (ann-method clojure.lang.RT 'iter (t/fn-t {[['class Iterable]] ['class Iterator]
 ;;                                            [#'nil?] ['class Iterator]}))
