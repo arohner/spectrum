@@ -498,7 +498,6 @@
 
 (defmethod get-equations* :the-var [context a path]
   (let [a* (get-in a path)
-        v (-> a* :var)
         t (get-type! context a path)]
     (->> [(eq/eq t #'var?)]
          (with-form-meta context a path))))
@@ -645,7 +644,7 @@
                   (when (= :def (:op a*))
                     (data/store-var-analysis (:var a*) a path)))) a))
 
-(defn analyze-cache-ns [ns]
+(defn analyze-cache-ns- [ns]
   (let [env (ana.jvm/empty-env)
         as (analyzer/analyze-ns-1 ns env)]
     (dorun (map analyze-cache-a as))))
@@ -655,17 +654,23 @@
        (map analyze-cache-a)
        (dorun)))
 
+(s/fdef analyze-ns :args (s/cat :ns namespace?))
+(defn analyze-ns [ns]
+  (data/mark-ns-analyzed! ns)
+  (println "analyzing" ns)
+  (binding [*warn-on-reflection* false]
+    (analyze-cache-ns- ns)))
+
+(s/fdef ensure-analysis :args (s/cat :ns namespace?))
 (defn ensure-analysis [ns]
   (try
     (when-not (data/analyzed-ns? ns)
-      (data/mark-ns-analyzed! ns)
-      (println "analyzing" ns)
-      (binding [*warn-on-reflection* false]
-        (analyze-cache-ns ns)))
+      (analyze-ns ns))
     (catch Throwable t
       (data/mark-ns-unanalyzed! ns)
       (throw t))))
 
+(s/fdef ensure-analysis-var :args (s/cat :v var?))
 (defn ensure-analysis-var [v]
   (ensure-analysis (.ns v)))
 
@@ -754,7 +759,7 @@
         t (get-type! context a path)]
     (if (self-var-reference? a path)
       []
-      (->> [(eq/eq t (c/get-var-type v))]
+      (->> [(eq/eq t (t/freshen (c/get-var-type v)))]
            (with-form-meta context a path)))))
 
 (defn invoke-local?
@@ -1573,6 +1578,7 @@
     (when dependencies?
       (infer-dependencies a))
     (assign-typenames context a)
+    (debug-all-types context)
     (let [eqs (get-equations context a)
           _ (println "infer" (count eqs) "equations")
           _ (pprint eqs)
@@ -1583,7 +1589,6 @@
       (def substs substs)
       (def t t)
       (def eqs eqs)
-      (debug-all-types context)
       (debug-form-eqs context eqs)
       (if fail
         (debug-failure context a eqs substs fail)

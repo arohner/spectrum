@@ -76,6 +76,7 @@
     #'seqable? (t/seq-of '?x)
     #'seqable? (t/vector-of '?x)
     #'seqable? (t/map-of '?x '?y)
+    #'seqable? (t/value-t nil)
 
     (t/class-t Object) #'any?
     (t/class-t ISeq) (t/seq-of '?x)
@@ -116,6 +117,7 @@
 
       (t/seq-of '?x) (t/class-t IChunkedSeq)
 
+      #'seq? ['value nil]
       ;;spec
 
       (t/cat-t [#'int? #'string?]) [3 "foo"] ;; missing value-t
@@ -198,7 +200,8 @@
 
   (testing "args"
     (are [form args ret] (c/unify ret (f/infer-form form args))
-      '(first x) {:x ['seq-of #'int?]} ['or #{#'int? #'nil?}]
+      '(first x) {:x ['spec ['seq-of #'int?]]} ['or #{#'int? #'nil?}]
+      '(first x) {:x ['coll-of #'int?]} ['or #{#'int? #'nil?}]
       '(cons x y) {:x '?x :y (t/seq-of '?y)} ['cat '?x (t/seq-of '?y)]
       ))
 

@@ -141,18 +141,18 @@
                      ['?x '?y '?z] (t/and-t [(t/cat-t ['?x '?y '?z]) #'list?])
                      ['?x '?y '?z ['seq-of '?s]] (t/and-t [(t/cat-t ['?x '?y '?z ['seq-of '?s]]) #'list?])}))
 
-(ann #'seq (t/fn-t {[(t/seq-of '?x)] (t/seq-of '?x)
-                    [(t/class-t Iterable)] (t/seq-of '?x)
-                    [(t/class-t CharSequence)] (t/seq-of (t/class-t Character))
-                    [(t/class-t Map)] (t/seq-of (t/cat-t ['?k '?v]))
-                    [(t/map-of '?x '?y)] (t/seq-of (t/cat-t ['?x '?y]))
+(ann #'seq (t/fn-t {[(t/spec-t (t/seq-of '?x+))] (t/spec-t (t/seq-of '?x+))
+                    [(t/class-t Iterable)] (t/spec-t (t/seq-of '?x+))
+                    [(t/class-t CharSequence)] (t/spec-t (t/seq-of (t/class-t Character)))
+                    [(t/class-t Map)] (t/spec-t (t/seq-of (t/cat-t ['?k+ '?v+])))
+                    [(t/map-of '?x+ '?y+)] (t/spec-t (t/seq-of (t/cat-t ['?x+ '?y+])))
                     ;; todo array-of
-                    [(t/class-t Seqable)] (t/seq-of '?x)
+                    [(t/class-t Seqable)] (t/spec-t (t/seq-of '?x+))
                     }))
 
-(ann #'cons (t/fn-t {['?x #'nil?] (t/and-t [(t/cat-t ['?x]) (t/class-t ISeq)])
-                     ['?x (t/seq-of '?y)] (t/and-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/class-t ISeq)])
-                     ['?x #'seqable?] (t/and-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/class-t ISeq)])}))
+(ann #'cons (t/fn-t {['?x+ #'nil?] (t/and-t [(t/cat-t ['?x+]) (t/class-t ISeq)])
+                     ['?x+ (t/seq-of '?y+)] (t/and-t [(t/cat-t ['?x+ (t/seq-of '?y+)]) (t/class-t ISeq)])
+                     ['?x+ #'seqable?] (t/and-t [(t/cat-t ['?x+ (t/seq-of '?y+)]) (t/class-t ISeq)])}))
 
 (ann #'conj (t/fn-t {[['cat]] ['value []]
                      ['?x+] '?x+
@@ -165,10 +165,10 @@
                       [#'seq?] (t/or-t ['?x+ #'nil?])
                       [#'seqable?] (t/or-t ['?x+ #'nil?])}))
 
-(ann #'next (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t [(t/seq-of '?a) #'nil?])
+(ann #'next (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])
                      [#'seqable?] (t/or-t ['?x+ #'nil?])}))
 
-(ann #'rest (t/fn-t {[(t/spec-t (t/seq-of '?a))] (t/or-t [(t/seq-of '?a) #'nil?])
+(ann #'rest (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])
                      [#'seqable?] (t/or-t ['?x #'nil?])}))
 
 ;; TODO incomplete

@@ -802,7 +802,6 @@
 (defn unify-tagged-tagged-default
   "Default method for two tagged types. Unify if their (one each) type value unifies"
   [x y substs]
-  {:post [(do (println "tagged default:" x y "=>" %) true)]}
   (when-let [substs (and (t/isa-t? x y) (unify (t/type-value x) (t/type-value y) substs))]
     substs))
 
@@ -963,6 +962,10 @@
     (when (seqable? yv)
       (unify (t/type-value x) (t/cat-t (map t/value-t yv)) substs))))
 
+(defmethod unify-terms [#'any? 'spec] [x y substs]
+  (when (not (t/regex? x))
+    (unify x (t/type-value y) substs)))
+
 (defn derive-all-any
   "We need all tagged types to derive from #'any?, so default dispatching works"
   []
@@ -1086,6 +1089,7 @@
 (prefer-method unify-terms [#'any? #'t/logic?] ['value #'any?])
 (prefer-method unify-terms [#'any? #'t/logic?] ['and #'any?])
 (prefer-method unify-terms [#'any? #'t/logic?] ['class #'any?])
+(prefer-method unify-terms [#'t/logic? #'any?] [#'any? 'spec])
 (prefer-method unify-terms [#'any? 'and] ['or #'any?] )
 (prefer-method unify-terms [#'any? 'and] ['sequential #'any?])
 (prefer-method unify-terms [#'any? 'and] ['value #'any?])
@@ -1124,6 +1128,10 @@
 (prefer-method unify-terms [#'coll? 'value] [#'any? #'any?])
 (prefer-method unify-terms [#'coll? 'value] [#'dx? 'value])
 (prefer-method unify-terms [#'coll? 'value] [#'dx? #'dx?])
+(prefer-method unify-terms [#'any? 'spec] ['value #'any?])
+(prefer-method unify-terms [#'any? 'spec] ['or #'any?])
+(prefer-method unify-terms [#'any? 'spec] ['not #'any?])
+(prefer-method unify-terms [#'any? 'spec] ['class #'any?])
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))

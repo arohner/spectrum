@@ -461,7 +461,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
     (->> fns
          (map second)
          (apply merge)
-         (simplify-arities)
          (fn-t))))
 
 (s/fdef fn-args :args (s/cat :f ::fn-t) :ret ::type)

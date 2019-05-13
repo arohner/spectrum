@@ -217,6 +217,8 @@
       ;; spec
       (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?x))
       (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?y))
+      #'seqable? (t/spec-t (t/seq-of '?y))
+
       (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t ['?y])
       (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/cat-t [(t/spec-t (t/cat-t [#'int?]))])
 
