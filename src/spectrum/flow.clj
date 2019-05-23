@@ -1115,11 +1115,12 @@
 (defn get-constructor-t
   "Return an fn-t for this class constructor"
   [cls arity]
-  {:post [(do (when-not % (println "get-constructor failed:" cls arity)) true) %]}
-  (or (data/get-ann cls)
-      (->> (j/get-java-constructors cls arity)
-           (map constructor->fn-t)
-           (t/merge-fns))))
+  {:post [(t/fresh-tagged? %)]}
+  (t/freshen
+   (or (data/get-ann cls)
+       (->> (j/get-java-constructors cls arity)
+            (map constructor->fn-t)
+            (t/merge-fns)))))
 
 (defmethod get-equations* :new [context a path]
   (let [a* (get-in a path)

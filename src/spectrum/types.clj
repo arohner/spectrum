@@ -19,7 +19,7 @@
 (def ignore? (partial = '_))
 
 (defn logic? [x]
-  (or (and (symbol? x) (= \? (-> x name first)))
+  (or (and (symbol? x) (= \? (-> x name (.charAt 0))))
       (ignore? x)))
 
 (s/fdef logic-name :args (s/cat :l logic?) :ret string?)
@@ -28,6 +28,14 @@
     (name %)
     (re-find #"^\?(\p{Lower}+[-+±]?)" %)
     (second %)))
+
+(defn logic-number
+  [x]
+  (some->> x
+           name
+           (re-find #"^\?\p{Lower}+[-+±]?(\d+)$")
+           second
+           (Integer/parseInt)))
 
 (defn free-t?
   ([t subst]
@@ -75,15 +83,23 @@
    (let [next (swap! type-counter inc)]
      (symbol (str "?" (if (logic? t) (logic-name t) t) next)))))
 
+
+(defn mapwalk
+  "walk an arbitrary structure similar to clojure.walk/postwalk, but non-destructive. Returns nil"
+  [f form]
+  (cond
+    (seqable? form) (dorun (map (partial mapwalk f) form))
+    :else (f form))
+  nil)
+
 (s/fdef get-lvars :ret (s/nilable (s/coll-of symbol? :kind set?)))
 (defn get-lvars
   "Return a set of logic variables in expression"
   [expr]
   (let [lvars (atom #{})]
-    (walk/postwalk (fn [f]
-                     (when (logic? f)
+    (mapwalk (fn [f] (when (logic? f)
                        (swap! lvars conj f)))
-                   expr)
+             expr)
     @lvars))
 
 (defn rename
@@ -102,11 +118,16 @@
   "Walk form, replacing all logic variables with unique versions"
   [form]
   (let [lvars (get-lvars form)
-        replace-map (->> lvars (map (fn [l] [l (new-logic (logic-name l))])) (into {}))]
+        replace-map (->> lvars (map (fn [l] [l (if (logic-number l)
+                                                 l
+                                                 (new-logic (logic-name l)))])) (into {}))]
     (println "freshen" replace-map)
     (rename replace-map form)))
 
-(s/def ::type-atom (s/or :s symbol? :v var?))
+(s/def ::type-atom (s/or :s logic? :v var?))
+
+(s/def ::fresh-logic (s/and logic? logic-number))
+(s/def ::fresh-type-atom (s/or :s ::fresh-logic :v var?))
 
 (defn tagged? [t]
   (and (vector? t)
@@ -114,7 +135,15 @@
        (-> t (nth 0) symbol?)
        (not (logic? (nth t 0)))))
 
+(defn fresh-tagged? [t]
+  (and (vector? t)
+       (pos? (count t))
+       (-> t (nth 0) symbol?)
+       (not (logic? (nth t 0)))
+       (every? logic-number (get-lvars t))))
+
 (s/def ::type (s/or :ta ::type-atom :tagged-type tagged?))
+(s/def ::fresh-type (s/or :ta ::fresh-type-atom :tagged-type fresh-tagged?))
 
 (defn type? [x]
   (s/valid? ::type x))
@@ -552,7 +581,8 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
        (mapcat (fn [t]
                  (concat [t] (get-equiv-types t))))
        (filter identity)
-       (set)))
+       (set)
+       (#(disj % t))))
 
 (defn class-cast
   "cast to class-t if the type can be cast _without losing precision_, else nil"
