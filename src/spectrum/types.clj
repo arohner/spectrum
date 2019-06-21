@@ -367,7 +367,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
      (when ret
        (reset! types-hierarchy ret)))))
 
-(s/fdef parents :args (s/cat :t ::type) :ret (s/nilable (s/coll-of ::type)))
+(s/fdef parents :args (s/cat :t (s/or :t ::type :s symbol?)) :ret (s/nilable (s/coll-of (s/or :t ::type :s symbol?))))
 (defn parents
   "Same as clojure.core/parents, but for types"
   [t]
@@ -457,6 +457,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
          (mapv disentangle)
          (apply combo/cartesian-product)
          (map cat-t))))
+
+(defmethod disentangle* 'and [t]
+  (->> (type-value t)
+       (mapv disentangle)
+       (apply combo/cartesian-product)
+       (map and-t)))
 
 (defn interleave-cats
   "Given several cats of the same length, return a single cat with each
@@ -572,7 +578,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   (swap! equiv-types update y (fnil conj #{}) x)
   nil)
 
-(s/fdef ancestors :args (s/cat :t ::type) :ret (s/coll-of ::type))
+(s/fdef ancestors :args (s/cat :t (s/or :t ::type :s symbol?)) :ret (s/coll-of (s/or :t ::type :s symbol?)))
 (defn ancestors [t]
   (->> t
        (parents)

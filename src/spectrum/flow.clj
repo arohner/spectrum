@@ -179,7 +179,7 @@
       (= :fn-method)))
 
 (defn binding-variance [a path]
-  {:post [(do (println "binding-variance" path (get-in a (conj path :local)) "=>" %) true)]}
+  ;; {:post [(do (println "binding-variance" path (get-in a (conj path :local)) "=>" %) true)]}
   ;;; TODO we want 'normal' fn args to be covariant, but parameters
   ;;; that are called as fns to be contra or bivariant, but it's hard
   ;;; to determine that when creating the type
@@ -1281,10 +1281,10 @@
                              (let [state (unify-equation state test)]
                                (if (not (:fail state))
                                  (do
-                                   (println "conde:" test "matched")
+                                   ;; (println "conde:" test "matched")
                                    (unify-equation state then))
                                  (do
-                                   (println "conde" test "failed")
+                                   ;; (println "conde" test "failed")
                                    nil)))))
                       (doall))]
       (or

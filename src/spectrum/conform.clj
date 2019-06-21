@@ -426,8 +426,8 @@
       (binding [*cache-hit-stats* (atom {})]
         (let [ret (unify-f x y substs)
               cache @*cache-hit-stats*]
-          (when (::cache-total cache)
-            (println "unify" x y "cache-hit-stats:" (format "%d/%d=%.2f%%" (::cache-hit cache) (::cache-total cache) (* 100 (/ (::cache-hit cache) (double (::cache-total cache)))))))
+          ;; (when (::cache-total cache)
+          ;;   (println "unify" x y "cache-hit-stats:" (format "%d/%d=%.2f%%" (::cache-hit cache) (::cache-total cache) (* 100 (/ (::cache-hit cache) (double (::cache-total cache)))))))
           ret)))))
 
 (defn with-merge-substs [unify-f]
