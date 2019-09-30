@@ -4,6 +4,7 @@
             [clojure.spec.alpha :as s]
             [clojure.spec.test.alpha :as spec-test]
             [spectrum.conform :as c]
+            [spectrum.equations :as eq]
             [spectrum.flow :as f]
             [spectrum.types :as t])
   (:import [clojure.lang IChunk]))
@@ -25,3 +26,19 @@
   (are [f ret] (c/valid? ret (f/infer-form f))
     '(fn [s] (if (chunked-seq? s) (chunk-first s))) ['fn
                                                      {['cat '?x] ['or [#'nil? ['chunk '?y]]]}]))
+
+(deftest simplify-regex
+  (are [e] (s/valid? ::eq/equation (f/simplify-equation e))
+    (eq/<= ['cat ['value '?x33] ['not ['value '?x33]]] ['cat '?t2 '?t3])
+    (eq/<= ['cat ['value '?x33] ['not ['value '?x33]]] ['cat '?t2 '?t3 '?t4])
+    (eq/<= ['cat ['value '?x33]] ['cat '?t2 '?t3 '?t4])))
+
+
+(defn map-simple
+  ([f coll]
+   (lazy-seq
+    (when-let [s (seq coll)]
+      (cons (f (first s)) (map-simple f (rest s)))))))
+
+(deftest infer-map
+  (f/infer-var #'map-simple))

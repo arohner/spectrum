@@ -53,6 +53,10 @@
       (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '[{?a [or [?a ?x ?y ?z]]
                                                    ?b [or [?b ?x ?y ?z]]}]
 
+      (t/or-t [(t/vector-of '?x) (t/coll-of '?x)]) '?t1 [{'?t1 (t/or-t [(t/vector-of '?x) (t/coll-of '?x)])}]
+      (t/or-t [(t/spec-t (t/vector-of '?x)) (t/coll-of '?x)]) '?t1 [{'?t1 (t/or-t [(t/spec-t (t/vector-of '?x)) (t/coll-of '?x)])}]
+
+
       ;; cat
       (t/cat-t [(t/? '?a)]) (t/cat-t [(t/? #'int?)]) [{'?a ['or [#'int? '?a]]}]
 
@@ -278,24 +282,6 @@
       (t/cat-t [(t/spec-t (t/cat-t [#'int?]))]) (t/cat-t [#'int?])
       )))
 
-(deftest variance
-  (testing "truthy"
-    (are [x y in out] (= out (c/unify x y in))
-      #'seqable? '?x+ [{'?x+ #'any?}] [{'?x+ #'seqable?}]
-
-      ['seq-of '?x] ['seq-of '?y+] [{'?x #'string? '?y+ #'any?}] [{'?x #'string? '?y+ '?x}]
-
-      #'a? '?x+ [{'?x+ ['or [#'a? #'b?]]}] [{'?x+ #'a?}]
-
-      '?x- #'int? [{'?x- #'string?}] [{'?x- (t/or-t [#'int? #'string?])}]))
-
-  (testing "falsey"
-    (are [x y substs] (nil? (c/unify x y substs))
-      #'seqable? '?x [{'?x #'any?}]
-
-      ;; ['seq-of ['class java.lang.Character]] '?x+ [{'?x+ ['value nil]}]
-      #'seqable? '?x+ [{'?x+ #'int?}])))
-
 (deftest and-logic
   (are [ts ret] (= ret (t/and-t ts))
     ['?x] '?x
@@ -312,15 +298,33 @@
     ['?x '?y] ['or ['?x '?y]]
     ['?x ['or ['?y '?z]]] ['or ['?x '?y '?z]]))
 
-(deftest no-infinite-loops
+(deftest handles-free-cycles
   (are [x y sub] (c/unify x y sub)
-    ['seq-of '?e] '?b+ [{'?b+ ['cat ['seq-of '?d]],
-                         '?e ['or ['?b+ '?c]],
-                         '?d ['or
-                              [['seq-of '?g]
-                               ['seq-of '?e]
-                               ['cat ['or [#'clojure.core/seqable? ['seq-of '?h+]]]]]]}]))
+    '?x1 '?y1 [{'?y1 '?y2,
+                '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                '?y3 '?y4,
+                '?x1 ['seq-of '?x2]}]
 
+    '?x1 '?y1 [{'?y1 '?y2,
+                '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                '?y3 '?y4,
+                '?y4 '?y5,
+                '?y5 '?y4,
+                '?x1 ['seq-of '?x2]}]))
+
+(deftest cyclic-substs
+  (is (c/unify '?x1 '?y1 [{'?y1 '?y2,
+                           '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                           '?y3 '?y4,
+                           '?x1 ['seq-of '?x2]}]))
+  (is (c/unify '?x1 '?y1 [{'?y1 '?y2,
+                           '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                           '?y3 '?y4,
+                           '?y4 '?y5,
+                           '?y5 '?y4,
+                           '?x1 ['seq-of '?x2]}]))
+
+  )
 (deftest perm-cache-works
   (c/unify #'int? #'string?)
   (is (seq @c/perm-cache)))

@@ -218,3 +218,8 @@
             (if (nil? best)
               default
               (key best)))))))
+
+(defmacro inspect [x]
+  `(let [ret# ~x]
+     (println (quote ~x) "=>" ret#)
+     ret#))

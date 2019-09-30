@@ -87,8 +87,7 @@
    #'uuid? java.util.UUID
    #'var? clojure.lang.Var
    #'vector? clojure.lang.IPersistentVector
-   #'volatile? clojure.lang.Volatile
-   })
+   #'volatile? clojure.lang.Volatile})
 
 (doseq [[v cls] pred->class]
   (ann-instance? v cls))
@@ -115,6 +114,8 @@
 (t/derive-type #'ifn? #'fn?)
 
 (t/derive-type #'seq? 'seq-of)
+(t/derive-type #'seqable? 'seqable-of)
+
 (t/derive-type #'coll? 'coll-of)
 (t/derive-type #'vector? 'vector-of)
 (t/derive-type #'map? 'map-of)
@@ -142,12 +143,9 @@
                      ['?x '?y '?z ['seq-of '?s]] (t/and-t [(t/cat-t ['?x '?y '?z ['seq-of '?s]]) #'list?])}))
 
 (ann #'seq (t/fn-t {[(t/spec-t (t/seq-of '?x+))] (t/spec-t (t/seq-of '?x+))
-                    [(t/class-t Iterable)] (t/spec-t (t/seq-of '?x+))
-                    [(t/class-t CharSequence)] (t/spec-t (t/seq-of (t/class-t Character)))
-                    [(t/class-t Map)] (t/spec-t (t/seq-of (t/cat-t ['?k+ '?v+])))
+                    [(t/spec-t (t/seqable-of '?x+))] (t/spec-t (t/seq-of '?x+))
                     [(t/map-of '?x+ '?y+)] (t/spec-t (t/seq-of (t/cat-t ['?x+ '?y+])))
                     ;; todo array-of
-                    [(t/class-t Seqable)] (t/spec-t (t/seq-of '?x+))
                     }))
 
 (ann #'cons (t/fn-t {['?x+ #'nil?] (t/and-t [(t/cat-t ['?x+]) (t/class-t ISeq)])
@@ -157,19 +155,16 @@
 (ann #'conj (t/fn-t {[['cat]] ['value []]
                      ['?x+] '?x+
                      [['coll-of '?x+] (t/+ '?x+)] ['coll-of '?x+]
-                     [['coll-of '?x+] (t/+ '?y+)] ['coll-of (t/or-t ['?x+ '?y+])]
-                     ;; [['class IPersistentCollection] (t/+ '?y)] ['class IPersistentCollection]
-                     }))
+                     [['coll-of '?x+] (t/+ '?y+)] ['coll-of (t/or-t ['?x+ '?y+])]}))
 
 (ann #'first (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t ['?a+ #'nil?])
-                      [#'seq?] (t/or-t ['?x+ #'nil?])
-                      [#'seqable?] (t/or-t ['?x+ #'nil?])}))
+                      [(t/spec-t (t/seqable-of '?a+))] (t/or-t ['?a+ #'nil?])}))
 
 (ann #'next (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])
-                     [#'seqable?] (t/or-t ['?x+ #'nil?])}))
+                     [(t/spec-t (t/seqable-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])}))
 
 (ann #'rest (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])
-                     [#'seqable?] (t/or-t ['?x #'nil?])}))
+                     [(t/spec-t (t/seqable-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])}))
 
 ;; TODO incomplete
 (ann #'apply (t/fn-t {['?f (t/spec-t (t/cat-t ['?a]))] (t/invoke-t '?f (t/cat-t ['?a]))
@@ -187,10 +182,11 @@
 (def long-t (class-t Long/TYPE))
 (def double-t (class-t Double/TYPE))
 (def Number-t (class-t Number))
+(def Integer-t (class-t Integer))
 
 (ann-method clojure.lang.Util 'identical (t/fn-t {['[value ?x] '[value ?x]] ['value true]
-                                                  ['[value ?x] '[not [value '?x]]] ['value false]
-                                                  [#'any? #'any?] ['class bool-t]}))
+                                                  ['[value ?x] '[not [value ?x]]] ['value false]
+                                                  [#'any? #'any?] bool-t}))
 
 (ann-method clojure.lang.Util 'equiv (t/fn-t {[(value-t '?x) (value-t '?x)] (value-t true)
                                               [(value-t '?x) (and-t [(value-t '?y) (not-t (value-t '?x))])] (value-t false)
@@ -212,14 +208,14 @@
 ;;                                            [#'nil?] ['class Iterator]}))
 
 
-(t/derive-type ['class clojure.lang.ChunkBuffer] 'chunk-buffer)
+(t/derive-type (t/class-t clojure.lang.ChunkBuffer) 'chunk-buffer)
 (t/derive-type #'any? 'chunk-buffer)
-(t/derive-type ['class clojure.lang.IChunk] 'chunk)
+(t/derive-type (t/class-t clojure.lang.IChunk) 'chunk)
 (t/derive-type #'any? 'chunk)
 (t/derive-type 'seq-of 'chunked-seq-of)
 (t/derive-type #'chunked-seq? 'chunked-seq-of)
 
-(ann #'chunk-buffer (t/fn-t {[['class Integer/TYPE]] ['chunk-buffer '?x+]}))
+(ann #'chunk-buffer (t/fn-t {[Integer-t] ['chunk-buffer '?x+]}))
 (ann #'chunk (t/fn-t {[['chunk-buffer '?x+]] ['chunk '?x+]}))
 (ann #'chunk-append (t/fn-t {[['chunk-buffer '?x+] '?x+] #'nil?}))
 (ann #'chunk-first (t/fn-t {[['chunked-seq-of '?x+]] ['chunk '?x+]

@@ -10,6 +10,7 @@
 
 (declare cat-t)
 (declare sort-ts)
+(declare and-t)
 (declare or-t)
 (declare regex?)
 (declare derive-type)
@@ -37,43 +38,13 @@
            second
            (Integer/parseInt)))
 
-(defn free-t?
-  ([t subst]
-   (and (logic? t) (nil? (get subst t)))))
-
 (defn bound-t? [t subst]
-  (and (logic? t) (not (free-t? t subst))))
+  (and (logic? t) (boolean (get subst t))))
 
 (def type-counter (atom -1))
 
 (defn reset-type-counter! []
   (reset! type-counter -1))
-
-(s/def ::variance #{:covariant :contravariant :invariant :bivariant})
-
-(def default-variance :invariant)
-
-(s/fdef variance :args (s/cat :t logic?) :ret ::variance)
-(defn variance [t]
-  (let [[_ name var-sym] (re-find #"^\?(\p{Lower}+)([-+±]?)" (name t))]
-    (condp = var-sym
-      "+" :covariant
-      "-" :contravariant
-      "±" :bivariant
-      default-variance)))
-
-(defn covariant? [t]
-  (contains? #{:covariant :bivariant} (variance t)))
-
-(defn contravariant? [t]
-  (contains? #{:contravariant :bivariant} (variance t)))
-
-(defn variance-suffix [variance]
-  (condp = variance
-    :contravariant "-"
-    :covariant "+"
-    :bivariant "±"
-    ""))
 
 (s/fdef new-logic :args (s/cat :prefix (s/? (s/or :str string? :l logic?))) :ret logic?)
 (defn new-logic
@@ -82,7 +53,6 @@
   ([t]
    (let [next (swap! type-counter inc)]
      (symbol (str "?" (if (logic? t) (logic-name t) t) next)))))
-
 
 (defn mapwalk
   "walk an arbitrary structure similar to clojure.walk/postwalk, but non-destructive. Returns nil"
@@ -220,6 +190,11 @@
   (if (seq-t? x)
     ['seq-of (type-value x)]
     ['seq-of x]))
+
+;; same idea as seq-of, but it's a thing that is seqable, rather than an actual seq
+(defn-type-pred seqable-t? 'seqable-of)
+
+(defn-tagged-type seqable-of 'seqable-of)
 
 (defn-tagged-type maybe-t 'maybe)
 (defn-type-pred maybe-t? 'maybe)
@@ -421,75 +396,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn alt-types [x]
   (vec (rest x)))
 
-(defmulti disentangle* #'type-tag)
-
-(defn disentangle
-  "Given a type containing possible choices, such as `alt` or `or`,
-  resolve the choices and return a seq of all possible concrete specs
-  that don't contain ambiguity.
-
-(disentangle (cat [(c/? ?t1) ?t2])
-=>
-([cat ?t1 ?t2] [cat ?t2])"
-  [x]
-  (if (tagged? x)
-    (disentangle* x)
-    [x]))
-
-(defmethod disentangle* :default [t]
-  [t])
-
-(defmethod disentangle* 'alt [t]
-  (let [xs (alt-types t)]
-    (->> xs
-         (mapcat disentangle)
-         (vec))))
-
-(defmethod disentangle* 'or [t]
-  (let [xs (type-value t)]
-    (->> xs
-         (mapcat disentangle)
-         (vec))))
-
-(defmethod disentangle* 'cat [t]
-  (let [xs (cat-types t)]
-    (->> xs
-         (mapv disentangle)
-         (apply combo/cartesian-product)
-         (map cat-t))))
-
-(defmethod disentangle* 'and [t]
-  (->> (type-value t)
-       (mapv disentangle)
-       (apply combo/cartesian-product)
-       (map and-t)))
-
-(defn interleave-cats
-  "Given several cats of the same length, return a single cat with each
-  arg or-t'd together"
-  [& cats]
-  (->> cats
-       (map cat-types)
-       (apply map (fn [& ts] (or-t ts)))
-       (cat-t)))
-
-(s/fdef simplify-arities :args (s/cat :m (s/map-of ::type ::type)) :ret (s/map-of ::type ::type))
-(defn simplify-arities
-  "Merge fn arities with the same return type and same number of arguments"
-  [fn-map]
-  (->> fn-map
-       (mapcat (fn [[args ret]]
-                 (->> (disentangle args)
-                      (map (fn [d]
-                             [d ret])))))
-       (group-by (fn [[args ret]]
-                   [ret (count args)]))
-       (map (fn [[[ret arg-count] arities]]
-              (let [args (map (fn [a] (nth a 0)) arities)
-                    args (apply interleave-cats args)]
-                [args ret])))
-       (into {})))
-
 (s/fdef merge-fns :args (s/cat :fns (s/coll-of ::fn-t)) :ret (s/nilable ::fn-t))
 (defn merge-fns [fns]
   (when (seq fns)
@@ -497,18 +403,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
          (map second)
          (apply merge)
          (fn-t))))
-
-(s/fdef fn-args :args (s/cat :f ::fn-t) :ret ::type)
-(defn fn-args
-  "Return an `or` of all arities this fn will accept"
-  [f-t]
-  (-> f-t second keys (->> or-t)))
-
-(s/fdef fn-ret :args (s/cat :f ::fn-t) :ret ::type)
-(defn fn-ret
-  "Return an `or` of all types this fn may return"
-  [f-t]
-  (-> f-t second vals (->> or-t)))
 
 (defn conformy? [t]
   (not (invalid? t)))
@@ -527,9 +421,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (s/fdef not-value :args (s/cat :t not-t?) :ret ::type)
 (def not-value type-value)
-
-(s/fdef or-types :args (s/cat :t or-t?) :ret (s/coll-of any?))
-(def or-types type-value)
 
 (s/fdef class-value :args (s/cat :t class-t?) :ret (s/or :c class? :t ::type))
 (def class-value type-value)
@@ -551,7 +442,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   (and (or-t? t)
        (every? (fn [t]
                  (or (class-t? t)
-                     (class-cast t))) (or-types t))))
+                     (class-cast t))) (type-value t))))
 
 (defn-memo canonicalize*
   [equiv-types t]
@@ -637,7 +528,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn or-consolidate [ts]
   (let [or-ts (->> ts
                    (filter or-t?)
-                   (mapcat or-types))
+                   (mapcat type-value))
         maybe-ts (->> ts
                       (filter maybe-t?)
                       (map maybe-value))
@@ -749,9 +640,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
              not-anys
              (take 1 anys))
         {ors true not-ors false} (group-by or-t? ts)
-        ;; ts (if (and (seq ors) (and-or-compatible? ts))
-        ;;      ts
-        ;;      [(invalid {:message (format "and: or specs incompatible: %s" ts)})])
         ts (if (and-classes-compatible? ts)
              ts
              [(invalid {:message (format "and classes incompatible: %s" ts)})])
@@ -774,11 +662,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (defn and-rest [a]
   (and (rest (and-types a))))
-
-(s/fdef and-conj :args (s/cat :a and-t? :x ::type) :ret ::type)
-(defn and-conj
-  [s x]
-  (and-t (conj (and-types s) x)))
 
 (defmulti regex? #'type-tag)
 (defmethod regex? :default [_]

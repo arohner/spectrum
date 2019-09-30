@@ -50,11 +50,11 @@
     ;; (if-let [s ()])
     ))
 
-;; (defn check-ns [ns]
-;;   (maybe-load-clojure-builtins)
-;;   (println "checking " ns)
-;;   (some->>
-;;    (analyzer/analyze-ns-1 ns (ana.jvm/empty-env))
-;;    (map flow/infer)
-;;    (mapcat check*)
-;;    (filter identity)))
+(defn check-ns [ns]
+  (maybe-load-clojure-builtins)
+  (println "checking " ns)
+  (some->>
+   (analyzer/analyze-ns-1 ns (ana.jvm/empty-env))
+   (map flow/infer)
+   (mapcat check*)
+   (filter identity)))

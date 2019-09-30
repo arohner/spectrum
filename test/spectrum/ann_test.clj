@@ -78,6 +78,14 @@
     #'seqable? (t/map-of '?x '?y)
     #'seqable? (t/value-t nil)
 
+    (t/seqable-of (t/class-t Character)) #'string?
+    (t/seqable-of (t/class-t Character)) (t/class-t CharSequence)
+
+    (t/seqable-of '?x) #'vector?
+
+    #'vector? (t/seqable-of #'any?)
+    #'vector? (t/seqable-of #'int?)
+
     (t/class-t Object) #'any?
     (t/class-t ISeq) (t/seq-of '?x)
     (t/class-t IChunkedSeq) #'chunked-seq?
@@ -202,7 +210,7 @@
     (are [form args ret] (c/unify ret (f/infer-form form args))
       '(first x) {:x ['spec ['seq-of #'int?]]} ['or #{#'int? #'nil?}]
       '(first x) {:x ['coll-of #'int?]} ['or #{#'int? #'nil?}]
-      '(cons x y) {:x '?x :y (t/seq-of '?y)} ['cat '?x (t/seq-of '?y)]
+      '(cons x y) {:x (t/new-logic "x") :y (t/seq-of (t/new-logic "y"))} ['cat '?x (t/seq-of '?y)]
       ))
 
   (testing "TBD"
