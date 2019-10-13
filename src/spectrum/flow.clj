@@ -1309,10 +1309,11 @@
 
 (s/fdef simplify-regex :args (s/cat :eqf ifn? :x any? :y any?) :ret ::eq/equation)
 (defn simplify-regex [eq-f x y]
-  {:post [(do (println "simplify-re" x y "=>" %) true)]}
+  {:pre [(do (println "simplify-re" x y "pre") true)]
+   :post [(do (println "simplify-re" x y "=>" %) true)]}
   (or
    (simplify-1 x y)
-   (->> (combo/cartesian-product (c/re-will-accept x) (c/first-t y))
+   (->> (combo/cartesian-product (c/re-will-accept x) (c/re-will-accept y))
         (map (fn [[xv yv]]
                (assert xv)
                (assert yv)

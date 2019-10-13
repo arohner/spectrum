@@ -4,6 +4,7 @@
             [clojure.math.combinatorics :as combo]
             [clojure.set :as set]
             [clojure.spec.alpha :as s]
+            [clojure.test.check.generators :as gen]
             [clojure.walk :as walk]
             [spectrum.java :as j]
             [spectrum.util :refer [instrument-ns defn-memo]]))
@@ -11,7 +12,11 @@
 (declare cat-t)
 (declare sort-ts)
 (declare and-t)
+(declare and-t?)
+(declare alt-t)
 (declare or-t)
+(declare or-t?)
+(declare seq-of)
 (declare regex?)
 (declare derive-type)
 (declare class-cast)
@@ -94,7 +99,58 @@
     (println "freshen" replace-map)
     (rename replace-map form)))
 
-(s/def ::type-atom (s/or :s logic? :v var?))
+(defn predicate-symbol? [x]
+  (and (symbol? x)
+       (re-find #"\?$" (name x))))
+
+(defn ns-predicates
+  "Return all var predicates in ns"
+  [ns]
+  (->> ns
+       (ns-publics)
+       (filter (fn [[sym var]]
+                 (predicate-symbol? sym)))
+       (vals)))
+
+;; things that appear to be predicates by their name, but aren't
+;; because of signature. We can automate this once we infer better
+
+(def not-core-predicates #{#'bound?
+                           #'contains?
+                           #'distinct?
+                           #'empty?
+                           #'every?
+                           #'even?
+                           #'extends?
+                           #'future-cancelled?
+                           #'future-done?
+                           #'identical?
+                           #'instance?
+                           #'isa?
+                           #'neg?
+                           #'odd?
+                           #'not-any?
+                           #'not-every?
+                           #'pos?
+                           #'realized?
+                           #'satisfies?
+                           #'some?
+                           #'thread-bound?
+                           #'zero?})
+
+(defn core-predicates []
+  (-> 'clojure.core
+      (ns-predicates)
+      (set)
+      (set/difference not-core-predicates)))
+
+(s/def ::var-t (s/with-gen var? #(gen/elements (core-predicates))))
+
+
+(s/def ::logic (s/with-gen logic? (fn []
+                                    (gen/fmap (fn [n]
+                                                (symbol (str "?t" n))) gen/nat))))
+(s/def ::type-atom (s/or :l ::logic :v ::var-t))
 
 (s/def ::fresh-logic (s/and logic? logic-number))
 (s/def ::fresh-type-atom (s/or :s ::fresh-logic :v var?))
@@ -105,6 +161,10 @@
        (-> t (nth 0) symbol?)
        (not (logic? (nth t 0)))))
 
+(s/def ::tag #{'cat 'alt 'seq-of 'or 'and 'coll-of 'vector-of 'seqable-of})
+
+(s/def ::cat (s/cat :c #{'cat} :ts (s/* ::type)))
+
 (defn fresh-tagged? [t]
   (and (vector? t)
        (pos? (count t))
@@ -112,7 +172,65 @@
        (not (logic? (nth t 0)))
        (every? logic-number (get-lvars t))))
 
-(s/def ::type (s/or :ta ::type-atom :tagged-type tagged?))
+(def ^:dynamic *current-depth* 0)
+(def max-depth 1)
+
+(declare gen-tagged)
+
+(defn gen-type [depth]
+  (if (pos? depth)
+    (gen/one-of [(s/gen (s/spec ::type-atom))
+                 (gen-tagged (dec depth))])
+    (s/gen (s/spec ::type-atom))))
+
+(defn gen-alt [depth]
+  (gen/fmap (fn [ts]
+              (alt-t ts)) (gen/vector (gen-type (dec depth)) 2 3)))
+
+(defn gen-nilable [depth]
+  (gen/fmap (fn [t]
+              (alt-t [t nil])) (gen-type (dec depth))))
+
+(defn gen-cat [depth]
+  (let [depth (dec depth)
+        gen (if (pos? depth)
+              (gen/one-of [(gen-alt depth)
+                           (gen-nilable depth)
+                           (gen-cat depth)
+                           (gen-type depth)])
+              (gen-type depth))]
+    (gen/fmap (fn [ts]
+                (cat-t ts)) (gen/vector gen 0 3))))
+
+(defn gen-or [depth]
+  (gen/such-that or-t?
+                 (gen/fmap (fn [ts]
+                             (or-t ts)) (gen/vector (gen-type (dec depth)) 2 4))))
+
+(defn gen-and [depth]
+  (gen/such-that and-t?
+                 (gen/fmap (fn [ts]
+                             (and-t ts)) (gen/vector (gen-type (dec depth)) 2 4))))
+
+(defn gen-seq-of [depth]
+  (gen/fmap (fn [t]
+              (seq-of t)) (gen-type (dec depth))))
+
+(defn gen-tagged [depth]
+  (gen/one-of [(gen-cat depth)
+               (gen-or depth)
+               (gen-and depth)
+               (gen-seq-of depth)]))
+
+(s/def ::tagged (s/with-gen
+                  (s/and vector?
+                         (fn [x]
+                           (-> x first symbol?)))
+                  #(gen-tagged 2)))
+
+(s/def ::type (s/or :ta ::type-atom
+                    :tt ::tagged))
+
 (s/def ::fresh-type (s/or :ta ::fresh-type-atom :tagged-type fresh-tagged?))
 
 (defn type? [x]
@@ -176,7 +294,12 @@
 (defn-tagged-type protocol-t 'protocol)
 
 (defn-type-pred and-t? 'and)
-(defn-type-pred or-t? 'or)
+(defn or-t? [x]
+  (and (tagged? x)
+       (= 'or (nth x 0))
+       (vector? (nth x 1))))
+
+;;(defn-type-pred or-t? 'or)
 (defn-type-pred not-t? 'not)
 
 (defn-tagged-type not-t 'not)
@@ -261,49 +384,6 @@
   (and (class-t? t) (-> t second (= Object))))
 
 (def types-hierarchy (atom (make-hierarchy)))
-
-(defn predicate-symbol? [x]
-  (and (symbol? x)
-       (re-find #"\?$" (name x))))
-
-(defn ns-predicates
-  "Return all var predicates in ns"
-  [ns]
-  (->> ns
-       (ns-publics)
-       (filter (fn [[sym var]]
-                 (predicate-symbol? sym)))
-       (vals)))
-
-;; things that appear to be named predicates, but aren't. We can automate this once we infer better
-(def not-core-predicates #{#'bound?
-                           #'contains?
-                           #'distinct?
-                           #'empty?
-                           #'every?
-                           #'even?
-                           #'extends?
-                           #'future-cancelled?
-                           #'future-done?
-                           #'identical?
-                           #'instance?
-                           #'isa?
-                           #'neg?
-                           #'odd?
-                           #'not-any?
-                           #'not-every?
-                           #'pos?
-                           #'realized?
-                           #'satisfies?
-                           #'some?
-                           #'thread-bound?
-                           #'zero?})
-
-(defn core-predicates []
-  (-> 'clojure.core
-      (ns-predicates)
-      (set)
-      (set/difference not-core-predicates)))
 
 (s/fdef derive-type :args (s/cat :h (s/? any?) :parent (s/or :t ::type :s symbol?) :type (s/or :t ::type :s symbol?)))
 (defn derive-type
@@ -554,8 +634,11 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
         ts (distinct ts)]
     (vec (sort-ts ts))))
 
-(s/fdef or-t :args (s/cat :ts (s/coll-of any?)) :ret any?)
+(s/fdef or-t :args (s/cat :ts (s/coll-of ::type)) :ret ::type)
 (defn or-t [ts]
+  {:post [(if (and (vector? %) (= 'or (nth % 0)))
+            (or-t? %)
+            true)]}
   (let [ts (if (> (count ts) 1)
              (or-consolidate ts)
              ts)]

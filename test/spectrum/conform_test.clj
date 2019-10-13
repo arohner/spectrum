@@ -1,6 +1,10 @@
 (ns spectrum.conform-test
   (:require [clojure.test :refer :all]
             [clojure.set :as set]
+            [clojure.spec.alpha :as s]
+            [clojure.test.check.properties :as prop]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.clojure-test :refer [defspec]]
             [spectrum.conform :as c]
             [spectrum.types :as t])
   (:import [clojure.lang Keyword LazySeq]))
@@ -32,6 +36,7 @@
       (t/value-t [3])
       (t/value-t nil)
       (t/value-t 1))))
+
 
 (deftest unify
   (testing "truthy"
@@ -322,9 +327,34 @@
                            '?y3 '?y4,
                            '?y4 '?y5,
                            '?y5 '?y4,
-                           '?x1 ['seq-of '?x2]}]))
+                           '?x1 ['seq-of '?x2]}])))
 
-  )
 (deftest perm-cache-works
   (c/unify #'int? #'string?)
   (is (seq @c/perm-cache)))
+
+(defspec or-left 100
+  (prop/for-all [a (s/gen (s/spec ::t/type))
+                 b (s/gen (s/spec ::t/type))
+                 c (s/gen (s/spec ::t/type))]
+    (if (c/unify a b)
+      (c/unify (t/or-t [a c]) b)
+      true)))
+
+(defspec or-right
+  (prop/for-all [a (s/gen (s/spec ::t/type))
+                 b (s/gen (s/spec ::t/type))
+                 c (s/gen (s/spec ::t/type))]
+    (if (c/unify a b)
+      (and (c/unify a (t/or-t [b c]))
+           (c/unify a (t/or-t [c b])))
+      true)))
+
+(defspec and-right []
+  (prop/for-all [a (s/gen (s/spec ::t/type))
+                 b (s/gen (s/spec ::t/type))
+                 c (s/gen (s/spec ::t/type))]
+    (if (and (or (c/unify a b) (c/unify a c))
+             (t/and-t? (t/and-t [b c])))
+      (c/unify a (t/and-t [b c]))
+      true)))

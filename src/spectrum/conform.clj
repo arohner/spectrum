@@ -1128,6 +1128,56 @@
    (apply concat)
    (seq)))
 
+(defn re-will-accept-dispatch [x]
+  {:pre [(t/type-tag x)]
+   :post [(do (println "re-will-accept dispatch" x "=>"%) true)]}
+  (t/type-tag x))
+
+(defmulti re-will-accept
+  "Returns a set of types this regex could accept. Do not include nil"
+  #'re-will-accept-dispatch)
+
+(defn re-accept-dispatch [x y]
+  {:post [(do (println "re-accept dispatch" x "=>"%) true)]}
+  (t/type-tag x))
+
+(defmulti re-accept
+  "Without unifying, assume x accepts y and return a set of possible
+  updated regexes. Return the empty set to indicate finished"
+  #'re-accept-dispatch)
+
+(defmethod re-will-accept 'seq-of [seq-x]
+  (println "re-will-accept seq")
+  #{(t/type-value seq-x)})
+
+(defmethod re-will-accept 'alt [alt-x]
+  #{(t/type-value alt-x)})
+
+(defmethod re-will-accept 'cat [cat-x]
+  {:post [(do (println "re-will-accept cat" cat-x "=>" %) true)]}
+  (let [[x & xr :as xs] (t/cat-types cat-x)]
+    (if (accept-nil? x)
+      (if (seq xr)
+        (conj x (re-will-accept (t/cat-t xr)))
+        #{x})
+      #{x})))
+
+(defmethod re-accept 'seq-of [x y]
+  #{x})
+
+(defmethod re-accept 'alt [x y]
+  #{})
+
+(defmethod re-accept 'cat [x y]
+  {:pre [(do (println "re-accept cat" x y) true)]
+   :post [(do (println "re-accept cat" x y "=>" %) true)]}
+  (let [[xv & xr :as xs] (t/cat-types x)]
+    (if (seq xr)
+      (if (accept-nil? xv)
+        (conj (t/cat-t xr) (re-accept (t/cat-t xr) y))
+        #{(t/cat-t xr)})
+      #{})))
+
 (prefer-method unify-terms [#'any? #'t/logic?] [#'any? #'any?])
 (prefer-method unify-terms [#'any? #'t/logic?] [#'t/logic? #'any?])
 (prefer-method unify-terms [#'any? #'t/logic?] ['not #'any?])

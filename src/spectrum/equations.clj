@@ -1,4 +1,5 @@
 (ns spectrum.equations
+  (:refer-clojure :exclude [>= <=])
   (:require [clojure.spec.alpha :as s]
             [spectrum.types :as t]
             [spectrum.util :refer [instrument-ns]]))
