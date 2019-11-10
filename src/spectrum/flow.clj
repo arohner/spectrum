@@ -262,7 +262,7 @@
    {:post [(validate! ::eq/equation % {:form (get-in a (conj path :form))})
            ;; (do (println "get-eq" (get-in a (conj path :form)) (get-in a (conj path :op)) %) true)
            ]}
-   (println "get-eq" (get-in a (conj path :op)) (get-in a (conj path :form)))
+   ;; (println "get-eq" (get-in a (conj path :op)) (get-in a (conj path :form)))
    (->> (get-equation* context a path)
         (s/assert ::eq/equation)
         (with-form-meta context a path)))
@@ -763,6 +763,7 @@
 (s/fdef get-eq-invoke-fn-t :args (s/cat :f t/fn-t? :i ::t/type :r ::t/type) :ret ::eq/equation)
 (defn get-eq-invoke-fn-t
   [f invoke-args ret-t]
+  ;; {:post [(do (println "get-eq-invoke-fn-t" "f:" f "invoke:" invoke-args "ret-t:" ret-t "=>" %) true)]}
   (let [fn-map (-> f (nth 1) t/fn-t t/type-value)
         ;; constraint that at least one arity must be successful
         req-one (->> fn-map
@@ -798,7 +799,8 @@
 (defn get-eq-invoke-f
   "get-equation for invoking something at `path`"
   [context a path]
-  {:post [(validate! ::eq/equation %)]}
+  ;; {:post [(do (println "get-eq-invoke-f" (get-in a (conj path :form)) "=>" %) true)
+  ;;         (validate! ::eq/equation %)]}
   (let [a* (get-in a path)
         args (:args a*)
         invoke-args (t/cat-t (map-sequential-children get-type! context a path :args))
@@ -891,6 +893,7 @@
     (eq/eq t (get-type! context a fn-method-ret))))
 
 (defmethod get-equation* :invoke [context a path]
+  ;; {:post [(do (println "get-equation*" :invoke (get-in a (conj path :form)) "=>" %) true)]}
   (let [a* (get-in a path)
         t (get-type! context a path)
         invoke-op (get-in a* [:fn :op])]
@@ -1284,11 +1287,11 @@
   (eq/and-e (mapv simplify-equation (eq/get-eqs e))))
 
 (defmethod simplify-equation :ore [e]
-  {:post [(do (println "simplify ore:" e "=>" %) true)]}
+  ;; {:post [(do (println "simplify ore:" e "=>" %) true)]}
   (eq/or-e (mapv simplify-equation (eq/get-eqs e))))
 
 (defmethod simplify-equation :imp [e]
-  {:post [(do (println "simplify imp:" e "=>" %) true)]}
+  ;; {:post [(do (println "simplify imp:" e "=>" %) true)]}
   (let [[_ test then] e]
     (eq/=> (simplify-equation test) (simplify-equation then))))
 
@@ -1309,8 +1312,8 @@
 
 (s/fdef simplify-regex :args (s/cat :eqf ifn? :x any? :y any?) :ret ::eq/equation)
 (defn simplify-regex [eq-f x y]
-  {:pre [(do (println "simplify-re" x y "pre") true)]
-   :post [(do (println "simplify-re" x y "=>" %) true)]}
+  ;; {:pre [(do (println "simplify-re" x y "pre") true)]
+  ;;  :post [(do (println "simplify-re" x y "=>" %) true)]}
   (or
    (simplify-1 x y)
    (->> (combo/cartesian-product (c/re-will-accept x) (c/re-will-accept y))
@@ -1319,13 +1322,11 @@
                (assert yv)
                (let [new-x (c/re-accept x yv)
                      new-y (c/re-accept y yv)]
-                 (println "new-x" new-x)
-                 (println "new-y" new-y)
-                 (->> (combo/cartesian-product new-x new-y)
-                      (map (fn [[new-x* new-y*]]
-                             (eq/and-e [(eq-f xv yv)
-                                        (simplify-regex eq-f new-x* new-y*)])))
-                      (eq/or-e)))))
+                 (eq/and-e [(eq-f xv yv)
+                            (->> (combo/cartesian-product new-x new-y)
+                                 (map (fn [[new-x* new-y*]]
+                                        (simplify-regex eq-f new-x* new-y*)))
+                                 (eq/or-e))]))))
         (eq/or-e))))
 
 (defmethod simplify-equation :eq [e]

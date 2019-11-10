@@ -226,6 +226,7 @@
       ;; spec
       (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?x))
       (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?y))
+      (t/coll-of '?x) (t/spec-t (t/seq-of '?x))
       #'seqable? (t/spec-t (t/seq-of '?y))
 
       (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t ['?y])
@@ -333,7 +334,7 @@
   (c/unify #'int? #'string?)
   (is (seq @c/perm-cache)))
 
-(defspec or-left 100
+(defspec or-left 500
   (prop/for-all [a (s/gen (s/spec ::t/type))
                  b (s/gen (s/spec ::t/type))
                  c (s/gen (s/spec ::t/type))]

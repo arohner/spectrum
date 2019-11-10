@@ -35,10 +35,11 @@
 
 
 (defn map-simple
-  ([f coll]
-   (lazy-seq
-    (when-let [s (seq coll)]
-      (cons (f (first s)) (map-simple f (rest s)))))))
+  "Simple implementantion of #'map, for testing "
+  [f coll]
+  (lazy-seq
+   (when-let [s (seq coll)]
+     (cons (f (first s)) (map-simple f (rest s))))))
 
 (deftest infer-map
   (f/infer-var #'map-simple))

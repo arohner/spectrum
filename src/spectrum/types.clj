@@ -1,5 +1,5 @@
 (ns spectrum.types
-  (:refer-clojure :exclude [vector-of * + parents ancestors descendants])
+  (:refer-clojure :exclude [vector-of * + parents ancestors descendants gen-class])
   (:require [clojure.core :as core]
             [clojure.math.combinatorics :as combo]
             [clojure.set :as set]
@@ -14,9 +14,15 @@
 (declare and-t)
 (declare and-t?)
 (declare alt-t)
+(declare spec-t)
+(declare class-t)
+(declare value-t)
 (declare or-t)
 (declare or-t?)
 (declare seq-of)
+(declare coll-of)
+(declare coll-of?)
+(declare vector-of)
 (declare regex?)
 (declare derive-type)
 (declare class-cast)
@@ -44,7 +50,7 @@
            (Integer/parseInt)))
 
 (defn bound-t? [t subst]
-  (and (logic? t) (boolean (get subst t))))
+  (and (logic? t) (boolean (find subst t))))
 
 (def type-counter (atom -1))
 
@@ -177,6 +183,8 @@
 
 (declare gen-tagged)
 
+(def gen-atom (s/gen (s/spec ::type-atom)))
+
 (defn gen-type [depth]
   (if (pos? depth)
     (gen/one-of [(s/gen (s/spec ::type-atom))
@@ -191,13 +199,25 @@
   (gen/fmap (fn [t]
               (alt-t [t nil])) (gen-type (dec depth))))
 
+(defn gen-spec [depth]
+  (gen/fmap (fn [t]
+              (spec-t t)) (gen-type depth)))
+
+(declare gen-cat)
+(declare gen-seq-of)
+
+(defn gen-re [depth]
+  (gen/one-of [(gen-alt depth)
+               (gen-nilable depth)
+               (gen-cat depth)
+               (gen-seq-of depth)
+               (gen-spec depth)
+               (gen-type depth)]))
+
 (defn gen-cat [depth]
   (let [depth (dec depth)
         gen (if (pos? depth)
-              (gen/one-of [(gen-alt depth)
-                           (gen-nilable depth)
-                           (gen-cat depth)
-                           (gen-type depth)])
+              (gen-re depth)
               (gen-type depth))]
     (gen/fmap (fn [ts]
                 (cat-t ts)) (gen/vector gen 0 3))))
@@ -216,11 +236,65 @@
   (gen/fmap (fn [t]
               (seq-of t)) (gen-type (dec depth))))
 
+(defn gen-coll-of [depth]
+  (gen/fmap (fn [t]
+              (coll-of t)) gen-atom))
+
+(defn gen-vector-of [depth]
+  (gen/fmap (fn [t]
+              (vector-of t)) gen-atom))
+
+(def gen-class (gen/elements [clojure.lang.Reversible
+                              clojure.lang.ReaderConditional
+                              clojure.lang.Associative
+                              clojure.lang.IPersistentVector
+                              clojure.lang.Keyword
+                              java.util.UUID
+                              clojure.lang.Sorted
+                              java.lang.Number
+                              clojure.lang.IFn
+                              clojure.lang.IPersistentSet
+                              clojure.lang.IPersistentCollection
+                              clojure.lang.TaggedLiteral
+                              clojure.lang.Delay
+                              clojure.lang.IPersistentList
+                              java.net.URI
+                              java.lang.Class
+                              clojure.lang.Volatile
+                              clojure.lang.ISeq
+                              java.util.Date
+                              clojure.lang.Counted
+                              clojure.lang.Var
+                              clojure.lang.Indexed
+                              clojure.lang.Ratio
+                              java.math.BigDecimal
+                              java.lang.Double
+                              clojure.lang.Sequential
+                              java.lang.Object
+                              clojure.lang.IPersistentMap
+                              clojure.lang.IChunkedSeq
+                              java.lang.Character
+                              java.lang.Boolean
+                              java.lang.String
+                              clojure.lang.Fn
+                              clojure.lang.Symbol
+                              java.util.concurrent.Future
+                              java.util.Map$Entry]))
+
+(def gen-class-t (gen/fmap (fn [t]
+                             (class-t t)) gen-class))
+
+(def gen-value (gen/fmap (fn [t]
+                           (value-t t)) gen/any))
+
 (defn gen-tagged [depth]
   (gen/one-of [(gen-cat depth)
                (gen-or depth)
                (gen-and depth)
-               (gen-seq-of depth)]))
+               (gen-seq-of depth)
+               (gen-coll-of depth)
+               gen-class-t
+               gen-value]))
 
 (s/def ::tagged (s/with-gen
                   (s/and vector?
@@ -328,6 +402,7 @@
 (defn-tagged-type map-of 'map-of)
 
 (defn-tagged-type coll-of 'coll-of)
+(defn-type-pred coll-of? 'coll-of)
 
 (defn-tagged-type spec-t 'spec)
 (defn-type-pred spec-t? 'spec)
@@ -451,6 +526,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (s/fdef cat-t :args (s/cat :t ::types) :ret ::type)
 (defn cat-t [ts]
+  {:pre [(every? identity ts)]}
   (->> ts
        ;; (mapv (fn [t]
        ;;         (if (accept-t? t)
@@ -652,7 +728,11 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   "True if the `and-t` `class`es are compatible (doesn't contain concrete classes that aren't ancestors)"
   [ts]
   (let [compatible? (fn [a b]
-                      {:pre [(class? a) (class? b)]}
+                      {:pre [(do
+                               (when-not (class? a)
+                                 (println "and-compatible?" a (class a) ts))
+                               true)
+                             (class? a) (class? b)]}
                       (and ;; (not (= Object a))
                        (or (isa? a b)
                            (isa? b a)
@@ -661,13 +741,13 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
                            (and (j/interface? b) (j/subclassable? a)))))
         ts-classes (->> ts
                         (map canonicalize)
-                        (filter class-t?))]
-    (loop [[t-classes & tr-classes] ts-classes]
-      (if t-classes
-        (if (every? (fn [trs]
-                      (some (fn [t]
-                              (some (fn [tr]
-                                      (compatible? t tr)) trs)) t-classes)) tr-classes)
+                        (filter class-t?)
+                        (map type-value)
+                        (filter class?))]
+    (loop [[t-class & tr-classes] ts-classes]
+      (if t-class
+        (if (every? (fn [tr]
+                   (compatible? t-class tr)) tr-classes)
           (recur tr-classes)
           false)
         true))))
@@ -686,8 +766,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn and-values-compatible?
   "true if `and` ts does not contain two non-equal values"
   [ts]
-  {:post [(do (when-not %
-                (println "and-value-compatible?" ts "=>" %)) true)]}
   (let [{values true non-values false} (group-by value-t? ts)]
     (if (seq values)
       (apply = (map second values))

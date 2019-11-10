@@ -17,6 +17,7 @@
 ;; http://mullr.github.io/micrologic/literate.html
 
 (declare unify)
+(declare unify-terms)
 (declare resolve-type)
 (declare resolve-type-1)
 
@@ -33,7 +34,7 @@
 (defn free-t? [t subst]
   (= t (resolve-type-1 t subst)))
 
-(s/fdef occurs? :args (s/cat :x ::t/type :y any? :s ::subst) :ret boolean?)
+(s/fdef occurs? :args (s/cat :x (s/nilable ::t/type) :y any? :s ::subst) :ret boolean?)
 (defn occurs?
   "Does a occur anywhere inside b"
   [a b subst]
@@ -71,79 +72,60 @@
   (let [[_ ret] (find @*unify-temp-cache* [x y substs])]
     (and ret (pending? ret) (not (realized? ret)))))
 
-(declare unify-terms-dispatch)
-
 (ns-unmap 'spectrum.conform 'unify-terms)
-
-(defmulti unify-terms "" #'unify-terms-dispatch :hierarchy t/types-hierarchy :default [#'any? #'any?])
-
-(defn-memo unify-terms-methods []
-  (-> unify-terms .getMethodTable keys set))
 
 (defn-memo dx-methods []
   (-> dx* .getMethodTable keys set))
 
 (defn dx? [t]
-  (contains? (dx-methods) (t/type-tag t)))
+  (and (t/tagged? t)
+       (contains? (dx-methods) (t/type-tag t))))
+
+(defn dx [x y substs]
+  (dx* x y substs))
 
 (defn var-pred? [x]
   (and (var? x)
        (-> x .sym t/predicate-symbol?)))
 
-(defn unify-term-value [x]
-  (cond
-    (t/logic? x) #'t/logic?
-    (t/value-t? x) 'value
-    (t/tagged? x) (if (t/parents x)
-                    (t/type-tag x)
-                    #'any?)
-    (var? x) (if (t/parents x)
-               x
-               #'any?)
-    (nil? x) nil
-    (sequential? x) 'sequential
-    (set? x) 'set
-    (map? x) 'map
-    :else #'any?))
+(defonce value-pred-whitelist (atom #{}))
 
-(defn unify-terms-method?
-  "Is there a *direct* dispatch value for (unify-terms x y)?"
-  [x y]
-  (contains? (unify-terms-methods) [x y]))
+(s/fdef add-value-pred-whitelist! :args (s/cat :v var?))
+(defn add-value-pred-whitelist!
+  "Declare var predicate v as safe for calling to unify with values. v
+  should be a predicate, pure (free of side-effects) and fast"
+  [v]
+  (swap! value-pred-whitelist conj v))
 
-(defn unify-terms-dispatch [x y subst]
-  ;; {:post [(do (println "unify terms dispatch" x y "=>" %) true)]}
-  (or (when (unify-terms-method? x y)
-        [x y])
-      [(unify-term-value x) (unify-term-value y)]))
+(doseq [v (t/core-predicates)]
+  (add-value-pred-whitelist! v))
 
 (s/def ::subst (s/map-of t/logic? any?))
 (s/def ::substs (s/nilable (s/coll-of ::subst :kind sequential? :min-count 1)))
 
-(defn unify-any-any [x y subst]
-  (or
-   (when (t/any-t? x)
-     subst)
-   (when (isa? @t/types-hierarchy y x)
-     subst)
-   (let [x-ancestors (when (t/type? x) (-> x t/ancestors (conj x)))
-         y-ancestors (when (t/type? y) (t/ancestors y))]
-     (some->>
-      (disj y-ancestors #'any?)
-      (filter (fn [ya]
-                (contains? x-ancestors ya)))
-      (some (fn [ya]
-              (unify x ya subst)))))
-   (->> (t/get-equiv-types x)
-        (mapcat (fn [xt]
-                  (unify xt y subst)))
-        (seq))))
+(s/fdef assoc-subst :args (s/cat :s ::subst :x t/logic? :y any?) :ret ::subst)
+(defn assoc-subst [subst x y]
+  ;; {:post [(do (println "assoc-subst" x "=>" y) true)]}
+  (assert (t/logic? x))
+  (assoc subst x y))
 
-(defmethod unify-terms [#'any? #'any?] [x y substs]
-  (unify-any-any x y substs))
+(defn unify-any-logic-1 [x y subst]
+  ;; {:post [(do (println "any-logic-1:" x y "=>" (boolean %)) true)]}
+  ;; (println "any-logic-1:" x "=" (get subst x) y "=" (get subst y))
+  (cond
+    (occurs? y x subst) nil
+    (and (t/bound-t? y subst) (free-t? y subst)) (unify x y [(dissoc subst y)])
+    (find subst y) (unify x (get subst y) [subst])
+    (free-t? y subst) [(assoc-subst subst y x)]
+    :else (do (assert false (print-str "unify-any-logic:" x y subst)) [subst])))
 
-(defmethod unify-terms [#'any? #'any?] [x y subst]
-  (unify-any-any x y subst))
+(s/fdef unify-any-logic :args (s/cat :x any? :y any? :substs ::substs) :ret ::substs)
+(defn unify-any-logic [x y substs]
+  (some->> substs
+           (mapcat (fn [s]
+                     (unify-any-logic-1 x y s)))
+           (filter identity)
+           (seq)))
 
 (defn merge-substs
   [substs]
@@ -157,15 +139,6 @@
                     [k (t/or-t (vec vs))]))
              (into {})
              (conj []))))
-
-(defmethod unify-terms [#'any? nil] [x y subst]
-  nil)
-
-(defmethod unify-terms [nil #'any?] [x y subst]
-  nil)
-
-(defmethod unify-terms [nil nil] [x y subst]
-  nil)
 
 (defn debug-subst [a b]
   (let [a-keys (set (keys a))
@@ -221,22 +194,6 @@
        (filter identity)
        seq))
 
-(s/fdef assoc-subst :args (s/cat :s ::subst :x t/logic? :y any?) :ret ::subst)
-(defn assoc-subst [subst x y]
-  ;; {:post [(do (println "assoc-subst" x "=>" y) true)]}
-  (assert (t/logic? x))
-  (assoc subst x y))
-
-(defn unify-any-logic-1 [x y subst]
-  ;; {:post [(do (println "any-logic-1:" x y "=>" (boolean %)) true)]}
-  ;; (println "any-logic-1:" x "=" (get subst x) y "=" (get subst y))
-  (cond
-    (occurs? y x subst) nil
-    (and (t/bound-t? y subst) (free-t? y subst)) (unify x y [(dissoc subst y)])
-    (get subst y) (unify x (get subst y) [subst])
-    (free-t? y subst) [(assoc-subst subst y x)]
-    :else (do (assert false) [subst])))
-
 (defn unify-logic-any-1 [x y subst]
   ;; {:post [(do (println "logic-any-1" x y "=>" (boolean %)) true)]}
   (cond
@@ -244,7 +201,7 @@
     (and (t/bound-t? x subst) (free-t? x subst)) [(dissoc subst x)]
     (t/bound-t? x subst) (unify (get subst x) y [subst])
     (free-t? x subst) [(assoc subst x y)]
-    :else (do (assert false) [subst])))
+    :else (do (assert false (print-str "unify-logic-any-1:" x y "x*" (resolve-type-1 x subst) "bound x?" (t/bound-t? x subst) "free x?" (free-t? x subst))))))
 
 (defn unify-logic-any [x y substs]
   (some->> substs
@@ -253,49 +210,36 @@
            (filter identity)
            (seq)))
 
-(defmethod unify-terms [#'t/logic? #'any?] [x y substs]
-  (unify-logic-any x y substs))
-
-(s/fdef unify-any-logic :args (s/cat :x any? :y any? :substs ::substs) :ret ::substs)
-(defn unify-any-logic [x y substs]
-  (some->> substs
-           (mapcat (fn [s]
-                     (unify-any-logic-1 x y s)))
-           (filter identity)
-           (seq)))
-
-(defmethod unify-terms [#'any? #'t/logic?] [x y substs]
-  (unify-any-logic x y substs))
-
 (defn unify-logic-logic-1 [x y subst]
   (cond
     (= x y) [subst]
-    (and (free-t? x subst) (free-t? y subst)) [(assoc-subst subst x y)]
+    (and (free-t? x subst) (free-t? y subst)) [(assoc-subst subst y x)]
     (and (free-t? y subst)) [(assoc-subst subst y x)]
     (and (free-t? x subst)) [(assoc-subst subst x y)]
     :else (or (unify (get subst x) (get subst y) [subst])
               (unify-any-logic-1 x y subst))))
 
-(defmethod unify-terms [#'t/logic? #'t/logic?] [x y substs]
+(defn unify-logic-logic [x y substs]
   (->> substs
        (mapcat (fn [s]
                  (unify-logic-logic-1 x y s)))
        (filter identity)
        (seq)))
 
-(defmethod unify-terms ['sequential #'any?] [x y subst]
+(defn unify-sequential-any [x y substs]
+  {:post [(do (println "unify sequential any" x y "=>" % ) true)]}
+  (when (and (seqable? y) (seq y))
+    (some->> substs
+             (unify (first x) (first y))
+             (unify (rest x) (rest y)))))
+
+(defn unify-set-any [x y subst]
   (when (and (seqable? y) (seq y))
     (some->> subst
              (unify (first x) (first y))
              (unify (rest x) (rest y)))))
 
-(defmethod unify-terms ['set #'any?] [x y subst]
-  (when (and (seqable? y) (seq y))
-    (some->> subst
-             (unify (first x) (first y))
-             (unify (rest x) (rest y)))))
-
-(defmethod unify-terms ['map 'map] [x y subst]
+(defn unify-map-map [x y subst]
   (let [[x-k x-v] (->> x (sort-by (fn [[k v]] (t/logic? k))) first)]
     ;; (println "unify map" x-k x-v (contains? y x-k) (t/logic? x-k))
     (cond
@@ -336,8 +280,8 @@
     (if-not *unify-temp-cache*
       (binding [*unify-temp-cache* (atom {})]
         (let [ret (apply unify-f args)]
-          (when (> (count @*unify-temp-cache*) 100)
-            (println "temp-cache size:" (count @*unify-temp-cache*)))
+          ;; (when (> (count @*unify-temp-cache*) 100)
+          ;;   (println "temp-cache size:" (count @*unify-temp-cache*)))
           ret))
       (apply unify-f args))))
 
@@ -561,12 +505,6 @@
         (println "unify post" x y "=>" (boolean ret))
         ret))))
 
-(defn with-debug-multimethod
-  [unify-f]
-  (fn [x y substs]
-    (println "debug-multimethod" [x y] ":" (debug-multimethod-dispatch unify-terms [x y substs]))
-    (unify-f x y substs)))
-
 (defn with-require-substs
   "It's easy to accidentally call the 2-arity unify from inside
   unify-terms, which can cause serious, hard-to-find bugs. Assert that
@@ -583,47 +521,233 @@
     (->> (apply unify-f args)
          (seq))))
 
-(defn unify*
-  ([x y]
-   (unify* x y [{}]))
-  ([x y substs]
-   (assert substs)
-   (cond
-     (= x y) substs
-     :else (unify-terms x y substs))))
+(defn unify-any-any [x y substs]
+  (when (isa? @t/types-hierarchy y x)
+    substs)
+  (let [x-ancestors (when (t/type? x) (-> x t/ancestors (conj x)))
+        y-ancestors (when (t/type? y) (t/ancestors y))]
+    (some->>
+     (disj y-ancestors #'any?)
+     (filter (fn [ya]
+               (contains? x-ancestors ya)))
+     (some (fn [ya]
+             (unify x ya substs)))))
+  (->> (t/get-equiv-types x)
+       (mapcat (fn [xt]
+                 (unify xt y substs)))
+       (seq)))
 
-(s/fdef unify :args (s/cat :x any? :y any? :substs (s/? ::substs)) :ret ::substs)
-(def unify
-  "Unifies term x and y with initial subst.
+(defn unify-or-any [x y substs]
+  ;; {:pre [(do (println "unify or any pre" x y) true)]
+  ;;  :post [(do (println "unify or any" x y "=>" %) true)]}
+  (or
+   (when (every? (fn [s] (occurs? y x s)) substs)
+     substs)
+   (->> x
+        t/type-value
+        (mapcat (fn [xt]
+                  (unify xt y substs)))
+        (filter identity)
+        (distinct)
+        (doall)
+        (seq))
+   (when (and (some t/class-t? (t/type-value x))
+              (some (fn [yt]
+                      (or (t/class-t? yt)
+                          (t/instance-or-t? yt))) (t/get-equiv-types y)))
+     (->> (t/get-equiv-types y)
+          (filter (fn [yt]
+                    (or (t/class-t? yt)
+                        (t/instance-or-t? yt))))
+          (mapcat (fn [yt]
+                    (unify x yt substs)))))
+   (when (t/logic? y)
+     (unify-any-logic x y substs))))
 
-    Returns a seq of subst maps, (map of name->term) that unify x and y, or nil if
-    they can't be unified."
-  (-> unify*
-      ;; with-debug-multimethod
-      ;; with-debug
-      ;; with-larger-substs
-      ;; with-no-infinite
-      with-temp-cache
-      with-cache-hit-stats
-      with-perm-cache
-      with-ensure-temp-cache
-      ;; with-detect-loop
-      with-merge-substs
-      with-distinct-substs
-      ;; with-substs-limit
-      ;; with-timing
-      ;; with-call-count
-      ;; with-depth
-      with-require-substs))
+(defn unify-or-or [x y substs]
+  (let [ys (-> y t/type-value set)]
+    (reduce (fn [substs x*]
+              (when substs
+                (or
+                 (when (contains? ys x*)
+                   substs)
+                 (->> ys
+                      (some (fn [y*]
+                              (unify x* y* substs))))))) substs (t/type-value x))))
 
-(defn debug-unify
-  ([x y])
-  ([x y substs]
-   (let [ret (unify x y substs)]
-     (println "debug-unify" x y "=>" (boolean (seq ret)))
-     (debug-substs x substs)
-     (debug-substs y substs)
-     ret)))
+(defn unify-any-or [x y substs]
+  ;;; unifies when every item in y unifies individually, or every pair of items, or triple, etc.
+  (let [yss (->> y
+                 t/type-value
+                 (combo/subsets)
+                 (drop 1)
+                 (butlast)
+                 (group-by count))]
+
+    (->> yss
+         (map (fn [[cnt ys]]
+                (let [rets (->> ys
+                                (map (fn [y*]
+                                       (unify x (t/or-t y*) substs))))]
+                  (when (every? seq rets)
+                    (apply concat rets)))))
+         (filter identity)
+         (first))))
+
+(defn unify-any-and [x y substs]
+  ;; {:post [(do (println "any and" x y "=>" %) true)]}
+  (->> (t/type-value y)
+       (map (fn [y*]
+               (unify x y* substs)))
+       (filter identity)
+       (apply concat)
+       (seq)))
+
+(defn unify-and-any [x y substs]
+  (reduce (fn [substs x*]
+            (when substs
+              (unify x* y substs))) substs (t/type-value x)))
+
+(defn unify-and-and [x y substs]
+  (let [ys (-> y t/type-value set)]
+    (reduce (fn [substs x*]
+              (when substs
+                (or
+                 (when (contains? ys x*)
+                   substs)
+                 (->> ys
+                      (some (fn [y*]
+                              (unify x* y* substs))))))) substs (t/type-value x))))
+
+(defn unify-not-any [x y substs]
+  (if (unify (t/type-value x) y substs)
+    nil
+    substs))
+
+(defn unify-not-not [x y substs]
+  (when-let [substs (unify (t/type-value x) (t/type-value y) substs)]
+    substs))
+
+(defn unify-spec-spec [x y substs]
+  (unify (t/type-value x) (t/type-value y) substs))
+
+(defn unify-spec-value [x y substs]
+  (let [yv (t/type-value y)]
+    (when (seqable? yv)
+      (unify (t/type-value x) (t/cat-t (map t/value-t yv)) substs))))
+
+(defn unify-any-spec [x y substs]
+  (when (not (t/regex? x))
+    (unify x (t/type-value y) substs)))
+
+(defn unify-value-value [x y substs]
+  (unify (t/type-value x) (t/type-value y) substs))
+
+(defn unify-value-any [x y substs]
+  (->>
+   (t/get-equiv-types y)
+   (filter t/value-t?)
+   (map (fn [yt]
+          (unify x yt substs)))
+   (filter identity)
+   (distinct)
+   (apply concat)
+   (seq)))
+
+(defn unify-class-class [x y substs]
+  (let [cx (t/type-value x)
+        cy (t/type-value y)]
+    (cond
+      (and (class? cx) (class? cy) (or (isa? cy cx) (j/castable? cy cx))) substs
+      :else (unify cx cy substs))))
+
+(defn unify-class-any [x y substs]
+  (->>
+   (t/class-ancestors y)
+   (mapcat (fn [yt]
+          (unify x yt substs)))
+   (filter identity)
+   (distinct)
+   (seq)))
+
+(defn unify-class-value [x v substs]
+  ;; {:post [(validate! ::substs %)]}
+  (let [cls (t/type-value x)
+        val (t/type-value v)]
+    (when-not (class? cls)
+      (println "unify-terms:" x v))
+    (assert (class? cls))
+    (or
+     (when (t/logic? cls)
+       (unify-logic-any cls val substs))
+     (when (instance? cls val)
+       substs)
+     (when (and (class val) (j/castable? cls (class val)))
+       substs))))
+
+(defn unify-fn-fn [x y substs]
+  (->> x
+       (t/type-value)
+       (mapcat (fn [[x-args x-ret]]
+                 (->> y
+                      (t/type-value)
+                      (mapcat (fn [[y-args y-ret]]
+                                (some->> substs
+                                         (unify x-ret y-ret)
+                                         seq
+                                         (unify x-args y-args)
+                                         seq))))))
+       seq))
+
+(defn unify-any-value [x y substs]
+  ;; {:post [(validate! ::substs %)]}
+  (let [val (t/type-value y)
+        spread (when (and (seqable? val) (seq val))
+                 (t/spec-t (t/cat-t (map t/value-t val))))]
+    (->> [(when (and (contains? @value-pred-whitelist x) (x val))
+            substs)
+          (when spread
+            (unify x spread substs))]
+         (apply concat)
+         seq)))
+
+(defn unify-seqof-seqof [x y substs]
+  ;; can't use dxdx here, because both could accept nil, and [seq-of a?] [seq-of b?] shouldn't unify
+  (unify (t/type-value x) (t/type-value y) substs))
+
+(defn unify-seqableof-seqableof [x y substs]
+  (unify (t/type-value x) (t/type-value y) substs))
+
+(defn unify-seqof-logic [x y substs]
+  ;; use this to short-circuit
+  (if (= (t/type-value x) y)
+    substs
+    (unify-any-logic x y substs)))
+
+(defn unify-tagged-tagged-default
+  "Default method for two tagged types. Unify if their (one each) type value unifies"
+  [x y substs]
+  (when-let [substs (and (t/isa-t? x y) (unify (t/type-value x) (t/type-value y) substs))]
+    substs))
+
+(defn unify-term-value [x]
+  (cond
+    (t/logic? x) #'t/logic?
+    (t/value-t? x) #'t/value-t?
+    (t/tagged? x) (if (t/parents x)
+                    (t/type-tag x)
+                    #'any?)
+    (var? x) (if (t/parents x)
+               x
+               #'any?)
+    (nil? x) nil
+    (sequential? x) ::sequential-literal
+    (set? x) ::set-literal
+    (map? x) ::map-literal
+    :else #'any?))
+
+(defn first-dispatch [t]
+  (unify-term-value t))
 
 (defmulti accept-nil?
   "True if this (regex) type may accept no input"
@@ -633,12 +757,20 @@
 (defmethod accept-nil? nil [_]
   false)
 
-(s/fdef valid :args (s/cat :x ::t/type :y ::t/type) :ret boolean?)
-(defn valid? [x y]
-  (boolean (seq (unify x y))))
+(defmethod accept-nil? 'alt [t]
+  (some nil? (t/alt-types t)))
 
-(defn first-dispatch [t]
-  (unify-term-value t))
+(defmethod accept-nil? 'seq-of [t]
+  true)
+
+(defmethod accept-nil? 'cat [t]
+  (every? accept-nil? (t/cat-types t)))
+
+(defmethod accept-nil? 'value [t]
+  (let [val (-> t t/type-value)]
+    (if (seqable? val)
+      (and (nil? (seq val)) (not= nil val))
+      false)))
 
 (defmulti first-t
   "For regexes, returns a seq of possible values of calling `first` on
@@ -683,11 +815,72 @@
 (defmethod first-t #'dx? [t]
   nil)
 
-(defmethod first-t 'value [val-t]
+(defmethod first-t #'t/value-t? [val-t]
   ;; {:post [(validate! (s/nilable (s/coll-of t/value-t?)) %)]}
   (let [val (t/type-value val-t)]
     (when (and (seqable? val) (seq val))
       [(t/value-t (first val))])))
+
+(defn unify-dx-dx [tx ty substs]
+  {
+   ;; :pre [(do (println "unify dx dx pre" tx ty substs) true)]
+   ;; :post [(do (println "unify dx dx post" tx ty "=>" %) true]
+   }
+  (let [ys (first-t ty)]
+    (or
+     (some->> ys
+              (mapcat (fn [y]
+                        (let [dx-rets (dx tx y substs)]
+                          (->> dx-rets
+                               (mapcat (fn [dx-ret]
+                                         (let [{dx-x :state substs* :substs} dx-ret
+                                               substs substs*
+                                               dy-rets (dx ty y substs)]
+                                           (->> dy-rets
+                                                (mapcat (fn [dy-ret]
+                                                        (let [{dy-y :state substs :substs} dy-ret]
+                                                          (->>
+                                                           [(when (and substs
+                                                                       (or (not= tx dx-x)
+                                                                           (not= ty dy-y)))
+                                                              (unify dx-x dy-y substs))]
+                                                           (apply concat)))))))))))))
+              (distinct)
+              (seq))
+     (when (and (accept-nil? tx) (nil? (first-t ty)))
+       substs))))
+
+(defn unify-dx-value [x y substs]
+  ;; {:post [(validate! ::substs %)]}
+  (let [val (t/type-value y)]
+    (when (seqable? val)
+      (unify-dx-dx x (t/cat-t (map t/value-t val)) substs))))
+
+(defn dx-vals
+  "Given a regex, dx it repeatedly, returning all distinct values"
+  [re substs]
+  (let [vals (first-t re)
+        res (distinct (mapcat (fn [v] (dx re v substs)) vals))]
+    (println "dx-vals:" re "=>" res )
+    (concat
+     vals
+     (mapcat (fn [{re* :state
+                   substs* :substs}]
+               (when (and re* (not= re re*))
+                 (dx-vals re* substs*))) res))))
+
+(defn unify-collof-spec [x y substs]
+  {:post [(validate! ::substs %)]}
+  (let [x* (t/type-value x)
+        y* (t/type-value y)]
+    (println "collof-spec:" x* y*)
+    (when (dx? y*)
+      (reduce (fn [substs dy]
+                (when substs
+                  (println "unify-collof-spec unify" x* dy)
+                  (if dy
+                    (unify x* dy substs)
+                    substs))) substs (dx-vals y* substs)))))
 
 (s/def :dx/state (s/nilable ::t/type))
 (s/def ::dx-ret (s/keys :req-un [:dx/state ::substs]))
@@ -772,76 +965,126 @@
                        (t/value-t (seq vr))) :substs substs}])))]
      (apply concat))))
 
-(defn unify-dx-dx [tx ty substs]
-  {
-   ;; :pre [(do (println "unify dx dx pre" tx ty substs) true)]
-   ;; :post [(do (println "unify dx dx post" tx ty "=>" %) true]
-   }
-  (let [ys (first-t ty)]
-    (or
-     (some->> ys
-              (mapcat (fn [y]
-                        (let [dx-rets (dx tx y substs)]
-                          (->> dx-rets
-                               (mapcat (fn [dx-ret]
-                                         (let [{dx-x :state substs* :substs} dx-ret
-                                               substs substs*
-                                               dy-rets (dx ty y substs)]
-                                           (->> dy-rets
-                                                (mapcat (fn [dy-ret]
-                                                        (let [{dy-y :state substs :substs} dy-ret]
-                                                          (->>
-                                                           [(when (and substs
-                                                                       (or (not= tx dx-x)
-                                                                           (not= ty dy-y)))
-                                                              (unify dx-x dy-y substs))]
-                                                           (apply concat)))))))))))))
-              (distinct)
-              (seq))
-     (when (and (accept-nil? tx) (nil? (first-t ty)))
-       substs))))
-
-(defmethod unify-terms [#'dx? #'dx?] [tx ty substs]
-  (unify-dx-dx tx ty substs))
-
-(defmethod unify-terms [#'dx? 'value] [x y substs]
-  ;; {:post [(validate! ::substs %)]}
-  (let [val (t/type-value y)]
-    (when (seqable? val)
-      (unify-dx-dx x (t/cat-t (map t/value-t val)) substs))))
-
-(defmethod unify-terms ['seq-of 'seq-of] [x y substs]
-  ;; can't use dxdx here, because both could accept nil, and [seq-of a?] [seq-of b?] shouldn't unify
-  (unify (t/type-value x) (t/type-value y) substs))
-
-(defmethod unify-terms ['seqable-of 'seqable-of] [x y substs]
-  (unify (t/type-value x) (t/type-value y) substs))
-
-(defmethod unify-terms ['seq-of #'t/logic?] [x y substs]
-  ;; use this to short-circuit
-  (if (= (t/type-value x) y)
-    substs
-    (unify-any-logic x y substs)))
-
-(defmethod unify-terms [#'dx? nil] [x y substs]
-  (when (accept-nil? x)
-    substs))
-
-(defmethod unify-terms [nil #'dx?] [x y substs]
-  (when (accept-nil? y)
-    substs))
-
-(defmethod unify-terms [nil nil] [x y substs]
+(defn unify-truthy [x y substs]
   substs)
 
-(defn unify-tagged-tagged-default
-  "Default method for two tagged types. Unify if their (one each) type value unifies"
-  [x y substs]
-  (when-let [substs (and (t/isa-t? x y) (unify (t/type-value x) (t/type-value y) substs))]
-    substs))
+(defn unify-falsey [x y substs]
+  nil)
 
-(defmethod unify-terms ['coll-of 'coll-of] [x y substs]
-  (unify-tagged-tagged-default x y substs))
+(defn match*
+  [x y]
+  (fn
+    ([xyf f]
+     (if (vector? xyf)
+       (let [[xf yf] xyf]
+         (cond
+           (and xf yf (xf x) (yf y)) f
+           (and xf (nil? yf) (xf x)) f
+           (and yf (nil? xf) (yf y)) f
+           (and (nil? xf) (nil? yf)) f
+           :else nil))
+       (when (xyf x y)
+         f)))))
+
+(defn tagged-default? [x]
+  (and (t/tagged? x)
+       (not (t/regex? x))))
+
+(defn unify-terms [x y substs]
+  (let [match (match* x y)
+        _ nil
+        matching-unify-f
+        (filter
+         identity
+         [(match [t/or-t? _] unify-or-any)
+          (match [t/any-t? _] unify-truthy)
+          (match [nil? nil?] unify-truthy)
+          (match (fn [x y]
+                   (and (dx? x) (dx? y)
+                        (not (and (t/seq-t? x) (t/seq-t? y))))) unify-dx-dx)
+          (match [nil? (fn [y]
+                         (and (dx? y) (accept-nil? y)))] unify-truthy)
+          (match [(fn [x]
+                    (and (dx? x) (accept-nil? x))) nil?] unify-truthy)
+          (match [_ nil?] unify-falsey)
+          (match [t/or-t? t/or-t?] unify-any-or)
+          (match [t/or-t? (comp t/or-t?)] unify-or-any)
+          (match [_ t/or-t?] unify-any-or)
+          (match [t/and-t? t/and-t?] unify-and-and)
+          (match [t/and-t? _] unify-and-any)
+          (match [_ t/and-t?] unify-any-and)
+          (match [t/not-t? t/not-t?] unify-not-not)
+          (match [t/spec-t? t/spec-t?] unify-spec-spec)
+          (match [t/spec-t? t/value-t?] unify-spec-value)
+          (match [_ t/spec-t?] unify-any-spec)
+          (match [t/not-t? _] unify-not-any)
+          (match [t/value-t? t/value-t?] unify-value-value)
+          (match [t/class-t? t/value-t?] unify-class-value)
+          (match [t/value-t? _] unify-value-any)
+          (match [_ t/value-t?] unify-any-value)
+          (match [t/fn-t? t/fn-t?] unify-fn-fn)
+          (match [t/class-t? t/class-t?] unify-class-class)
+          (match [t/class-t? _] unify-class-any)
+          (match [t/logic? t/logic?] unify-logic-logic)
+          (match [t/logic? _] unify-logic-any)
+          (match [_ t/logic?] unify-any-logic)
+          (match [dx? t/value-t?] unify-dx-value)
+          (match [t/seq-t? t/logic?] unify-seqof-logic)
+          (match [t/seq-t? t/seq-t?] unify-seqof-seqof)
+          (match [t/seqable-t? t/seqable-t?] unify-seqableof-seqableof)
+          (match [tagged-default? tagged-default?] unify-tagged-tagged-default)
+          (match [t/coll-of? t/spec-t?] unify-collof-spec)
+          (match [_ _] unify-any-any)])]
+    ;; (println "matching:" x y matching-unify-f)
+    (some (fn [f]
+            ;; {:post [(do (when % (println "unify:" x y f "=>" %)) true)]}
+            (f x y substs)) matching-unify-f)))
+
+(defn unify*
+  ([x y]
+   (unify* x y [{}]))
+  ([x y substs]
+   (assert substs)
+   (cond
+     (= x y) substs
+     :else (unify-terms x y substs))))
+
+(s/fdef unify :args (s/cat :x any? :y any? :substs (s/? ::substs)) :ret ::substs)
+(def unify
+  "Unifies term x and y with initial subst.
+
+    Returns a seq of subst maps, (map of name->term) that unify x and y, or nil if
+    they can't be unified."
+  (-> unify*
+      ;; with-debug-multimethod
+      ;; with-debug
+      ;; with-larger-substs
+      ;; with-no-infinite
+      with-temp-cache
+      with-cache-hit-stats
+      with-perm-cache
+      with-ensure-temp-cache
+      ;; with-detect-loop
+      with-merge-substs
+      with-distinct-substs
+      ;; with-substs-limit
+      ;; with-timing
+      ;; with-call-count
+      ;; with-depth
+      with-require-substs))
+
+(defn debug-unify
+  ([x y])
+  ([x y substs]
+   (let [ret (unify x y substs)]
+     (println "debug-unify" x y "=>" (boolean (seq ret)))
+     (debug-substs x substs)
+     (debug-substs y substs)
+     ret)))
+
+(s/fdef valid :args (s/cat :x ::t/type :y ::t/type) :ret boolean?)
+(defn valid? [x y]
+  (boolean (seq (unify x y))))
 
 (defn value-coll-type
   "Given a 'value holding a persistent collection, return a type that unifies with all elements of the value"
@@ -852,211 +1095,61 @@
        (map t/value-t)
        (t/or-t)))
 
-(defmethod unify-terms [#'coll? 'value] [x y substs]
-  (let [yv (t/type-value y)
-        x-pred (if (t/tagged? x)
-                 (->> x t/parents (filter var?) (first))
-                 (do
-                   (assert (var? x))
-                   x))]
-    (assert x-pred)
+;; (defmethod unify-terms [#'coll? 'value] [x y substs]
+;;   (let [yv (t/type-value y)
+;;         x-pred (if (t/tagged? x)
+;;                  (->> x t/parents (filter var?) (first))
+;;                  (do
+;;                    (assert (var? x))
+;;                    x))]
+;;     (assert x-pred)
 
-    (if (t/tagged? x)
-      (or
-       (when (and (x-pred (t/type-value y)) (seqable? yv))
-         (unify x (value-coll-type y) substs))
-       (when (seqable? yv)
-         (unify x (t/cat-t (map t/value-t yv)) substs)))
-      (when (x-pred (t/type-value y))
-        substs))))
+;;     (if (t/tagged? x)
+;;       (or
+;;        (when (and (x-pred (t/type-value y)) (seqable? yv))
+;;          (unify x (value-coll-type y) substs))
+;;        (when (seqable? yv)
+;;          (unify x (t/cat-t (map t/value-t yv)) substs)))
+;;       (when (x-pred (t/type-value y))
+;;         substs))))
 
-(defmethod unify-terms ['chunk-buffer 'chunk-buffer] [x y substs]
-  (unify-tagged-tagged-default x y substs))
+;; (defmethod unify-terms ['chunk-buffer 'chunk-buffer] [x y substs]
+;;   (unify-tagged-tagged-default x y substs))
 
-(defmethod unify-terms ['chunk 'chunk] [x y substs]
-  (unify-tagged-tagged-default x y substs))
+;; (defmethod unify-terms ['chunk 'chunk] [x y substs]
+;;   (unify-tagged-tagged-default x y substs))
 
-(defmethod unify-terms ['or #'any?] [x y substs]
-  ;; {:pre [(do (println "unify or any pre" x y) true)]
-  ;;  :post [(do (println "unify or any" x y "=>" %) true)]}
-  (or
-   (when (every? (fn [s] (occurs? y x s)) substs)
-     substs)
-   (->> x
-        t/type-value
-        (mapcat (fn [xt]
-                  (unify xt y substs)))
-        (filter identity)
-        (distinct)
-        (doall)
-        (seq))
-   (when (and (some t/class-t? (t/type-value x))
-              (some (fn [yt]
-                      (or (t/class-t? yt)
-                          (t/instance-or-t? yt))) (t/get-equiv-types y)))
-     (->> (t/get-equiv-types y)
-          (filter (fn [yt]
-                    (or (t/class-t? yt)
-                        (t/instance-or-t? yt))))
-          (mapcat (fn [yt]
-                    (unify x yt substs)))))
-   (when (t/logic? y)
-     (unify-any-logic x y substs))))
-
-(defn unify-any-or [x y substs]
-  ;;; unifies when every item in y unifies individually, or every pair of items, or triple, etc.
-  (let [yss (->> y
-                 t/type-value
-                 (combo/subsets)
-                 (drop 1)
-                 (butlast)
-                 (group-by count))]
-
-    (->> yss
-         (map (fn [[cnt ys]]
-                (let [rets (->> ys
-                                (map (fn [y*]
-                                       (unify x (t/or-t y*) substs))))]
-                  (when (every? seq rets)
-                    (apply concat rets)))))
-         (filter identity)
-         (first))))
-
-(defmethod unify-terms [#'any? 'or] [x y substs]
-  (unify-any-or x y substs))
-
-(defmethod unify-terms ['or 'or] [x y substs]
-  (unify-any-or x y substs))
-
-(defmethod unify-terms [#'any? 'and] [x y substs]
-  ;; {:post [(do (println "any and" x y "=>" %) true)]}
-  (->> (t/type-value y)
-       (map (fn [y*]
-               (unify x y* substs)))
-       (filter identity)
-       (apply concat)
-       (seq)))
-
-(defmethod unify-terms ['and #'any?] [x y substs]
-  (reduce (fn [substs x*]
-            (when substs
-              (unify x* y substs))) substs (t/type-value x)))
-
-(defmethod unify-terms ['and 'and] [x y substs]
-  (let [ys (-> y t/type-value set)]
-    (reduce (fn [substs x*]
-              (when substs
-                (or
-                 (when (contains? ys x*)
-                   substs)
-                 (->> ys
-                      (some (fn [y*]
-                              (unify x* y* substs))))))) substs (t/type-value x))))
-
-(defmethod unify-terms ['not #'any?] [x y substs]
-  (if (unify (t/type-value x) y substs)
-    nil
-    substs))
-
-(defmethod unify-terms ['not 'not] [x y substs]
-  (when-let [substs (unify (t/type-value x) (t/type-value y) substs)]
-    substs))
-
-(defmethod unify-terms ['alt #'any?] [alt-x y substs]
-  (->> alt-x
-       (t/alt-types)
-       (mapcat (fn [x]
-                 (if (nil? x)
-                   substs
-                   (unify x y substs))))))
-
-(defmethod unify-terms [nil #'any?] [x y subst]
-  nil)
-
-(defmethod unify-terms [nil nil] [x y substs]
-  substs)
-
-(defmethod accept-nil? 'alt [t]
-  (some nil? (t/alt-types t)))
-
-(defmethod accept-nil? 'seq-of [t]
-  true)
-
-(defmethod accept-nil? 'cat [t]
-  (every? accept-nil? (t/cat-types t)))
-
-(defmethod accept-nil? 'value [t]
-  (let [val (-> t t/type-value)]
-    (if (seqable? val)
-      (and (nil? (seq val)) (not= nil val))
-      false)))
+;; (defmethod unify-terms ['alt #'any?] [alt-x y substs]
+;;   (->> alt-x
+;;        (t/alt-types)
+;;        (mapcat (fn [x]
+;;                  (if (nil? x)
+;;                    substs
+;;                    (unify x y substs))))))
 
 (defn get-var-type [v]
   (or (data/get-ann v)
       ;;(parse/get-spec v)
       (data/get-var-spec v)))
 
-(defmethod unify-terms ['spec 'spec] [x y substs]
-  (unify-terms (t/type-value x) (t/type-value y) substs))
-
-(defmethod unify-terms ['spec 'value] [x y substs]
-  (let [yv (t/type-value y)]
-    (when (seqable? yv)
-      (unify (t/type-value x) (t/cat-t (map t/value-t yv)) substs))))
-
-(defmethod unify-terms [#'any? 'spec] [x y substs]
-  (when (not (t/regex? x))
-    (unify x (t/type-value y) substs)))
-
-(defn derive-all-any
-  "We need all tagged types to derive from #'any?, so default dispatching works"
-  []
-  (->> (unify-terms-methods)
-       (apply concat)
-       (filter symbol?)
-       distinct
-       (map (fn [s]
-              (t/ensure-derive-type #'any? s)))
-       (dorun)))
+;; (defn derive-all-any
+;;   "We need all tagged types to derive from #'any?, so default dispatching works"
+;;   []
+;;   (->> (unify-terms-methods)
+;;        (apply concat)
+;;        (filter symbol?)
+;;        distinct
+;;        (map (fn [s]
+;;               (t/ensure-derive-type #'any? s)))
+;;        (dorun)))
 
 (t/derive-type #'any? #'t/logic?)
 
-(derive-all-any)
+;; (derive-all-any)
 (t/derive-type #'any? #'dx?)
 
 (doseq [m (-> (dx-methods) (disj :default))]
   (t/derive-type #'dx? m))
-
-(defonce value-pred-whitelist (atom #{}))
-
-(s/fdef add-value-pred-whitelist! :args (s/cat :v var?))
-(defn add-value-pred-whitelist!
-  "Declare var predicate v as safe for calling to unify with values. v
-  should be a predicate, pure (free of side-effects) and fast"
-  [v]
-  (swap! value-pred-whitelist conj v))
-
-(doseq [v (t/core-predicates)]
-  (add-value-pred-whitelist! v))
-
-(defmethod unify-terms [#'t/value-t? 'value] [x y substs]
-  substs)
-
-(defmethod unify-terms [#'any? 'value] [x y substs]
-  ;; {:post [(validate! ::substs %)]}
-  (let [val (t/type-value y)
-        spread (when (and (seqable? val) (seq val))
-                 (t/spec-t (t/cat-t (map t/value-t val))))]
-    (->> [(when (and (contains? @value-pred-whitelist x) (x val))
-            substs)
-          (when spread
-            (unify x spread substs))]
-         (apply concat)
-         seq)))
-
-(defmethod unify-terms [#'t/logic? 'value] [x y substs]
-  (let [val (t/type-value y)]
-    (unify-logic-any x y substs)))
 
 (defn arities-complementary?
   "True if x and y are both fn-ts, and they have no arities in common"
@@ -1069,68 +1162,10 @@
                       (every? (fn [[x-args x-ret]]
                                 (not (unify x-args y-args)))))))))
 
-(defmethod unify-terms ['fn 'fn] [x y substs]
-  (->> x
-       (t/type-value)
-       (mapcat (fn [[x-args x-ret]]
-                 (->> y
-                      (t/type-value)
-                      (mapcat (fn [[y-args y-ret]]
-                                (some->> substs
-                                         (unify x-ret y-ret)
-                                         seq
-                                         (unify x-args y-args)
-                                         seq))))))
-       seq))
-
-(defmethod unify-terms ['class 'class] [x y substs]
-  (let [cx (t/type-value x)
-        cy (t/type-value y)]
-    (cond
-      (and (class? cx) (class? cy) (or (isa? cy cx) (j/castable? cy cx))) substs
-      :else (unify cx cy substs))))
-
-(defmethod unify-terms ['class #'any?] [x y substs]
-  (->>
-   (t/class-ancestors y)
-   (mapcat (fn [yt]
-          (unify x yt substs)))
-   (filter identity)
-   (distinct)
-   (seq)))
-
-(defmethod unify-terms ['class 'value] [x v substs]
-  ;; {:post [(validate! ::substs %)]}
-  (let [cls (t/type-value x)
-        val (t/type-value v)]
-    (when-not (class? cls)
-      (println "unify-terms:" x v))
-    (assert (class? cls))
-    (or
-     (when (t/logic? cls)
-       (unify-logic-any cls val substs))
-     (when (instance? cls val)
-       substs)
-     (when (and (class val) (j/castable? cls (class val)))
-       substs))))
-
-(defmethod unify-terms ['value 'value] [x y substs]
-  (unify (t/type-value x) (t/type-value y) substs))
-
-(defmethod unify-terms ['value #'any?] [x y substs]
-  (->>
-   (t/get-equiv-types y)
-   (filter t/value-t?)
-   (map (fn [yt]
-          (unify x yt substs)))
-   (filter identity)
-   (distinct)
-   (apply concat)
-   (seq)))
-
 (defn re-will-accept-dispatch [x]
   {:pre [(t/type-tag x)]
-   :post [(do (println "re-will-accept dispatch" x "=>"%) true)]}
+   ;; :post [(do (println "re-will-accept dispatch" x "=>"%) true)]
+   }
   (t/type-tag x))
 
 (defmulti re-will-accept
@@ -1138,7 +1173,6 @@
   #'re-will-accept-dispatch)
 
 (defn re-accept-dispatch [x y]
-  {:post [(do (println "re-accept dispatch" x "=>"%) true)]}
   (t/type-tag x))
 
 (defmulti re-accept
@@ -1147,14 +1181,12 @@
   #'re-accept-dispatch)
 
 (defmethod re-will-accept 'seq-of [seq-x]
-  (println "re-will-accept seq")
   #{(t/type-value seq-x)})
 
 (defmethod re-will-accept 'alt [alt-x]
   #{(t/type-value alt-x)})
 
 (defmethod re-will-accept 'cat [cat-x]
-  {:post [(do (println "re-will-accept cat" cat-x "=>" %) true)]}
   (let [[x & xr :as xs] (t/cat-types cat-x)]
     (if (accept-nil? x)
       (if (seq xr)
@@ -1169,66 +1201,12 @@
   #{})
 
 (defmethod re-accept 'cat [x y]
-  {:pre [(do (println "re-accept cat" x y) true)]
-   :post [(do (println "re-accept cat" x y "=>" %) true)]}
   (let [[xv & xr :as xs] (t/cat-types x)]
     (if (seq xr)
       (if (accept-nil? xv)
         (conj (t/cat-t xr) (re-accept (t/cat-t xr) y))
         #{(t/cat-t xr)})
       #{})))
-
-(prefer-method unify-terms [#'any? #'t/logic?] [#'any? #'any?])
-(prefer-method unify-terms [#'any? #'t/logic?] [#'t/logic? #'any?])
-(prefer-method unify-terms [#'any? #'t/logic?] ['not #'any?])
-(prefer-method unify-terms [#'any? #'t/logic?] ['value #'any?])
-(prefer-method unify-terms [#'any? #'t/logic?] ['and #'any?])
-(prefer-method unify-terms [#'any? #'t/logic?] ['class #'any?])
-(prefer-method unify-terms [#'t/logic? #'any?] [#'any? 'spec])
-(prefer-method unify-terms [#'any? 'and] ['or #'any?] )
-(prefer-method unify-terms [#'any? 'and] ['sequential #'any?])
-(prefer-method unify-terms [#'any? 'and] ['value #'any?])
-(prefer-method unify-terms [#'any? 'and] ['and #'any?])
-(prefer-method unify-terms ['and #'any?] [#'any? 'value])
-(prefer-method unify-terms [#'any? 'and] ['class #'any?])
-(prefer-method unify-terms [#'any? 'invoke] ['or #'any?])
-(prefer-method unify-terms [#'any? 'invoke] ['value #'any?])
-(prefer-method unify-terms [#'any? 'not] ['or #'any?] )
-(prefer-method unify-terms [#'any? 'not] ['value #'any?])
-(prefer-method unify-terms [#'any? 'value] [#'sequential? #'any?])
-(prefer-method unify-terms [#'any? 'value] [#'t/logic? #'any?])
-(prefer-method unify-terms [#'any? 'value] ['sequential #'any?])
-(prefer-method unify-terms [#'dx? #'dx?] [#'any? 'value])
-(prefer-method unify-terms [#'dx? #'dx?] ['value #'any?])
-(prefer-method unify-terms [#'dx? 'value] [#'dx? #'dx?])
-(prefer-method unify-terms [#'t/logic? #'any?] [#'any? #'any?])
-(prefer-method unify-terms [#'t/logic? #'any?] [#'any? 'and])
-(prefer-method unify-terms [#'t/logic? #'any?] [#'any? 'invoke])
-(prefer-method unify-terms [#'t/logic? #'any?] [#'any? 'not])
-(prefer-method unify-terms [#'t/logic? #'any?] [#'any? 'or])
-(prefer-method unify-terms ['alt #'any?] [#'any? #'t/logic?])
-(prefer-method unify-terms ['invoke #'any?] [#'any? #'t/logic?])
-(prefer-method unify-terms ['invoke #'any?] [#'any? 'value])
-(prefer-method unify-terms ['not #'any?] [#'any? 'and])
-(prefer-method unify-terms ['not #'any?] [#'any? 'value])
-(prefer-method unify-terms ['not #'any?] [#'any? 'or])
-(prefer-method unify-terms ['or #'any?] [#'any? #'t/logic?])
-(prefer-method unify-terms ['or #'any?] [#'any? 'value])
-(prefer-method unify-terms [#'any? 'or] ['or #'any?])
-(prefer-method unify-terms [#'dx? #'dx?] ['chunked-seq-of 'chunked-seq-of])
-(prefer-method unify-terms ['chunked-seq-of 'chunked-seq-of] ['coll-of 'coll-of])
-(prefer-method unify-terms [#'dx? #'dx?] ['coll-of 'coll-of])
-(prefer-method unify-terms [#'any? 'or] ['and #'any?])
-(prefer-method unify-terms [#'any? 'or] ['class #'any?])
-(prefer-method unify-terms [#'any? 'or] ['value #'any?])
-(prefer-method unify-terms [#'coll? 'value] [#'any? 'value])
-(prefer-method unify-terms [#'coll? 'value] [#'any? #'any?])
-(prefer-method unify-terms [#'coll? 'value] [#'dx? 'value])
-(prefer-method unify-terms [#'coll? 'value] [#'dx? #'dx?])
-(prefer-method unify-terms [#'any? 'spec] ['value #'any?])
-(prefer-method unify-terms ['or #'any?] [#'any? 'spec])
-(prefer-method unify-terms [#'any? 'spec] ['not #'any?])
-(prefer-method unify-terms [#'any? 'spec] ['class #'any?])
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))
@@ -1248,7 +1226,7 @@
       (let [t* (get subst t t)]
         (cond
           (and (t/logic? t*) (not= t t*)) (resolve-type-1 t* subst)
-          :else (or (resolve-type* t* subst) t*))))
+          :else (or (resolve-type* t* subst) t* t))))
     t))
 
 (s/fdef resolve-type :args (s/cat :t any? :s ::substs) :ret any?)

@@ -9,8 +9,9 @@
 (s/def ::>= (s/tuple #{:>=} ::t/fresh-type ::t/fresh-type))
 (s/def ::true (s/tuple #{:true}))
 (s/def ::false (s/tuple #{:false}))
+(s/def ::undecided (s/tuple #{:undecided}))
 
-(s/def ::equation (s/or :e ::eq :< ::<= :> ::>= :t ::true :f ::false :a ::ande :o ::ore :i ::imp))
+(s/def ::equation (s/or :e ::eq :< ::<= :> ::>= :t ::true :f ::false :u ::undecided :a ::ande :o ::ore :i ::imp))
 (s/def ::ande (s/cat :a #{:ande} :e (s/coll-of ::equation)))
 (s/def ::ore (s/cat :o #{:ore} :e (s/coll-of ::equation)))
 (s/def ::imp (s/cat :i #{:imp} :p ::equation :q ::equation))
@@ -57,6 +58,7 @@
 
 (s/fdef or-e :args (s/cat :eqs (s/coll-of ::equation)) :ret ::equation)
 (defn or-e [eqs]
+  ;; {:post [(do (println "or-e" eqs "=>" %) true)]}
   (let [eqs (->> eqs
                  (mapcat (fn [e]
                            (if (or-e? e)

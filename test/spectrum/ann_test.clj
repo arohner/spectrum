@@ -91,6 +91,7 @@
     (t/class-t IChunkedSeq) #'chunked-seq?
     #'chunked-seq? (t/class-t IChunkedSeq)
     #'chunked-seq? ['chunked-seq-of '?x]
+    ['class clojure.lang.Indexed] ['chunk '?x]
 
     #'float? (t/class-t Double)
     #'float? (t/class-t Float)
