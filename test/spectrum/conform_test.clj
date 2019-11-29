@@ -120,12 +120,12 @@
 
 (deftest dx?
   (testing "truthy"
-    (are [t] (c/dx? t)
+    (are [t] (t/regex? t)
       (t/cat-t [])
       (t/cat-t [#'int?])
       (t/value-t [1 2 3])))
   (testing "falsey"
-    (are [t] (= false (c/dx? t))
+    (are [t] (= false (t/regex? t))
       #'int?)))
 
 (deftest dx
@@ -358,4 +358,11 @@
     (if (and (or (c/unify a b) (c/unify a c))
              (t/and-t? (t/and-t [b c])))
       (c/unify a (t/and-t [b c]))
+      true)))
+
+(defspec isa-unify
+  (prop/for-all [a (s/gen (s/spec ::t/type))
+                 b (s/gen (s/spec ::t/type))]
+    (if (t/isa-t? a b)
+      (c/unify a b)
       true)))

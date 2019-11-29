@@ -97,6 +97,9 @@
 (t/set-equiv-types! (t/value-t false) #'false?)
 (t/set-equiv-types! (t/value-t 0) #'zero?)
 
+(t/set-equiv-types! #'string? (t/seqable-of (t/class-t Character)) )
+(t/set-equiv-types! (t/class-t CharSequence) (t/seqable-of (t/class-t Character)))
+
 (t/derive-type #'number? #'integer?)
 (t/derive-type #'number? #'double?)
 (t/derive-type #'integer? #'int?)
@@ -113,16 +116,17 @@
 
 (t/derive-type #'ifn? #'fn?)
 
-(t/derive-type #'seq? 'seq-of)
-(t/derive-type #'seqable? 'seqable-of)
+(t/derive-type #'seq? #'t/seq-t?)
+(t/derive-type #'seqable? #'t/seqable-t?)
+(t/derive-type #'t/seqable-t? #'t/seq-t?)
 
-(t/derive-type #'coll? 'coll-of)
-(t/derive-type #'vector? 'vector-of)
-(t/derive-type #'map? 'map-of)
-(t/derive-type 'coll-of 'seq-of)
-(t/derive-type 'coll-of 'vector-of)
-(t/derive-type 'coll-of 'map-of)
-(t/derive-type 'coll-of 'set-of)
+(t/derive-type #'coll? #'t/coll-of?)
+(t/derive-type #'vector? #'t/vector-of?)
+(t/derive-type #'map? #'t/map-of?)
+(t/derive-type #'t/seqable-t? #'t/coll-of?)
+(t/derive-type #'t/coll-of? #'t/vector-of?)
+(t/derive-type #'t/coll-of? #'t/map-of?)
+(t/derive-type #'t/coll-of? #'t/seq-t?)
 
 (t/derive-type #'keyword? #'simple-keyword?)
 (t/derive-type #'keyword? #'qualified-keyword?)
@@ -140,7 +144,7 @@
 (ann #'list (t/fn-t {['?x] (t/and-t [(t/cat-t ['?x]) #'list?])
                      ['?x '?y] (t/and-t [(t/cat-t ['?x '?y]) #'list?])
                      ['?x '?y '?z] (t/and-t [(t/cat-t ['?x '?y '?z]) #'list?])
-                     ['?x '?y '?z ['seq-of '?s]] (t/and-t [(t/cat-t ['?x '?y '?z ['seq-of '?s]]) #'list?])}))
+                     ['?x '?y '?z (t/seq-of '?s)] (t/and-t [(t/cat-t ['?x '?y '?z (t/seq-of '?s)]) #'list?])}))
 
 (ann #'seq (t/fn-t {[(t/spec-t (t/seq-of '?x+))] (t/spec-t (t/seq-of '?x+))
                     [(t/spec-t (t/seqable-of '?x+))] (t/spec-t (t/seq-of '?x+))
@@ -152,10 +156,10 @@
                      ['?x+ (t/seq-of '?y+)] (t/and-t [(t/cat-t ['?x+ (t/seq-of '?y+)]) (t/class-t ISeq)])
                      ['?x+ #'seqable?] (t/and-t [(t/cat-t ['?x+ (t/seq-of '?y+)]) (t/class-t ISeq)])}))
 
-(ann #'conj (t/fn-t {[['cat]] ['value []]
+(ann #'conj (t/fn-t {(t/cat-t []) (t/cat-t [])
                      ['?x+] '?x+
-                     [['coll-of '?x+] (t/+ '?x+)] ['coll-of '?x+]
-                     [['coll-of '?x+] (t/+ '?y+)] ['coll-of (t/or-t ['?x+ '?y+])]}))
+                     [(t/coll-of '?x) (t/+ '?x)] (t/coll-of '?x)
+                     [(t/coll-of '?x) (t/+ '?y)] (t/coll-of (t/or-t ['?x '?y]))}))
 
 (ann #'first (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t ['?a+ #'nil?])
                       [(t/spec-t (t/seqable-of '?a+))] (t/or-t ['?a+ #'nil?])}))
@@ -184,8 +188,8 @@
 (def Number-t (class-t Number))
 (def Integer-t (class-t Integer))
 
-(ann-method clojure.lang.Util 'identical (t/fn-t {['[value ?x] '[value ?x]] ['value true]
-                                                  ['[value ?x] '[not [value ?x]]] ['value false]
+(ann-method clojure.lang.Util 'identical (t/fn-t {[(t/value-t '?x) (t/value-t '?x)] (t/value-t true)
+                                                  [(t/value-t '?x) (t/not-t (t/value-t '?x))] (t/value-t false)
                                                   [#'any? #'any?] bool-t}))
 
 (ann-method clojure.lang.Util 'equiv (t/fn-t {[(value-t '?x) (value-t '?x)] (value-t true)
@@ -208,17 +212,23 @@
 ;;                                            [#'nil?] ['class Iterator]}))
 
 
-(t/derive-type (t/class-t clojure.lang.ChunkBuffer) 'chunk-buffer)
-(t/derive-type #'any? 'chunk-buffer)
-(t/derive-type (t/class-t clojure.lang.IChunk) 'chunk)
-(t/derive-type #'any? 'chunk)
-(t/derive-type 'seq-of 'chunked-seq-of)
-(t/derive-type #'chunked-seq? 'chunked-seq-of)
+(t/defn-tagged-type chunk-t chunk-t?)
 
-(ann #'chunk-buffer (t/fn-t {[Integer-t] ['chunk-buffer '?x+]}))
-(ann #'chunk (t/fn-t {[['chunk-buffer '?x+]] ['chunk '?x+]}))
-(ann #'chunk-append (t/fn-t {[['chunk-buffer '?x+] '?x+] #'nil?}))
-(ann #'chunk-first (t/fn-t {[['chunked-seq-of '?x+]] ['chunk '?x+]
-                            [#'chunked-seq?] ['chunk '?x+]}))
-(ann #'chunk-rest (t/fn-t {[['chunked-seq-of '?x+]] (t/or-t [['seq-of '?x+] #'nil?])}))
-(ann #'chunk-cons (t/fn-t {[['chunk '?x+] ['seq-of '?y+]] (t/cat-t [(t/seq-of '?x+) (t/seq-of '?y+)])}))
+(t/defn-tagged-type chunk-buffer-t chunk-buffer-t?)
+
+(t/defn-tagged-type chunked-seq-of chunked-seq-of?)
+
+(t/derive-type (t/class-t clojure.lang.ChunkBuffer) #'chunk-buffer-t?)
+(t/derive-type #'any? #'chunk-buffer-t?)
+(t/derive-type (t/class-t clojure.lang.IChunk) #'chunk-t?)
+(t/derive-type #'any? #'chunk-t?)
+(t/derive-type #'t/seq-t? #'chunked-seq-of?)
+(t/derive-type #'chunked-seq? #'chunked-seq-of?)
+
+(ann #'chunk-buffer (t/fn-t {[Integer-t] (chunk-buffer-t '?x+)}))
+(ann #'chunk (t/fn-t {[(chunk-buffer-t '?x+)] (chunk-t '?x+)}))
+(ann #'chunk-append (t/fn-t {[(chunk-buffer-t '?x+) '?x+] #'nil?}))
+(ann #'chunk-first (t/fn-t {[(chunked-seq-of '?x+)] (chunk-t '?x+)
+                            [#'chunked-seq?] (chunk-t '?x+)}))
+(ann #'chunk-rest (t/fn-t {[(chunked-seq-of '?x+)] (t/or-t [(t/seq-of '?x+) #'nil?])}))
+(ann #'chunk-cons (t/fn-t {[(chunk-t '?x+) (t/seq-of '?y+)] (t/cat-t [(t/seq-of '?x+) (t/seq-of '?y+)])}))

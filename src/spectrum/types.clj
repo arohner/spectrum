@@ -7,28 +7,30 @@
             [clojure.test.check.generators :as gen]
             [clojure.walk :as walk]
             [spectrum.java :as j]
-            [spectrum.util :refer [instrument-ns defn-memo]]))
+            [spectrum.util :refer [instrument-ns defn-memo]])
+  (:import clojure.lang.Var))
 
-(declare cat-t)
-(declare sort-ts)
+(declare alt-t)
 (declare and-t)
 (declare and-t?)
-(declare alt-t)
-(declare spec-t)
+(declare cat-t)
+(declare class-cast)
 (declare class-t)
-(declare value-t)
-(declare or-t)
-(declare or-t?)
-(declare seq-of)
 (declare coll-of)
 (declare coll-of?)
-(declare vector-of)
-(declare regex?)
 (declare derive-type)
-(declare class-cast)
+(declare fn-t?)
+(declare or-t)
+(declare or-t?)
+(declare regex?)
+(declare seq-of)
 (declare sort-ts)
+(declare sort-ts)
+(declare spec-t)
+(declare value-t)
+(declare vector-of)
 
-(def ignore? (partial = '_))
+;; (def ignore? (partial = '_))
 
 (defn logic? [x]
   (or (and (symbol? x) (= \? (-> x name (.charAt 0))))
@@ -150,6 +152,18 @@
       (set)
       (set/difference not-core-predicates)))
 
+(defonce value-pred-whitelist (atom #{}))
+
+(s/fdef add-value-pred-whitelist! :args (s/cat :v var?))
+(defn add-value-pred-whitelist!
+  "Declare var predicate v as safe for calling to unify with values. v
+  should be a predicate, pure (free of side-effects) and fast"
+  [v]
+  (swap! value-pred-whitelist conj v))
+
+(doseq [v (core-predicates)]
+  (add-value-pred-whitelist! v))
+
 (s/def ::var-t (s/with-gen var? #(gen/elements (core-predicates))))
 
 
@@ -164,17 +178,14 @@
 (defn tagged? [t]
   (and (vector? t)
        (pos? (count t))
-       (-> t (nth 0) symbol?)
-       (not (logic? (nth t 0)))))
-
-(s/def ::tag #{'cat 'alt 'seq-of 'or 'and 'coll-of 'vector-of 'seqable-of})
+       (-> t (nth 0) var?)))
 
 (s/def ::cat (s/cat :c #{'cat} :ts (s/* ::type)))
 
 (defn fresh-tagged? [t]
   (and (vector? t)
        (pos? (count t))
-       (-> t (nth 0) symbol?)
+       (-> t (nth 0) var?)
        (not (logic? (nth t 0)))
        (every? logic-number (get-lvars t))))
 
@@ -299,7 +310,9 @@
 (s/def ::tagged (s/with-gen
                   (s/and vector?
                          (fn [x]
-                           (-> x first symbol?)))
+                           (let [t (nth x 0)]
+                             (and (var? t)
+                                  (predicate-symbol? (.sym ^Var t))))))
                   #(gen-tagged 2)))
 
 (s/def ::type (s/or :ta ::type-atom
@@ -323,25 +336,30 @@
        (pos? (count t))
        (= name (nth t 0))))
 
-(defmacro defn-type-pred [name tag]
-  `(defn ~name [x#]
-     (tagged-type? ~tag x#)))
+(defmacro defn-type-pred [name]
+  (assert (predicate-symbol? name))
+  `(do
+     (declare ~name)
+     ;; (add-)
+     (defn ~name [x#]
+       (tagged-type? (var ~name) x#))
+     (add-value-pred-whitelist! (var ~name))))
 
+(s/fdef defn-tagged-type :args (s/cat :name symbol? :pred symbol?))
 (defmacro defn-tagged-type
   "defn ~name as a fn that constructs a vector tagged type"
-  [name tag]
-  `(defn ~name [& args#]
-     (apply conj [~tag] args#)))
+  [constructor pred]
+  `(do
+     (defn-type-pred ~pred)
+     (defn ~constructor [& args#]
+       (apply conj [(var ~pred)] args#))))
 
-(defn-type-pred class-t? 'class)
+(defn-type-pred class-t?)
 
-(defn-tagged-type accept-t 'accept)
-(defn-type-pred accept-t? 'accept)
-(defn-tagged-type invalid 'invalid)
-(defn-type-pred invalid? 'invalid)
+(defn-tagged-type accept-t accept-t?)
+(defn-tagged-type invalid invalid?)
 
-(defn-tagged-type value-t 'value)
-(defn-type-pred value-t? 'value)
+(defn-tagged-type value-t value-t?)
 (s/fdef value-t :args (s/cat :x any?) :ret value-t?)
 
 (s/fdef type-value :args (s/cat :t tagged?) :ret any?)
@@ -360,55 +378,48 @@
   (let [cls (if (value-t? x)
               (value-value x)
               x)]
-    ['class cls]))
+    [#'class-t? cls]))
 
-(defn-tagged-type throw-t 'throw)
-(defn-tagged-type recur-t 'recur)
+(defn-tagged-type throw-t throw-t?)
+(defn-tagged-type recur-t recur-t?)
 
-(defn-tagged-type protocol-t 'protocol)
+(defn-tagged-type protocol-t protocol-t?)
 
-(defn-type-pred and-t? 'and)
+(defn-type-pred and-t?)
 (defn or-t? [x]
   (and (tagged? x)
-       (= 'or (nth x 0))
+       (= #'or-t? (nth x 0))
        (vector? (nth x 1))))
 
-;;(defn-type-pred or-t? 'or)
-(defn-type-pred not-t? 'not)
+(defn-type-pred or-t?)
 
-(defn-tagged-type not-t 'not)
+(defn-tagged-type not-t not-t?)
 
-(defn-type-pred cat-t? 'cat)
-(defn-type-pred alt-t? 'alt)
-
-(defn-type-pred seq-t? 'seq-of)
+(defn-type-pred cat-t?)
+(defn-type-pred alt-t?)
+(defn-type-pred seq-of?)
 
 (defn seq-of [x]
-  (if (seq-t? x)
-    ['seq-of (type-value x)]
-    ['seq-of x]))
+  [#'seq-of? (if (seq-of? x)
+               (type-value x)
+               x)])
 
 ;; same idea as seq-of, but it's a thing that is seqable, rather than an actual seq
-(defn-type-pred seqable-t? 'seqable-of)
+(defn-tagged-type seqable-of seqable-t?)
 
-(defn-tagged-type seqable-of 'seqable-of)
-
-(defn-tagged-type maybe-t 'maybe)
-(defn-type-pred maybe-t? 'maybe)
+(defn-tagged-type maybe-t maybe-t?)
 
 (s/fdef map-entry :args (s/cat :x ::type :y ::type) :ret ::type)
-(defn-tagged-type map-entry 'map-entry)
+(defn-tagged-type map-entry map-entry-t?)
 
-(defn-tagged-type map-of 'map-of)
+(defn-tagged-type map-of map-of?)
 
-(defn-tagged-type coll-of 'coll-of)
-(defn-type-pred coll-of? 'coll-of)
+(defn-tagged-type coll-of coll-of?)
 
-(defn-tagged-type spec-t 'spec)
-(defn-type-pred spec-t? 'spec)
+(defn-tagged-type spec-t spec-t?)
 
 (s/fdef vector-of :args (s/cat :x ::type) :ret ::type)
-(defn-tagged-type vector-of 'vector-of)
+(defn-tagged-type vector-of vector-of?)
 
 (s/def :keys/key-class (s/map-of keyword? ::type))
 
@@ -417,18 +428,18 @@
 (s/def :keys/opt :keys/key-class)
 (s/def :keys/opt-un :keys/key-class)
 (s/fdef keys-t :args (s/cat :k (s/keys :opt-un [:keys/req :keys/req-un :keys/opt :keys/opt-un])))
-(defn-tagged-type keys-t 'keys)
+(defn-tagged-type keys-t keys-t?)
 
 (s/def ::fn-args-in (s/or :ta (s/coll-of ::type :kind vector?) :cat cat-t?))
 (s/def :fn/args cat-t?)
 (s/def :fn/ret ::type)
 (s/def ::fn-args (s/map-of :fn/args :fn/ret))
-(s/def ::fn-tag #{'fn})
+(s/def ::fn-tag #{#'fn-t?})
 (s/def ::fn-t (s/tuple ::fn-tag ::fn-args))
 
-;; fns are maps of arguments to return types. For sugar, arguments are
-;; a vector of types, rather than the more correct but noisier cat-t
-;; of types
+;; fns are maps of arguments to return types. For sugar, arguments may
+;; be a vector of types, rather than the more correct but noisier
+;; cat-t of types
 
 (s/fdef maybe-cat :args (s/cat :o (s/or :ts ::types :c cat-t? :t ::type)) :ret ::type)
 (defn maybe-cat [args]
@@ -437,21 +448,19 @@
     (s/valid? ::types args) (cat-t args)
     :else args))
 
+(defn-type-pred fn-t?)
+
 (s/fdef fn-t :args (s/cat :f (s/map-of ::fn-args-in :fn/ret)) :ret ::fn-t)
 (defn fn-t [m]
   (->> m
        (map (fn [[args ret]]
               [(maybe-cat args) ret]))
        (into {})
-       (conj ['fn])))
+       (conj [#'fn-t?])))
 
-(defn-type-pred fn-t? 'fn)
-
-(defn-tagged-type invoke-t 'invoke)
-(defn-type-pred invoke-t? 'invoke)
+(defn-tagged-type invoke-t invoke-t?)
 
 (s/fdef invoke-t :args (s/cat :f ::type :args (s/or :c cat-t? :i invoke-t?)) :ret ::type)
-
 (defn any-t? [t]
   (= #'any? t))
 
@@ -460,7 +469,7 @@
 
 (def types-hierarchy (atom (make-hierarchy)))
 
-(s/fdef derive-type :args (s/cat :h (s/? any?) :parent (s/or :t ::type :s symbol?) :type (s/or :t ::type :s symbol?)))
+(s/fdef derive-type :args (s/cat :h (s/? any?) :parent ::type :type ::type))
 (defn derive-type
   "clojure.core/derive, but patched to allow types.
 
@@ -468,6 +477,10 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   ([h parent type]
    (assert (not= type parent) (format "derive-type: can't derive %s -> %s" parent type))
    (assert h)
+   (when (var? parent)
+     (assert (predicate-symbol? (.sym parent)) "derive must be named predicate"))
+   (when (var? type?)
+     (assert (predicate-symbol? (.sym type)) "derive must be named predicate"))
    (let [tp (:parents h)
          td (:descendants h)
          ta (:ancestors h)
@@ -497,19 +510,14 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
      (when ret
        (reset! types-hierarchy ret)))))
 
-(s/fdef parents :args (s/cat :t (s/or :t ::type :s symbol?)) :ret (s/nilable (s/coll-of (s/or :t ::type :s symbol?))))
+(s/fdef parents :args (s/cat :t (s/or :t ::type)) :ret (s/nilable (s/coll-of (s/or :t ::type))))
 (defn parents
   "Same as clojure.core/parents, but for types"
   [t]
   (->> [(core/parents @types-hierarchy t)
         (when (tagged? t)
           (->> (type-tag t)
-               (core/parents @types-hierarchy )
-               ;; (map (fn [tp]
-               ;;        (if (symbol? tp)
-               ;;          (assoc t 0 tp)
-               ;;          tp)))
-               ))
+               (core/parents @types-hierarchy)))
         (when (class-t? t)
           (map class-t (core/parents (type-value t))))]
        (apply concat)
@@ -532,7 +540,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
        ;;         (if (accept-t? t)
        ;;           (type-value t))
        ;;         t))
-       (apply vector 'cat)))
+      (apply vector #'cat-t?)))
 
 (s/fdef cat-types :args (s/cat :x cat-t?) :ret (s/coll-of ::type))
 (defn cat-types [x]
@@ -547,7 +555,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (s/fdef alt-t :args (s/cat :t (s/coll-of (s/nilable ::type))) :ret (s/nilable ::type))
 (defn alt-t [ps]
   (when (seq ps)
-    (apply vector 'alt ps)))
+    (apply vector #'alt-t? ps)))
 
 (defn alt-types [x]
   (vec (rest x)))
@@ -559,9 +567,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
          (map second)
          (apply merge)
          (fn-t))))
-
-(defn conformy? [t]
-  (not (invalid? t)))
 
 (defn ? [x]
   (alt-t [x nil]))
@@ -625,7 +630,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   (swap! equiv-types update y (fnil conj #{}) x)
   nil)
 
-(s/fdef ancestors :args (s/cat :t (s/or :t ::type :s symbol?)) :ret (s/coll-of (s/or :t ::type :s symbol?)))
+(s/fdef ancestors :args (s/cat :t ::type) :ret (s/coll-of ::type))
 (defn ancestors [t]
   (->> t
        (parents)
@@ -712,14 +717,14 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (s/fdef or-t :args (s/cat :ts (s/coll-of ::type)) :ret ::type)
 (defn or-t [ts]
-  {:post [(if (and (vector? %) (= 'or (nth % 0)))
+  {:post [(if (and (vector? %) (= #'or-t? (nth % 0)))
             (or-t? %)
             true)]}
   (let [ts (if (> (count ts) 1)
              (or-consolidate ts)
              ts)]
     (cond
-      (>= (count ts) 2) ['or ts]
+      (>= (count ts) 2) [#'or-t? ts]
       (= 1 (count ts)) (nth ts 0)
       :else nil)))
 
@@ -817,25 +822,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn and-t [ts]
   (let [and-ts (->> ts and-consolidate vec)]
     (cond
-      (>= (count and-ts) 2) ['and and-ts]
+      (>= (count and-ts) 2) [#'and-t? and-ts]
       (= 1 (count and-ts)) (first and-ts)
       :else nil)))
 
 (defn and-rest [a]
   (and (rest (and-types a))))
-
-(defmulti regex? #'type-tag)
-(defmethod regex? :default [_]
-  false)
-
-(defmethod regex? 'cat [x]
-  true)
-
-(defmethod regex? 'seq-of [x]
-  true)
-
-(defmethod regex? 'alt [x]
-  true)
 
 (defn depth-dispatch [t]
   (cond
@@ -898,6 +890,9 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
             (apply max)
             (inc))
    1))
+(defn regex? [x]
+  (and (tagged? x)
+       (contains? #{#'cat-t? #'seq-of? #'alt-t?} (type-tag x))))
 
 (defn sort-ts-value [x]
   (cond
@@ -945,8 +940,16 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   [a b]
   (cond
     (and (tagged? a) (tagged? b)) (contains? (conj (ancestors b) (type-tag b)) (type-tag a))
-    (contains? (ancestors a) b) true
+    (contains? (ancestors b) a) true
     :else false))
+
+(defn instance-t?
+  "true if v is an instance of type t"
+  [t v]
+  (assert (var? t))
+  (or (t v)
+      (some (fn [t*]
+              (instance-t? t* v)) (descendants t))))
 
 (defn ensure-derive-type
   [parent type]
@@ -959,24 +962,24 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (load-type-hierarchy)
 
-(derive-type #'any? 'class)
-(derive-type #'any? 'or)
-(derive-type #'any? 'and)
-(derive-type #'any? 'cat)
-(derive-type #'any? 'seq-of)
-(derive-type #'any? 'alt)
+(instrument-ns)
+
+(derive-type #'any? #'class-t?)
+(derive-type #'any? #'or-t?)
+(derive-type #'any? #'and-t?)
 (derive-type #'any? #'regex?)
-(derive-type #'regex? 'cat)
-(derive-type #'regex? 'alt)
-(derive-type #'regex? 'seq-of)
-(derive-type #'any? 'coll-of)
+(derive-type #'regex? #'cat-t?)
+(derive-type #'regex? #'alt-t?)
+(derive-type #'regex? #'seq-of?)
+(derive-type #'any? #'coll-of?)
 (derive-type #'any? #'logic?)
 (derive-type #'any? #'value-t?)
-(derive-type #'value-t? 'value)
-(derive-type #'any? 'invoke)
-(derive-type #'any? 'spec)
+(derive-type #'any? #'invoke-t?)
+(derive-type #'any? #'spec-t?)
 
 (derive-type #'ifn? #'fn?)
-(derive-type #'fn? 'fn)
+(derive-type #'fn? #'fn-t?)
 
-(instrument-ns)
+
+
+nil

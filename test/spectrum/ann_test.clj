@@ -37,7 +37,10 @@
   (are [a b] (t/isa-t? a b)
     (t/coll-of '?x) (t/vector-of '?x)
     (t/vector-of '?x) (t/vector-of '?y)
-    ['chunk-buffer '?x] ['chunk-buffer '?y])
+    #'t/seqable-t? #'t/coll-of?
+    #'t/seqable-t? #'t/vector-of?
+    #'coll? #'t/seq-t?
+    [#'ann/chunk-buffer-t? '?x] [#'ann/chunk-buffer-t? '?y])
 
   (testing "falsey"
     (are [a b] (not (t/isa-t? a b))
@@ -63,6 +66,9 @@
     (t/coll-of '?x) (t/seq-of '?x)
     (t/seq-of '?z) (t/seq-of '?z)
 
+    #'coll? #'t/seq-t?
+    #'t/coll-of? #'t/seq-t?
+
     (t/coll-of '?x) (t/vector-of '?x)
     (t/coll-of #'a?) (t/vector-of #'a?)
 
@@ -85,6 +91,10 @@
 
     #'vector? (t/seqable-of #'any?)
     #'vector? (t/seqable-of #'int?)
+
+    #'seqable? #'seq?
+    (t/seqable-of #'int?) (t/seqable-of #'int?)
+    (t/seqable-of #'int?) (t/seq-of #'int?)
 
     (t/class-t Object) #'any?
     (t/class-t ISeq) (t/seq-of '?x)
