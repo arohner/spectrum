@@ -30,11 +30,8 @@
 (declare value-t)
 (declare vector-of)
 
-;; (def ignore? (partial = '_))
-
 (defn logic? [x]
-  (or (and (symbol? x) (= \? (-> x name (.charAt 0))))
-      (ignore? x)))
+  (and (symbol? x) (= \? (-> x name (.charAt 0)))))
 
 (s/fdef logic-name :args (s/cat :l logic?) :ret string?)
 (defn logic-name [x]
@@ -359,6 +356,9 @@
 (defn-tagged-type accept-t accept-t?)
 (defn-tagged-type invalid invalid?)
 
+(defn conformy? [t]
+  (not (invalid? t)))
+
 (defn-tagged-type value-t value-t?)
 (s/fdef value-t :args (s/cat :x any?) :ret value-t?)
 
@@ -405,7 +405,7 @@
                x)])
 
 ;; same idea as seq-of, but it's a thing that is seqable, rather than an actual seq
-(defn-tagged-type seqable-of seqable-t?)
+(defn-tagged-type seqable-of seqable-of?)
 
 (defn-tagged-type maybe-t maybe-t?)
 
@@ -943,13 +943,17 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
     (contains? (ancestors b) a) true
     :else false))
 
+(s/fdef instance-t? :args (s/cat :t ::type :v ::))
 (defn instance-t?
   "true if v is an instance of type t"
   [t v]
   (assert (var? t))
-  (or (t v)
-      (some (fn [t*]
-              (instance-t? t* v)) (descendants t))))
+  (assert (predicate-symbol? (.sym t)))
+  (let [v* (when (tagged? v)
+             (nth v 0))]
+    (or (t v)
+        (when v*
+          (isa-t? t v*)))))
 
 (defn ensure-derive-type
   [parent type]

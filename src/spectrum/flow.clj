@@ -192,16 +192,16 @@
 
 (defmethod create-typename :fn [context a path]
   ;; we need an extra type on the :ret of a fn, in case it is called locally
-  (let [fn-t (t/new-logic "t")
-        ret-t (t/new-logic "t")
+  (let [fn-t (t/new-logic "fn")
+        ret-t (t/new-logic "fnret")
         a* (get-in a path)]
     (store-type! context fn-t a path)
     (store-type! context ret-t a (conj path :ret))
     fn-t))
 
 (defmethod create-typename :fn-method [context a path]
-  (let [fn-t (t/new-logic "t")
-        ret-t (t/new-logic "t")
+  (let [fn-t (t/new-logic "fnmt")
+        ret-t (t/new-logic "fnmrt")
         a* (get-in a path)]
     (store-type! context fn-t a path)
     (store-type! context ret-t a (conj path :ret))
@@ -336,13 +336,13 @@
 
 (defmethod create-typename :if [context a path]
   (let [a* (get-in a path)
-        if-t (store-type! context (t/new-logic) a path)]
+        if-t (store-type! context (t/new-logic "if") a path)]
     (when (invoke-var-predicate? a (conj path :test))
       (let [orig-t (get-type! context a (conj path :test :args 0))
             else? (boolean (get-in a (conj path :else)))
-            then-t (t/new-logic orig-t)
+            then-t (t/new-logic "then")
             else-t (when else?
-                     (t/new-logic orig-t))]
+                     (t/new-logic "else"))]
         (assert orig-t)
         ;; use the :then path for :tests, so (if (foo? x)) doesn't contaminate the :else branch
         (store-shadow-type! context orig-t then-t a (conj path :test))
@@ -353,10 +353,10 @@
 
 (defn ensure-type!
   "Create or return the existing type at [a path]"
-  [context a path]
+  [context a path name]
   (if-let [t (get-type context a path)]
     t
-    (let [t (t/new-logic (str "t"))]
+    (let [t (t/new-logic name)]
       (store-type! context t a path)
       t)))
 
@@ -763,7 +763,7 @@
 (s/fdef get-eq-invoke-fn-t :args (s/cat :f t/fn-t? :i ::t/type :r ::t/type) :ret ::eq/equation)
 (defn get-eq-invoke-fn-t
   [f invoke-args ret-t]
-  ;; {:post [(do (println "get-eq-invoke-fn-t" "f:" f "invoke:" invoke-args "ret-t:" ret-t "=>" %) true)]}
+  {:post [(do (println "get-eq-invoke-fn-t" "f:" f "invoke:" invoke-args "ret-t:" ret-t "=>" %) true)]}
   (let [fn-map (-> f (nth 1) t/fn-t t/type-value)
         ;; constraint that at least one arity must be successful
         req-one (->> fn-map
@@ -773,7 +773,7 @@
         ret-values (->> fn-map
                         (mapv (fn [[f-args f-ret]]
                                 (->>
-                                 (maybe-replace-invoke-t invoke-args ret-t f-ret)
+                                 (maybe-replace-invoke-t invoke-args f-ret ret-t)
                                  (eq/=> (eq/<= f-args invoke-args)))))
                         eq/or-e)]
     (eq/and-e [ret-values req-one])))
@@ -856,9 +856,8 @@
         f-path (get-type-path context f)
         invoke-args (map-sequential-children get-type! context a path :args)
         f-args (t/cat-t (mapv (fn [i]
-                                (ensure-type! context a (conj f-path :args i) ;; {:variance :contravariant}
-                                              )) (range (count invoke-args))))
-        f-ret (ensure-type! context a (conj f-path :ret))]
+                                (ensure-type! context a (conj f-path :args i) "farg")) (range (count invoke-args))))
+        f-ret (ensure-type! context a (conj f-path :ret) "fnret")]
     (assert f)
     (eq/and-e [(make-equations f-args (t/cat-t invoke-args) :eq-fn eq/<=)
                (eq/eq t f-ret)
@@ -1088,7 +1087,7 @@
 (defn get-constructor-t
   "Return an fn-t for this class constructor"
   [cls arity]
-  {:post [(t/fresh-tagged? %)]}
+  ;; {:post [(do (println "get-constructor:" cls arity "=>" %) true) (t/fresh-tagged? %)]}
   (t/freshen
    (or (data/get-ann cls)
        (->> (j/get-java-constructors cls arity)
@@ -1283,8 +1282,23 @@
 
 (defmulti simplify-equation #'simplify-eq-dispatch)
 
+(defn sort-eqs
+  "Given a seq of eqs, sort them in a way that minimizes work"
+  [eqs]
+  ;; move the :ors to the end
+  (sort-by (fn [e]
+             (condp = (eq/eq-tag e)
+               :true 0
+               :false 0
+               :ore 2
+               1)) eqs))
+
 (defmethod simplify-equation :ande [e]
-  (eq/and-e (mapv simplify-equation (eq/get-eqs e))))
+  (->> e
+       eq/get-eqs
+       (mapv simplify-equation)
+       (sort-eqs)
+       (eq/and-e)))
 
 (defmethod simplify-equation :ore [e]
   ;; {:post [(do (println "simplify ore:" e "=>" %) true)]}
@@ -1350,17 +1364,6 @@
 (defn solve-eq-dispatch [substs e]
   (nth e 0))
 (defmulti solve-equation* #'solve-eq-dispatch)
-
-(defn sort-eqs
-  "Given a seq of eqs, sort them in a way that minimizes work"
-  [eqs]
-  ;; move the :ors to the end
-  (sort-by (fn [e]
-             (condp = (eq/eq-tag e)
-               :true 0
-               :false 0
-               :ore 2
-               1)) eqs))
 
 (defmethod solve-equation* :ande [state e]
   {:post [;; (do (when (:fail %) (println "solve failed:" e)) true)
@@ -1456,6 +1459,8 @@
 (defn solve [e]
   (println "solve:")
   (pprint e)
+  (println "solve simplified:")
+  (pprint (simplify-equation e))
   (->> e
        (simplify-equation)
        (solve-equation* (new-state))))
@@ -1763,8 +1768,8 @@
     (debug-all-types context)
 
     (let [e (get-equation context a)
-          _ (println "equation:")
-          _ (pprint e)
+          ;; _ (println "equation:")
+          ;; _ (pprint e)
           t (get-type! context a [])
           _ (def e e)
           _ (def t t)

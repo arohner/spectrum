@@ -37,9 +37,9 @@
   (are [a b] (t/isa-t? a b)
     (t/coll-of '?x) (t/vector-of '?x)
     (t/vector-of '?x) (t/vector-of '?y)
-    #'t/seqable-t? #'t/coll-of?
-    #'t/seqable-t? #'t/vector-of?
-    #'coll? #'t/seq-t?
+    #'t/seqable-of? #'t/coll-of?
+    #'t/seqable-of? #'t/vector-of?
+    #'coll? #'t/seq-of?
     [#'ann/chunk-buffer-t? '?x] [#'ann/chunk-buffer-t? '?y])
 
   (testing "falsey"
@@ -66,8 +66,8 @@
     (t/coll-of '?x) (t/seq-of '?x)
     (t/seq-of '?z) (t/seq-of '?z)
 
-    #'coll? #'t/seq-t?
-    #'t/coll-of? #'t/seq-t?
+    #'coll? #'t/seq-of?
+    #'t/coll-of? #'t/seq-of?
 
     (t/coll-of '?x) (t/vector-of '?x)
     (t/coll-of #'a?) (t/vector-of #'a?)

@@ -116,17 +116,17 @@
 
 (t/derive-type #'ifn? #'fn?)
 
-(t/derive-type #'seq? #'t/seq-t?)
-(t/derive-type #'seqable? #'t/seqable-t?)
-(t/derive-type #'t/seqable-t? #'t/seq-t?)
+(t/derive-type #'seq? #'t/seq-of?)
+(t/derive-type #'seqable? #'t/seqable-of?)
+(t/derive-type #'t/seqable-of? #'t/seq-of?)
 
 (t/derive-type #'coll? #'t/coll-of?)
 (t/derive-type #'vector? #'t/vector-of?)
 (t/derive-type #'map? #'t/map-of?)
-(t/derive-type #'t/seqable-t? #'t/coll-of?)
+(t/derive-type #'t/seqable-of? #'t/coll-of?)
 (t/derive-type #'t/coll-of? #'t/vector-of?)
 (t/derive-type #'t/coll-of? #'t/map-of?)
-(t/derive-type #'t/coll-of? #'t/seq-t?)
+(t/derive-type #'t/coll-of? #'t/seq-of?)
 
 (t/derive-type #'keyword? #'simple-keyword?)
 (t/derive-type #'keyword? #'qualified-keyword?)
@@ -139,7 +139,7 @@
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or? #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
 
-(ann-constructors LazySeq (t/fn-t {[(t/fn-t {[] '?x})] (t/and-t ['?x (t/class-t LazySeq)]) }))
+(ann-constructors LazySeq (t/fn-t {[(t/fn-t {[] (t/seq-of '?x)})] (t/seq-of '?x)}))
 
 (ann #'list (t/fn-t {['?x] (t/and-t [(t/cat-t ['?x]) #'list?])
                      ['?x '?y] (t/and-t [(t/cat-t ['?x '?y]) #'list?])
@@ -222,7 +222,7 @@
 (t/derive-type #'any? #'chunk-buffer-t?)
 (t/derive-type (t/class-t clojure.lang.IChunk) #'chunk-t?)
 (t/derive-type #'any? #'chunk-t?)
-(t/derive-type #'t/seq-t? #'chunked-seq-of?)
+(t/derive-type #'t/seq-of? #'chunked-seq-of?)
 (t/derive-type #'chunked-seq? #'chunked-seq-of?)
 
 (ann #'chunk-buffer (t/fn-t {[Integer-t] (chunk-buffer-t '?x+)}))

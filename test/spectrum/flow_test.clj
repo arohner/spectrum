@@ -33,7 +33,6 @@
     (eq/<= ['cat ['value '?x33] ['not ['value '?x33]]] ['cat '?t2 '?t3 '?t4])
     (eq/<= ['cat ['value '?x33]] ['cat '?t2 '?t3 '?t4])))
 
-
 (defn map-simple
   "Simple implementantion of #'map, for testing "
   [f coll]

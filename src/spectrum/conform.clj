@@ -179,9 +179,9 @@
   ;; {:post [(do (println "logic-any-1" x y "=>" (boolean %)) true)]}
   (cond
     (occurs? x y subst) nil
-    (and (t/bound-t? x subst) (free-t? x subst)) [(dissoc subst x)]
-    (t/bound-t? x subst) (unify (get subst x) y [subst])
-    (free-t? x subst) [(assoc subst x y)]
+    (and (get subst x) (= x (resolve-type-1 x subst))) [(dissoc subst x)]
+    (get subst x) (unify (get subst x) y [subst])
+    (nil? (get subst x)) [(assoc subst x y)]
     :else (do (assert false (print-str "unify-logic-any-1:" x y "x*" (resolve-type-1 x subst) "bound x?" (t/bound-t? x subst) "free x?" (free-t? x subst))))))
 
 (defn unify-logic-any [x y substs]
@@ -191,14 +191,15 @@
            (filter identity)
            (seq)))
 
-(defn unify-logic-logic-1 [x y subst]
-  (cond
-    (= x y) [subst]
-    (and (free-t? x subst) (free-t? y subst)) [(assoc-subst subst y x)]
-    (and (free-t? y subst)) [(assoc-subst subst y x)]
-    (and (free-t? x subst)) [(assoc-subst subst x y)]
-    :else (or (unify (get subst x) (get subst y) [subst])
-              (unify-any-logic-1 x y subst))))
+(defn unify-logic-logic-1 [x y s]
+  (let [free? (fn [z]
+                (nil? (get s z)))]
+    (cond
+      (= x y) [s]
+      (and (free? x) (free? y)) [(assoc-subst s y x)]
+      (free? y) [(assoc-subst s y x)]
+      (free? x) [(assoc-subst s x y)]
+      :else (or (unify (get s x) (get s y) [s])))))
 
 (defn unify-logic-logic [x y substs]
   (->> substs
@@ -742,16 +743,16 @@
 (defmethod accept-nil? nil [_]
   false)
 
-(defmethod accept-nil? 'alt [t]
+(defmethod accept-nil? #'t/alt-t? [t]
   (some nil? (t/alt-types t)))
 
-(defmethod accept-nil? 'seq-of [t]
+(defmethod accept-nil? #'t/seq-of? [t]
   true)
 
-(defmethod accept-nil? 'cat [t]
+(defmethod accept-nil? #'t/cat-t? [t]
   (every? accept-nil? (t/cat-types t)))
 
-(defmethod accept-nil? 'value [t]
+(defmethod accept-nil? #'t/value-t? [t]
   (let [val (-> t t/type-value)]
     (if (seqable? val)
       (and (nil? (seq val)) (not= nil val))
@@ -766,7 +767,7 @@
   (println "first-t: can't first" x)
   (assert false))
 
-(defmethod first-t 'cat [cat-t]
+(defmethod first-t #'t/cat-t? [cat-t]
   (let [[x & xr] (t/cat-types cat-t)]
     (when x
       (if (t/regex? x)
@@ -781,7 +782,7 @@
          (distinct))
         [x]))))
 
-(defmethod first-t 'seq-of [t]
+(defmethod first-t #'t/seq-of? [t]
   (-> t
       (t/seq-value)
       ((fn [x]
@@ -789,7 +790,7 @@
            (first-t x)
            [x nil])))))
 
-(defmethod first-t 'alt [alt-t]
+(defmethod first-t #'t/alt-t? [alt-t]
   (->> alt-t
        t/alt-types
        (mapcat (fn [t]
@@ -843,7 +844,6 @@
   [re substs]
   (let [vals (first-t re)
         res (distinct (mapcat (fn [v] (dx re v substs)) vals))]
-    (println "dx-vals:" re "=>" res )
     (concat
      vals
      (mapcat (fn [{re* :state
@@ -895,7 +895,7 @@
   (when-let [substs* (unify x y substs)]
     [{:state nil :substs substs*}]))
 
-(defmethod dx* 'cat [cat-x y substs]
+(defmethod dx* #'t/cat-t? [cat-x y substs]
   ;; {:post [(validate! ::dx-rets %)]}
   (let [substs-orig substs
         [x & xr :as xs] (t/cat-types cat-x)]
@@ -914,7 +914,7 @@
          (filter identity)
          (seq))))
 
-(defmethod dx* 'seq-of [seq-x y substs]
+(defmethod dx* #'t/seq-of? [seq-x y substs]
   (let [x (t/seq-value seq-x)
         substs-orig substs]
     (cond
@@ -928,12 +928,12 @@
               [{:state nil :substs substs}
                {:state seq-x :substs substs}]))))
 
-(defmethod dx* 'alt [alt-x y substs]
+(defmethod dx* #'t/alt-t? [alt-x y substs]
   (->> (t/alt-types alt-x)
        (mapcat (fn [at]
                  (dx at y substs)))))
 
-(defmethod dx* 'value [val-x y substs]
+(defmethod dx* #'t/value-t? [val-x y substs]
 
   (let [val (t/type-value val-x)]
     (->>
@@ -970,8 +970,10 @@
 
 (defn tagged-default? [x]
   (and (t/tagged? x)
-       (not (t/regex? x))))
+       (not (t/regex? x))
+       (not (t/or-t? x))))
 
+(s/fdef unify-terms :ret (s/nilable ::substs))
 (defn unify-terms [x y substs]
   (let [match (match* x y)
         i (fn [x] (fn [y] (t/instance-t? x y)))
@@ -979,20 +981,19 @@
         matching-unify-f
         (filter
          identity
-         [(match [t/or-t? _] unify-or-any)
-          (match [nil? nil?] unify-truthy)
+         [(match [nil? nil?] unify-truthy)
           (match (fn [x y]
                    (and (t/regex? x) (t/regex? y)
-                        (not (and (t/seq-t? x) (t/seq-t? y))))) unify-dx-dx)
+                        (not (and (t/seq-of? x) (t/seq-of? y))))) unify-dx-dx)
           (match [nil? accept-nil?] unify-truthy)
           (match [accept-nil? nil?] unify-truthy)
           (match [_ nil?] unify-falsey)
           (match [t/or-t? t/or-t?] unify-any-or)
           (match [t/or-t? (comp t/or-t?)] unify-or-any)
-          (match [_ t/or-t?] unify-any-or)
+          (match [(comp t/or-t?) t/or-t?] unify-any-or)
           (match [t/and-t? t/and-t?] unify-and-and)
-          (match [t/and-t? _] unify-and-any)
-          (match [_ t/and-t?] unify-any-and)
+          (match [t/and-t? (comp t/and-t?)] unify-and-any)
+          (match [(comp t/and-t?) t/and-t?] unify-any-and)
           (match [t/not-t? t/not-t?] unify-not-not)
           (match [t/spec-t? t/spec-t?] unify-spec-spec)
           (match [t/spec-t? t/value-t?] unify-spec-value)
@@ -1009,8 +1010,8 @@
           (match [t/logic? _] unify-logic-any)
           (match [_ t/logic?] unify-any-logic)
           (match [t/regex? t/value-t?] unify-dx-value)
-          (match [t/seq-t? t/logic?] unify-seqof-logic)
-          (match [(i #'t/seqable-t?) (i #'t/seqable-t?)] unify-tagged-tagged-default)
+          (match [t/seq-of? t/logic?] unify-seqof-logic)
+          (match [(i #'t/seqable-of?) (i #'t/seqable-of?)] unify-tagged-tagged-default)
           (match [tagged-default? tagged-default?] unify-tagged-tagged-default)
           (match [(i #'t/coll-of?) t/spec-t?] unify-collof-spec)
           (match [_ _] unify-any-any)])]
