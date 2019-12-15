@@ -1396,37 +1396,38 @@
          (let [substs-old (:substs state)
                {:keys [substs] :as state} (solve-equation* state e*)
                state (update-in state [:i] inc)]
-           ;; (println "solve eq" e* "=>" (not (:fail state)))
            (if (not (:fail state))
-             (if (= :ore (eq/eq-tag e))
-               (update-in state [:substs] concat substs)
-               (assoc state :substs substs))
+             (assoc state :substs substs)
              state))
          state)) state eqs)))
 
 (defmethod solve-equation* :ore [state e]
-  {:post [;; (do (println "solve :ore" e "=>" (not (:fail %))) true)
+  {:post [(do (when (:fail %) (println "solve failed:" e)) true)
+          (do (println (first e) "=>" (not (:fail %))) true)
           (validate! ::state %)]}
-  (let [states (->> (nth e 1)
-                    (sort-eqs)
-                    (map (fn [e*]
-                           {:post [;; (do (println "solve eq" e* "=>" (not (:fail %))) true)
-                                   ]}
-                           (solve-equation* state e*)))
-                    (doall))
-        failed (filter :fail states)
-        successful (remove :fail states)]
-    ;; (println "solve :ore:" states)
-    (if (seq successful)
-      (->> states (remove :fail) (mapcat :substs) ((fn [substs] (assoc state :substs substs))))
-      (assoc state :fail e))))
+  (if (not (:fail state))
+    (let [states (->> (nth e 1)
+                      (sort-eqs)
+                      (map (fn [e*]
+                             {:post [ (do (println ":ore solve e" e* "=>" (not (:fail %))) true)]}
+                             (solve-equation* state e*)))
+                      (doall))
+          failed (filter :fail states)
+          successful (remove :fail states)]
+      ;; (println "solve :ore:" states)
+      (if (seq successful)
+        (->> successful (mapcat :substs) ((fn [substs] (assoc state :substs substs))))
+        (assoc state :fail e)))
+    state))
 
 (defmethod solve-equation* :imp [state e]
-  {:post [;; (do (when (:fail %) (println "solve failed:" e)) true)
+  {:post [(do (when (:fail %) (println "solve failed:" e)) true)
+          (do (println (first e) "=>" (not (:fail %))) true)
           (validate! ::state %)]}
   (let [[_ test then] e
         state-orig state
         state (solve-equation* state test)]
+    (println "solve :imp" test "=>" (:fail state))
     (if (not (:fail state))
       (solve-equation* state then)
       state-orig)))

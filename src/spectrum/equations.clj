@@ -51,7 +51,7 @@
   (and (vector? x) (= :ande (nth x 0))))
 
 (defn or-e? [x]
-  (and (vector? x) (= :ande (nth x 0))))
+  (and (vector? x) (= :ore (nth x 0))))
 
 (defn false-e? [x]
   (and (vector? x) (= :false (nth x 0))))
