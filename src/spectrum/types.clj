@@ -167,7 +167,7 @@
 (s/def ::logic (s/with-gen logic? (fn []
                                     (gen/fmap (fn [n]
                                                 (symbol (str "?t" n))) gen/nat))))
-(s/def ::type-atom (s/or :l ::logic :v ::var-t))
+(s/def ::type-atom (s/or :l ::logic :v ::var-t :n nil?))
 
 (s/def ::fresh-logic (s/and logic? logic-number))
 (s/def ::fresh-type-atom (s/or :s ::fresh-logic :v var?))
@@ -307,9 +307,10 @@
 (s/def ::tagged (s/with-gen
                   (s/and vector?
                          (fn [x]
-                           (let [t (nth x 0)]
-                             (and (var? t)
-                                  (predicate-symbol? (.sym ^Var t))))))
+                           (when (> (count x) 0)
+                             (let [t (nth x 0)]
+                               (and (var? t)
+                                    (predicate-symbol? (.sym ^Var t)))))))
                   #(gen-tagged 2)))
 
 (s/def ::type (s/or :ta ::type-atom
@@ -323,7 +324,7 @@
 (s/def ::types (s/coll-of ::type))
 
 (defn type-tag [t]
-  (when (vector? t)
+  (when (and (vector? t) (pos? (count t)))
     (nth t 0)))
 
 (defn tagged-type?
@@ -420,6 +421,8 @@
 
 (s/fdef vector-of :args (s/cat :x ::type) :ret ::type)
 (defn-tagged-type vector-of vector-of?)
+
+(defn-tagged-type set-of set-of?)
 
 (s/def :keys/key-class (s/map-of keyword? ::type))
 
@@ -534,7 +537,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (s/fdef cat-t :args (s/cat :t ::types) :ret ::type)
 (defn cat-t [ts]
-  {:pre [(every? identity ts)]}
   (->> ts
        ;; (mapv (fn [t]
        ;;         (if (accept-t? t)
@@ -715,7 +717,7 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
         ts (distinct ts)]
     (vec (sort-ts ts))))
 
-(s/fdef or-t :args (s/cat :ts (s/coll-of ::type)) :ret ::type)
+(s/fdef or-t :args (s/cat :ts (s/coll-of (s/nilable ::type))) :ret (s/nilable ::type))
 (defn or-t [ts]
   {:post [(if (and (vector? %) (= #'or-t? (nth % 0)))
             (or-t? %)
@@ -890,9 +892,11 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
             (apply max)
             (inc))
    1))
+
 (defn regex? [x]
   (and (tagged? x)
-       (contains? #{#'cat-t? #'seq-of? #'alt-t?} (type-tag x))))
+       (or (contains? #{#'cat-t? #'seq-of? #'alt-t?} (type-tag x))
+           (and (= #'value-t? (type-tag x)) (coll? (type-value x))))))
 
 (defn sort-ts-value [x]
   (cond
@@ -939,11 +943,11 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
   "True if b isa a. Does not check logic variables"
   [a b]
   (cond
+    (= a b) true
     (and (tagged? a) (tagged? b)) (contains? (conj (ancestors b) (type-tag b)) (type-tag a))
     (contains? (ancestors b) a) true
     :else false))
 
-(s/fdef instance-t? :args (s/cat :t ::type :v ::))
 (defn instance-t?
   "true if v is an instance of type t"
   [t v]

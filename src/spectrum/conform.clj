@@ -86,7 +86,7 @@
 
 (s/fdef assoc-subst :args (s/cat :s ::subst :x t/logic? :y any?) :ret ::subst)
 (defn assoc-subst [subst x y]
-  {:post [(do (println "assoc-subst" x "=>" y) true)]};
+  ;; {:post [(do (println "assoc-subst" x "=>" y) true)]};
   (assert (t/logic? x))
   (assoc subst x y))
 
@@ -507,6 +507,8 @@
   (or
    (when (isa? @t/types-hierarchy y x)
      substs)
+   (when (= #'any? x)
+     substs)
    (let [x-ancestors (when (t/type? x) (-> x t/ancestors (conj x)))
          y-ancestors (when (t/type? y) (t/ancestors y))]
      (some->>
@@ -566,12 +568,13 @@
                  (drop 1)
                  (butlast)
                  (group-by count))]
-
     (->> yss
          (map (fn [[cnt ys]]
                 (let [rets (->> ys
                                 (map (fn [y*]
-                                       (unify x (t/or-t y*) substs))))]
+                                       (unify x (t/or-t y*) substs)))
+                                (doall))]
+                  ;; (println "cnt" cnt "ys" ys "rets:" rets)
                   (when (every? seq rets)
                     (apply concat rets)))))
          (filter identity)
@@ -687,7 +690,7 @@
   (let [val (t/type-value y)
         spread (when (and (seqable? val) (seq val))
                  (t/spec-t (t/cat-t (map t/value-t val))))]
-    (->> [(when (and (contains? @t/value-pred-whitelist x) (or (x val) (x y)))
+    (->> [(when (and (contains? @t/value-pred-whitelist x) (x val))
             substs)
           (when spread
             (unify x spread substs))]
@@ -855,11 +858,9 @@
   {:post [(validate! ::substs %)]}
   (let [x* (t/type-value x)
         y* (t/type-value y)]
-    (println "collof-spec:" x* y*)
     (when (t/regex? y*)
       (reduce (fn [substs dy]
                 (when substs
-                  (println "unify-collof-spec unify" x* dy)
                   (if dy
                     (unify x* dy substs)
                     substs))) substs (dx-vals y* substs)))))
@@ -971,7 +972,8 @@
 (defn tagged-default? [x]
   (and (t/tagged? x)
        (not (t/regex? x))
-       (not (t/or-t? x))))
+       (not (t/or-t? x))
+       (not (t/and-t? x))))
 
 (s/fdef unify-terms :ret (s/nilable ::substs))
 (defn unify-terms [x y substs]
@@ -989,11 +991,11 @@
           (match [accept-nil? nil?] unify-truthy)
           (match [_ nil?] unify-falsey)
           (match [t/or-t? t/or-t?] unify-any-or)
-          (match [t/or-t? (comp t/or-t?)] unify-or-any)
-          (match [(comp t/or-t?) t/or-t?] unify-any-or)
-          (match [t/and-t? t/and-t?] unify-and-and)
-          (match [t/and-t? (comp t/and-t?)] unify-and-any)
-          (match [(comp t/and-t?) t/and-t?] unify-any-and)
+          (match [t/or-t? _] unify-or-any)
+          (match [_ t/or-t?] unify-any-or)
+          ;; (match [t/and-t? t/and-t?] unify-and-and)
+          (match [t/and-t? _] unify-and-any)
+          (match [_ t/and-t?] unify-any-and)
           (match [t/not-t? t/not-t?] unify-not-not)
           (match [t/spec-t? t/spec-t?] unify-spec-spec)
           (match [t/spec-t? t/value-t?] unify-spec-value)
@@ -1011,14 +1013,19 @@
           (match [_ t/logic?] unify-any-logic)
           (match [t/regex? t/value-t?] unify-dx-value)
           (match [t/seq-of? t/logic?] unify-seqof-logic)
-          (match [(i #'t/seqable-of?) (i #'t/seqable-of?)] unify-tagged-tagged-default)
+          ;; (match [t/seq-of? t/seq-of?] unify-seqof-seqof)
+          (match [t/seqable-of? t/seqable-of?] unify-tagged-tagged-default)
+          (match [t/seq-of? t/seq-of?] unify-tagged-tagged-default)
           (match [tagged-default? tagged-default?] unify-tagged-tagged-default)
           (match [(i #'t/coll-of?) t/spec-t?] unify-collof-spec)
           (match [_ _] unify-any-any)])]
     ;; (println "matching:" x y matching-unify-f)
-    (some (fn [f]
-            ;; {:post [(do (when % (println "unify:" x y f "=>" %)) true)]}
-            (f x y substs)) matching-unify-f)))
+    (->>
+     matching-unify-f
+     (some (fn [f]
+             ;; {:post [(do (when % (println "unify:" x y f "=>" %)) true)]}
+             (f x y substs)))
+     (seq))))
 
 (defn unify*
   ([x y]
@@ -1045,7 +1052,7 @@
       with-perm-cache
       with-ensure-temp-cache
       ;; with-detect-loop
-      with-merge-substs
+      ;; with-merge-substs
       with-distinct-substs
       ;; with-substs-limit
       ;; with-timing
@@ -1106,11 +1113,6 @@
 (defn re-accept-dispatch [x y]
   (t/type-tag x))
 
-(defmulti re-accept
-  "Without unifying, assume x accepts y and return a set of possible
-  updated regexes. Return the empty set to indicate finished"
-  #'re-accept-dispatch)
-
 (defmethod re-will-accept #'t/seq-of? [seq-x]
   #{(t/type-value seq-x)})
 
@@ -1125,8 +1127,15 @@
         #{x})
       #{x})))
 
+(defmulti re-accept
+  "Without unifying, assume x accepts y and return a set of possible
+  updated regexes. Return the empty set to indicate it will not accept
+  anything else. Include nil in the set to indicate it could accept
+  nil"
+  #'re-accept-dispatch)
+
 (defmethod re-accept #'t/seq-of? [x y]
-  #{x})
+  #{x nil})
 
 (defmethod re-accept #'t/alt-t? [x y]
   #{})
@@ -1138,6 +1147,9 @@
         (conj (t/cat-t xr) (re-accept (t/cat-t xr) y))
         #{(t/cat-t xr)})
       #{})))
+
+(defmethod re-accept nil [x y]
+  (t/invalid))
 
 (defn resolve-type-dispatch [t subst]
   (t/type-tag t))

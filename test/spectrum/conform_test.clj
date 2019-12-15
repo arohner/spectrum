@@ -16,13 +16,13 @@
 (deftest occurs?
   (testing "truthy"
     (are [x y subst] (= true (c/occurs? x y subst))
-      '?x ['seq-of '?x] {}
+      '?x (t/seq-of '?x) {}
       '?x '?y {'?y '?x}
       ))
   (testing "falsey"
     (are [x y subst] (not (c/occurs? x y subst))
       '?x '?y {}
-      '?t1 ['or #{'?k #'char?}] {'?k '?x, '?x ['or #{'?k #'char?}]}
+      '?t1 (t/or-t #{'?k #'char?}) {'?k '?x, '?x (t/or-t #{'?k #'char?})}
       )))
 
 (deftest accept-nil?
@@ -55,17 +55,17 @@
       (t/or-t ['?a '?b]) (t/or-t [#'int? #'string?]) [{'?a (t/or-t [#'clojure.core/int? #'clojure.core/string? '?a])
                                                        '?b (t/or-t [#'clojure.core/int? #'clojure.core/string? '?b])}]
 
-      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) '[{?a [or [?a ?x ?y ?z]]
-                                                   ?b [or [?b ?x ?y ?z]]}]
+      (t/or-t ['?x '?y '?z]) (t/or-t ['?a '?b]) [{'?a (t/or-t '[?a ?x ?y ?z])
+                                                  '?b (t/or-t '[?b ?x ?y ?z])}]
 
       (t/or-t [(t/vector-of '?x) (t/coll-of '?x)]) '?t1 [{'?t1 (t/or-t [(t/vector-of '?x) (t/coll-of '?x)])}]
       (t/or-t [(t/spec-t (t/vector-of '?x)) (t/coll-of '?x)]) '?t1 [{'?t1 (t/or-t [(t/spec-t (t/vector-of '?x)) (t/coll-of '?x)])}]
 
 
       ;; cat
-      (t/cat-t [(t/? '?a)]) (t/cat-t [(t/? #'int?)]) [{'?a ['or [#'int? '?a]]}]
+      (t/cat-t [(t/? '?a)]) (t/cat-t [(t/? #'int?)]) [{'?a (t/or-t [#'int? '?a nil])}]
 
-      (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{'?a ['or [#'int? '?a]]}]
+      (t/cat-t [(t/seq-of '?a)]) (t/cat-t [(t/seq-of #'int?)]) [{'?a (t/or-t [#'int? '?a])}]
 
       (t/cat-t [(t/seq-of '?x)]) (t/cat-t ['?y]) [{'?y (t/seq-of '?x)}]
 
@@ -82,30 +82,30 @@
                         (= out (c/unify x y in)))
       ;; '?t1 #'nil? [{'?t1 ['or #{#'a? #'nil?}]}] [{'?t1 ['value nil]}]
 
-      ['seq-of '?x] ['seq-of '?y] [{'?x #'string? '?y #'int?}] nil
+      (t/seq-of '?x) (t/seq-of '?y) [{'?x #'string? '?y #'int?}] nil
 
       ;; fn
       (t/fn-t {['?a] '?b}) (t/fn-t {['?c] '?d ['?e '?f] '?g}) [{}] [{'?c '?a '?d '?b}]
 
       ;; recursive substs
-      '?x ['seq-of #'nil?] [{'?x ['seq-of '?y] '?y ['or #{'?x #'nil?}]}] [{'?x ['seq-of '?y] '?y ['or #{'?x #'nil?}]}]
+      '?x (t/seq-of #'nil?) [{'?x (t/seq-of '?y) '?y (t/or-t #{'?x #'nil?})}] nil
 
-      ['seq-of '?x] ['seq-of #'nil?] [{'?x '?y '?y ['or #{#'nil? ['seq-of '?x] #'seqable?}]}] [{'?x '?y '?y ['or #{#'nil? ['seq-of '?x] #'seqable?}]}]
+      (t/seq-of '?x) (t/seq-of #'nil?) [{'?x '?y '?y (t/or-t #{#'nil? (t/seq-of '?x) #'seqable?})}] [{'?x '?y '?y (t/or-t #{#'nil? (t/seq-of '?x) #'seqable?})}]
 
-      '?x #'b? [{'?x ['seq-of '?y] '?y ['or #{'?x #'nil?}]}] nil
-      '?x ['seq-of #'b?] [{'?x ['seq-of '?y] '?y ['or #{'?x #'nil?}]}] nil
+      '?x #'b? [{'?x (t/seq-of '?y) '?y (t/or-t #{'?x #'nil?})}] nil
+      '?x (t/seq-of #'b?) [{'?x (t/seq-of '?y) '?y (t/or-t #{'?x #'nil?})}] nil
 
       ))
 
   (testing "substs contains"
     (are [x y substs] (= substs (set/intersection substs (set (c/unify x y))))
-      '?x ['value :foo] #{{'?x (t/value-t :foo)}}))
+      '?x (t/value-t :foo) #{{'?x (t/value-t :foo)}}))
 
   (testing "substs ="
     (are [x y substs] (= (set substs) (set (c/unify x y)))
-      '?x ['and #{'?y #'clojure.core/chunked-seq?}] [{'?x ['and #{'?y #'chunked-seq?}]}]
-      '[cat ?a [cat ?b]] '[cat ?c ?d] '[{?c ?a, ?d ?b}]
-      '?x '[value nil] [{'?x ['value nil]}]))
+      '?x (t/and-t #{'?y #'clojure.core/chunked-seq?}) [{'?x (t/and-t #{'?y #'chunked-seq?})}]
+      (t/cat-t ['?a (t/cat-t ['?b])]) (t/cat-t '[?c ?d]) '[{?c ?a, ?d ?b}]
+      '?x (t/value-t nil) [{'?x (t/value-t nil)}]))
 
   (testing "falsey"
     (are [x y] (nil? (c/unify x y))
@@ -126,7 +126,8 @@
       (t/value-t [1 2 3])))
   (testing "falsey"
     (are [t] (= false (t/regex? t))
-      #'int?)))
+      #'int?
+      (t/value-t 3))))
 
 (deftest dx
   (are [x y ret] (= (set ret) (set (c/dx x y [{}])))
@@ -136,8 +137,8 @@
                                            {:state (t/cat-t [#'b?]) :substs [{}]}]
     (t/cat-t [(t/seq-of #'a?) #'b?]) #'b? [{:state nil :substs [{}]}]
 
-    (t/seq-of (t/class-t Character)) ['value \f] [{:state (t/seq-of (t/class-t Character)) :substs [{}]}
-                                                  {:state nil :substs [{}]}]
+    (t/seq-of (t/class-t Character)) (t/value-t \f) [{:state (t/seq-of (t/class-t Character)) :substs [{}]}
+                                                     {:state nil :substs [{}]}]
 
     #'int? #'int? [{:state nil :substs [{}]}]
     (t/value-t 1) (t/value-t 1) [{:state nil :substs [{}]}]
@@ -147,18 +148,13 @@
 (deftest valid?
   (testing "truthy"
     (are [x y] (do
-                 (println "valid?" x y)
+                 ;; (println "valid?" x y)
                  (= true (c/valid? x y)))
-      '?x ['value 3]
+      '?x (t/value-t 3)
       nil nil
-      '_ '?x
       #'any? #'a?
       #{:foo :bar} #{:foo :bar}
       {:a :b} {:a :b}
-      {:a :b} {:a '?b}
-      {:a '?b} {:a :b}
-      {:a '?b} {:a '?b}
-      {'?a '?b} {:a '?b}
       #'any? (t/seq-of '?x)
 
       '?x '?x
@@ -209,7 +205,7 @@
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a? #'b?])
 
       ;; seq string vs char
-      (t/seq-of #'char?) ['value "foo"]
+      (t/seq-of #'char?) (t/value-t "foo")
 
       (t/or-t [(t/cat-t ['?x (t/seq-of '?y)]) (t/cat-t ['?x])]) (t/cat-t ['?x])
 
@@ -234,7 +230,8 @@
 
       (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t [(t/value-t nil)])
 
-      '?a '[invoke ?x [cat ?y]]))
+      ;; '?a '[invoke ?x [cat ?y]]
+      ))
 
   (testing "falsey"
     (are [x y] (do
@@ -243,7 +240,6 @@
       1 2
       [1] [2]
       ['?x] [1 2]
-      #{} []
       #{:foo} :bar
       :bar #{:foo}
       #'a? #'b?
@@ -254,7 +250,6 @@
       ;; or
       (t/or-t [#'a? #'b?]) #'c?
       ;; and
-      (t/and-t ['?x '?y]) '?x
       (t/and-t [#'a? #'b? #'c?]) (t/and-t [#'a? #'b?])
 
       ;;not
@@ -262,6 +257,8 @@
       #'int? (t/not-t #'string?)
       #'int? (t/not-t #'even?) ;; could be string
       #'int? (t/and-t [#'any? (t/not-t #'string?)])
+      (t/and-t [#'a? #'b? #'c?]) (t/and-t [#'a? #'b?])
+      (t/and-t [#'a? #'b? #'c?]) (t/and-t [#'a? #'b? (t/not-t #'c?)])
 
       ;; cat
       (t/cat-t [#'b?]) (t/cat-t [#'a?])
@@ -271,8 +268,8 @@
       ;; seq
       (t/seq-of #'a?) (t/seq-of #'b?)
       (t/seq-of #'b?) (t/cat-t [#'a?])
-      ['seq-of #'int?] #'int?
-      ['seq-of '?a] #'any?
+      (t/seq-of #'int?) #'int?
+      (t/seq-of '?a) #'any?
 
       (t/cat-t [(t/seq-of #'a?) #'b?]) (t/cat-t [#'a? #'a?])
 
@@ -280,6 +277,7 @@
 
       ;; value
       #'string? (t/value-t 3)
+      #'associative? (t/value-t false)
 
       (t/value-t nil) (t/seq-of Character)
       (t/value-t 3) 3
@@ -291,7 +289,7 @@
 (deftest and-logic
   (are [ts ret] (= ret (t/and-t ts))
     ['?x] '?x
-    ['?x '?y] ['and ['?x '?y]]
+    ['?x '?y] (t/and-t ['?x '?y])
     [#'any?] #'any?
 
     ;; (t/and-t [#'a? (t/or-t [#'a? #'b?])]) #'a?
@@ -301,34 +299,34 @@
 (deftest or-logic
   (are [ts ret] (= ret (t/or-t ts))
     ['?x] '?x
-    ['?x '?y] ['or ['?x '?y]]
-    ['?x ['or ['?y '?z]]] ['or ['?x '?y '?z]]))
+    ['?x '?y] (t/or-t ['?x '?y])
+    ['?x (t/or-t ['?y '?z])] (t/or-t ['?x '?y '?z])))
 
 (deftest handles-free-cycles
   (are [x y sub] (c/unify x y sub)
     '?x1 '?y1 [{'?y1 '?y2,
-                '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                '?y2 (t/and-t ['?y3 (t/class-t clojure.lang.LazySeq)]),
                 '?y3 '?y4,
-                '?x1 ['seq-of '?x2]}]
+                '?x1 (t/seq-of '?x2)}]
 
     '?x1 '?y1 [{'?y1 '?y2,
-                '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                '?y2 (t/and-t ['?y3 (t/class-t clojure.lang.LazySeq)]),
                 '?y3 '?y4,
                 '?y4 '?y5,
                 '?y5 '?y4,
-                '?x1 ['seq-of '?x2]}]))
+                '?x1 (t/seq-of '?x2)}]))
 
 (deftest cyclic-substs
   (is (c/unify '?x1 '?y1 [{'?y1 '?y2,
-                           '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                           '?y2 (t/and-t ['?y3 (t/class-t clojure.lang.LazySeq)]),
                            '?y3 '?y4,
-                           '?x1 ['seq-of '?x2]}]))
+                           '?x1 (t/seq-of '?x2)}]))
   (is (c/unify '?x1 '?y1 [{'?y1 '?y2,
-                           '?y2 ['and ['?y3 ['class clojure.lang.LazySeq]]],
+                           '?y2 (t/and-t ['?y3 (t/class-t clojure.lang.LazySeq)]),
                            '?y3 '?y4,
                            '?y4 '?y5,
                            '?y5 '?y4,
-                           '?x1 ['seq-of '?x2]}])))
+                           '?x1 (t/seq-of '?x2)}])))
 
 (deftest perm-cache-works
   (c/unify #'int? #'string?)
@@ -342,27 +340,28 @@
       (c/unify (t/or-t [a c]) b)
       true)))
 
-(defspec or-right
+(defspec or-right-positive 1000
   (prop/for-all [a (s/gen (s/spec ::t/type))
                  b (s/gen (s/spec ::t/type))
                  c (s/gen (s/spec ::t/type))]
-    (if (c/unify a b)
+    (if (and (c/unify a b) (c/unify a c))
       (and (c/unify a (t/or-t [b c]))
            (c/unify a (t/or-t [c b])))
       true)))
 
-(defspec and-right []
+(defspec or-right-negative 500
+  (prop/for-all [a (s/gen (s/spec ::t/type))
+                 b (s/gen (s/spec ::t/type))
+                 c (s/gen (s/spec ::t/type))]
+    (if (and (c/unify a b) (not (c/unify a c)))
+      (not (c/unify a (t/or-t [b c])))
+      true)))
+
+(defspec and-right 500
   (prop/for-all [a (s/gen (s/spec ::t/type))
                  b (s/gen (s/spec ::t/type))
                  c (s/gen (s/spec ::t/type))]
     (if (and (or (c/unify a b) (c/unify a c))
              (t/and-t? (t/and-t [b c])))
       (c/unify a (t/and-t [b c]))
-      true)))
-
-(defspec isa-unify
-  (prop/for-all [a (s/gen (s/spec ::t/type))
-                 b (s/gen (s/spec ::t/type))]
-    (if (t/isa-t? a b)
-      (c/unify a b)
       true)))

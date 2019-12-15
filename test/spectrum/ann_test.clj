@@ -182,28 +182,23 @@
     (are [form ret] (do
                       (println "infer-form" form)
                       (c/unify ret (f/infer-form form)))
-      '(list 1) ['and [#'list? ['cat ['value 1]]]]
-      '(list 1 :a) ['and [#'list? ['cat ['value 1] ['value :a]]]]
+      '(list 1) (t/and-t [#'list? (t/cat-t [(t/value-t 1)])])
+      '(list 1 :a) (t/and-t [#'list? (t/cat-t [(t/value-t 1) (t/value-t :a)])])
 
       '(first 3) nil
-      '(keyword 3) ['value nil]
+      '(keyword 3) (t/value-t nil)
       '(keyword "foo") #'simple-keyword?
       '(keyword "foo" "bar") #'qualified-keyword?
 
-      '(fn [x] (keyword x)) ['fn
-                             {['cat
-                               ['or
-                                [#'clojure.core/keyword?
-                                 #'clojure.core/string?
-                                 #'clojure.core/symbol?
-                                 ['not
-                                  ['or
-                                   [#'clojure.core/keyword?
-                                    #'clojure.core/string?
-                                    #'clojure.core/symbol?]]]]]]
-                              ['or [#'clojure.core/simple-keyword? ['value nil]]]}]
+      '(fn [x] (keyword x)) (t/fn-t
+                             {[#'keyword?] #'simple-keyword?
+                              [#'string?] #'simple-keyword?
+                              [#'symbol?] #'simple-keyword?
+                              [(t/not-t (t/or-t [#'clojure.core/keyword?
+                                                 #'clojure.core/string?
+                                                 #'clojure.core/symbol?]))] #'nil?})
 
-      '(fn [x y] (keyword x y)) ['fn {['cat #'string? #'string?] #'clojure.core/qualified-keyword?}]
+      '(fn [x y] (keyword x y)) (t/fn-t {(t/cat-t [#'string? #'string?]) #'clojure.core/qualified-keyword?})
 
       ;; apply
       '(apply keyword "foo") nil
@@ -257,17 +252,17 @@
 
 (deftest chunk-buffer-tests
   (are [x y substs] (c/unify x y)
-    ['chunk-buffer '?x] '?t1 [{}]
-    ['chunk-buffer '?x] '?t1 [{'?t1 #'any?}]
-    (t/cat-t [['chunk-buffer '?x4645] '?x4645]) (t/cat-t ['?t4428 '?t4436]) [{}]))
+    (ann/chunk-buffer-t '?x) '?t1 [{}]
+    (ann/chunk-buffer-t '?x) '?t1 [{'?t1 #'any?}]
+    (t/cat-t [(ann/chunk-buffer-t '?x4645) '?x4645]) (t/cat-t ['?t4428 '?t4436]) [{}]))
 
 (deftest conj-tests
   (testing "truthy"
     (are [form args ret] (c/valid? ret (f/infer-form form args))
-      '(conj x y) {:x ['coll-of #'int?] :y #'int?} ['coll-of #'int?]
-      '(conj x y) {:x ['vector-of #'int?] :y #'int?} ['coll-of #'int?]
-      '(conj x y) {:x ['set-of #'int?] :y #'int?} ['coll-of #'int?]
-      '(conj x y) {:x ['coll-of #'int?] :y #'string?} ['coll-of ['or [#'int? #'string?]]]
+      '(conj x y) {:x (t/coll-of #'int?) :y #'int?} (t/coll-of #'int?)
+      '(conj x y) {:x (t/vector-of #'int?) :y #'int?} (t/coll-of #'int?)
+      '(conj x y) {:x (t/set-of #'int?) :y #'int?} (t/coll-of #'int?)
+      '(conj x y) {:x (t/coll-of #'int?) :y #'string?} (t/coll-of (t/or-t [#'int? #'string?]))
 
       ;; '(conj x y) {:x ['vector-of #'int?] :y #'int?} ['vector-of #'int?]
       ;; '(conj x y) {:x ['set-of #'int?] :y #'int?} ['set-of #'int?]
@@ -275,7 +270,7 @@
 
   (testing "falsey"
     (are [form args] (not (f/infer-form form args))
-      '(conj x y) {:x ['value 1] :y ['value 2]})))
+      '(conj x y) {:x (t/value-t 1) :y (t/value-t 2)})))
 
 (deftest equiv-tests
   (are [a b ret] (c/valid? ret (f/infer-form '(= x y) {:x a :y b}))

@@ -764,19 +764,12 @@
 (defn get-eq-invoke-fn-t
   [f invoke-args ret-t]
   {:post [(do (println "get-eq-invoke-fn-t" "f:" f "invoke:" invoke-args "ret-t:" ret-t "=>" %) true)]}
-  (let [fn-map (-> f (nth 1) t/fn-t t/type-value)
-        ;; constraint that at least one arity must be successful
-        req-one (->> fn-map
-                     (map (fn [[f-args f-ret]]
-                            (eq/<= f-args invoke-args)))
-                     eq/or-e)
-        ret-values (->> fn-map
-                        (mapv (fn [[f-args f-ret]]
-                                (->>
-                                 (maybe-replace-invoke-t invoke-args f-ret ret-t)
-                                 (eq/=> (eq/<= f-args invoke-args)))))
-                        eq/or-e)]
-    (eq/and-e [ret-values req-one])))
+  (let [fn-map (-> f (nth 1) t/fn-t t/type-value)]
+    (->> fn-map
+         (mapv (fn [[f-args f-ret]]
+                 (eq/and-e [(eq/<= f-args invoke-args)
+                            (maybe-replace-invoke-t invoke-args f-ret ret-t)])))
+         eq/or-e)))
 
 (s/fdef get-eq-thunk-invoke :args (s/cat :t t/invoke-t? :ret-t ::t/type) :ret ::eq/equation)
 (defn get-eq-thunk-invoke [t ret-t]
@@ -1282,6 +1275,9 @@
 
 (defmulti simplify-equation #'simplify-eq-dispatch)
 
+(defmethod simplify-equation :default [e]
+  e)
+
 (defn sort-eqs
   "Given a seq of eqs, sort them in a way that minimizes work"
   [eqs]
@@ -1297,12 +1293,17 @@
   (->> e
        eq/get-eqs
        (mapv simplify-equation)
+       (distinct)
        (sort-eqs)
        (eq/and-e)))
 
 (defmethod simplify-equation :ore [e]
   ;; {:post [(do (println "simplify ore:" e "=>" %) true)]}
-  (eq/or-e (mapv simplify-equation (eq/get-eqs e))))
+  (->> e
+       eq/get-eqs
+       (mapv simplify-equation)
+       (distinct)
+       (eq/or-e)))
 
 (defmethod simplify-equation :imp [e]
   ;; {:post [(do (println "simplify imp:" e "=>" %) true)]}
@@ -1325,48 +1326,68 @@
      (eq/false-e))))
 
 (s/fdef simplify-regex :args (s/cat :eqf ifn? :x any? :y any?) :ret ::eq/equation)
-(defn simplify-regex [eq-f x y]
-  ;; {:pre [(do (println "simplify-re" x y "pre") true)]
-  ;;  :post [(do (println "simplify-re" x y "=>" %) true)]}
-  (or
-   (simplify-1 x y)
-   (->> (combo/cartesian-product (c/re-will-accept x) (c/re-will-accept y))
-        (map (fn [[xv yv]]
-               (assert xv)
-               (assert yv)
-               (let [new-x (c/re-accept x yv)
-                     new-y (c/re-accept y yv)]
-                 (eq/and-e [(eq-f xv yv)
-                            (->> (combo/cartesian-product new-x new-y)
-                                 (map (fn [[new-x* new-y*]]
-                                        (simplify-regex eq-f new-x* new-y*)))
-                                 (eq/or-e))]))))
-        (eq/or-e))))
+;; (defn simplify-regex [eq-f x y]
+;;   {:pre [(do (println "simplify-re" x "re?" (t/regex? x) y "re?" (t/regex? y) "pre") true)]
+;;    :post [(do (println "simplify-re" x y "=>" %) true)]
+;;    }
+;;   (or
+;;    (simplify-1 x y)
+;;    (->> (combo/cartesian-product (c/re-will-accept x) (c/re-will-accept y))
+;;         (map (fn [[xv yv]]
+;;                {:pre [(do (println "xv yv" xv yv) true)]
+;;                 :post [(do (println "xv yv" xv yv "=>" %) true)]}
+;;                (or
+;;                 (simplify-1 xv yv)
+;;                 (let [new-x (c/re-accept x yv)
+;;                       new-y (c/re-accept y yv)]
+;;                   (println "new-x:" new-x "new-y" new-y)
+;;                   (or
+;;                    (when (or (and (seq new-x) (seq new-y))
+;;                              (= #{} new-x new-y)
+;;                              (and (or (contains? new-x nil) (= #{} new-x)) (or (some c/accept-nil? new-y)))
+;;                              (and (or (some c/accept-nil? new-x)) (or (contains? new-y nil) (= #{} new-y))))
+;;                      (eq/and-e [(eq-f xv yv)
+;;                                 (->> (combo/cartesian-product new-x new-y)
+;;                                      ((fn [x]
+;;                                         (println "cart" x)
+;;                                         x))
+;;                                      (map (fn [[new-x* new-y*]]
+;;                                             ;; {:post [(do (println "new-x* new-y*" new-x* new-y* "=>" %) true)]}
+;;                                             (simplify-regex eq-f new-x* new-y*)))
+;;                                      (eq/or-e))]))
+;;                    (eq/false-e))))))
+;;         (eq/or-e))))
 
-(defmethod simplify-equation :eq [e]
-  (let [[_ x y] e]
-    (if (and (t/regex? x) (t/regex? y))
-      (simplify-regex eq/eq x y)
-      e)))
+;; (defmethod simplify-equation :eq [e]
+;;   (let [[_ x y] e]
+;;     (if (and (t/regex? x) (t/regex? y))
+;;       (simplify-regex eq/eq x y)
+;;       e)
+;;     ))
 
-(defmethod simplify-equation :<= [e]
-  (let [[_ x y] e]
-    (if (and (t/regex? x) (t/regex? y))
-      (simplify-regex eq/<= x y)
-      e)))
+;; (defmethod simplify-equation :<= [e]
+;;   (let [[_ x y] e]
+;;     e
+;;     (if (and (t/regex? x) (t/regex? y))
+;;       (simplify-regex eq/<= x y)
+;;       e)
+;;     ))
 
-(defmethod simplify-equation :>= [e]
-  (let [[_ x y] e]
-    (if (and (t/regex? x) (t/regex? y))
-      (simplify-regex eq/>= x y)
-      e)))
+;; (defmethod simplify-equation :>= [e]
+;;   (let [[_ x y] e]
+;;     (if (and (t/regex? x) (t/regex? y))
+;;       (simplify-regex eq/>= x y)
+;;       e)
+;;     ))
 
 (defn solve-eq-dispatch [substs e]
   (nth e 0))
+
 (defmulti solve-equation* #'solve-eq-dispatch)
 
 (defmethod solve-equation* :ande [state e]
-  {:post [;; (do (when (:fail %) (println "solve failed:" e)) true)
+  {:post [(do (when (:fail %) (println "solve failed:" e)) true)
+          (do (println (first e) "=>" (not (:fail %))) true)
           (validate! ::state %)]}
   (let [eqs (-> e (eq/get-eqs) (sort-eqs))]
     (reduce
@@ -1419,31 +1440,32 @@
   (assoc state :fail e))
 
 (defmethod solve-equation* :eq [state e]
-  {:post [(validate! ::state %)]}
+  {:post [(validate! ::state %)
+          (do (when (:fail %) (println "solve failed:" e)) true)
+          (do (println (first e) "=>" (not (:fail %))) true)]}
   (if (not (:fail state))
-    (if-let [substs (c/unify (nth e 1) (nth e 2) (:substs state))]
+    (if-let [substs (seq (c/unify (nth e 1) (nth e 2) (:substs state)))]
       (assoc state :substs substs)
       (assoc state :fail e))
     state))
 
 (defmethod solve-equation* :<= [state e]
   {:post [(do (when (:fail %) (println "solve failed:" e)) true)
+          (do (println e "=>" (not (:fail %))) true)
           (validate! ::state %)]}
   (let [[_ x y] e]
     (if (not (:fail state))
       (let [substs (or (c/unify x y (:substs state))
-                       (do
-                         (println "narrow attempt:" x y )
-                         (c/narrow-unify x y (:substs state))))]
+                       (c/narrow-unify x y (:substs state)))]
         ;; (do (println "solve <=" x y "=>" (boolean (seq substs))))
-        (if substs
+        (if (seq substs)
           (assoc state :substs substs)
           (assoc state :fail e)))
       state)))
 
 (defmethod solve-equation* :>= [state e]
-  {:post [(do (when (:fail %) (println "solve failed:" e)) true)
-          (validate! ::state %)]}
+  {:post [(validate! ::state %)
+          (do (println (first e) "=>" (not (:fail %))) true)]}
   (let [[_ x y] e]
     (if (not (:fail state))
       (let [substs (or (c/unify x y (:substs state))
@@ -1787,6 +1809,7 @@
           ;; (println substs)
           (let [type-map (store-var-inference-results context a substs)]
             (println (keys type-map))
+            (println "resolving" t)
             (or (some-> type-map first val)
                 (c/resolve-type t substs))))))))
 

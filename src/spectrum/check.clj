@@ -39,22 +39,22 @@
   (when-not (data/analyzed-ns? (find-ns 'clojure.core))
     (println "loading clojure")
     (doseq [n builtin-nses]
-      (flow/analyze-cache-ns n))
+      (flow/ensure-analysis n))
     (flow/analyze-cache-resource (io/resource "clojure/core_deftype.clj"))))
 
 (s/fdef check :args (s/cat :ns symbol?) :ret ::check-errors)
 
-(defn check-var [v]
-  (maybe-load-clojure-builtins)
-  (let [t (flow/infer-var v)]
-    ;; (if-let [s ()])
-    ))
+;; (defn check-var [v]
+;;   (maybe-load-clojure-builtins)
+;;   (let [t (flow/infer-var v)]
+;;     ;; (if-let [s ()])
+;;     ))
 
-(defn check-ns [ns]
-  (maybe-load-clojure-builtins)
-  (println "checking " ns)
-  (some->>
-   (analyzer/analyze-ns-1 ns (ana.jvm/empty-env))
-   (map flow/infer)
-   (mapcat check*)
-   (filter identity)))
+;; (defn check-ns [ns]
+;;   (maybe-load-clojure-builtins)
+;;   (println "checking " ns)
+;;   (some->>
+;;    (analyzer/analyze-ns-1 ns (ana.jvm/empty-env))
+;;    (map flow/infer)
+;;    (mapcat check*)
+;;    (filter identity)))

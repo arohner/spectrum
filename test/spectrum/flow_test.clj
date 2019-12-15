@@ -28,10 +28,26 @@
                                                      {['cat '?x] ['or [#'nil? ['chunk '?y]]]}]))
 
 (deftest simplify-regex
-  (are [e] (s/valid? ::eq/equation (f/simplify-equation e))
-    (eq/<= ['cat ['value '?x33] ['not ['value '?x33]]] ['cat '?t2 '?t3])
-    (eq/<= ['cat ['value '?x33] ['not ['value '?x33]]] ['cat '?t2 '?t3 '?t4])
-    (eq/<= ['cat ['value '?x33]] ['cat '?t2 '?t3 '?t4])))
+  (testing "truthy"
+    (are [e] (s/valid? ::eq/equation (f/simplify-equation e))
+      (eq/<= (t/cat-t [(t/value-t '?x33) (t/not-t (t/value-t '?x33))]) (t/cat-t ['?t2 '?t3]))
+      (eq/<= (t/cat-t [(t/value-t '?x33) (t/not-t ['value '?x33])]) (t/cat-t ['?t2 '?t3 '?t4]))
+      (eq/<= (t/cat-t [(t/value-t '?x33)]) (t/cat-t ['?t2 '?t3 '?t4])))
+
+    (are [in out] (= out (f/simplify-equation in))
+      (eq/<= (t/cat-t ['?a0]) (t/cat-t ['?b1])) (eq/<= '?a0 '?b1)
+      (eq/<= (t/cat-t [(t/? '?a0)]) (t/cat-t [])) (eq/true-e)
+      (eq/<= (t/cat-t [(t/? '?a0)]) (t/cat-t ['?b1])) (eq/<= '?a0 '?b1)
+      (eq/<= (t/cat-t ['?a0]) (t/cat-t ['?b1 (t/? '?c2)])) (eq/<= '?a0 '?b1)
+      (eq/<= (t/cat-t ['?a0]) (t/cat-t ['?b1 (t/? '?c2)])) (eq/<= '?a0 '?b1)
+
+      (eq/<= (t/cat-t []) (t/cat-t [])) (eq/true-e)
+      (eq/<= (t/cat-t ['?a0]) (t/cat-t [])) (eq/false-e)
+      (eq/<= (t/cat-t []) (t/cat-t ['?a0])) (eq/false-e)
+      (eq/<= (t/cat-t ['?a0]) (t/cat-t ['?b1 '?c2])) (eq/false-e)
+      (eq/<= (t/cat-t ['?b1 '?c2]) (t/cat-t ['?a0])) (eq/false-e))
+
+    ))
 
 (defn map-simple
   "Simple implementantion of #'map, for testing "

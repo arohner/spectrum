@@ -6,6 +6,7 @@
             [clojure.test.check.generators :as gen]
             [spectrum.conform :as c]
             [spectrum.data :as data]
+            [spectrum.equations :as eq]
             [spectrum.flow :as f]
             [spectrum.types :as t]
             [spectrum.conform-test :as ct]

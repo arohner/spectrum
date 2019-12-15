@@ -126,6 +126,7 @@
 (t/derive-type #'t/seqable-of? #'t/coll-of?)
 (t/derive-type #'t/coll-of? #'t/vector-of?)
 (t/derive-type #'t/coll-of? #'t/map-of?)
+(t/derive-type #'t/coll-of? #'t/set-of?)
 (t/derive-type #'t/coll-of? #'t/seq-of?)
 
 (t/derive-type #'keyword? #'simple-keyword?)
@@ -157,7 +158,7 @@
                      ['?x+ #'seqable?] (t/and-t [(t/cat-t ['?x+ (t/seq-of '?y+)]) (t/class-t ISeq)])}))
 
 (ann #'conj (t/fn-t {(t/cat-t []) (t/cat-t [])
-                     ['?x+] '?x+
+                     ['?x] '?x
                      [(t/coll-of '?x) (t/+ '?x)] (t/coll-of '?x)
                      [(t/coll-of '?x) (t/+ '?y)] (t/coll-of (t/or-t ['?x '?y]))}))
 
