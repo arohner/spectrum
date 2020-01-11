@@ -1152,7 +1152,12 @@
   (t/invalid))
 
 (defn resolve-type-dispatch [t subst]
-  (t/type-tag t))
+  (or
+   (when (t/tagged? t)
+     (t/type-tag t))
+   (when (t/logic? t)
+     #'t/logic?)
+   t))
 
 (defmulti resolve-type* #'resolve-type-dispatch)
 
@@ -1161,16 +1166,16 @@
 
 (def ^:dynamic *resolve-seen* #{})
 
+(defn with-no-rentry [resolver]
+  (fn [t substs]
+    (if-not (contains? *resolve-seen* t)
+      (binding [*resolve-seen* (conj *resolve-seen* t)]
+        (resolver t substs))
+      t)))
+
 (s/fdef resolve-type-1 :args (s/cat :t any? :s ::subst) :ret any?)
-(defn resolve-type-1
-  [t subst]
-  (if-not (contains? *resolve-seen* t)
-    (binding [*resolve-seen* (conj *resolve-seen* t)]
-      (let [t* (get subst t t)]
-        (cond
-          (and (t/logic? t*) (not= t t*)) (resolve-type-1 t* subst)
-          :else (or (resolve-type* t* subst) t* t))))
-    t))
+
+(def resolve-type-1 (with-no-rentry resolve-type*))
 
 (s/fdef resolve-type :args (s/cat :t any? :s ::substs) :ret any?)
 (defn resolve-type [t substs]
@@ -1178,6 +1183,12 @@
        (map (fn [s]
               (resolve-type-1 t s)))
        (t/or-t)))
+
+(defmethod resolve-type* #'t/logic? [t subst]
+  (let [[t* v] (find subst t)]
+    (cond
+      t* (resolve-type-1 v subst)
+      :else t)))
 
 (defmethod resolve-type* #'t/cat-t? [t subst]
   (t/cat-t (map #(resolve-type-1 % subst) (t/cat-types t))))
