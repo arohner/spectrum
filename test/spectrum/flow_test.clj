@@ -29,10 +29,10 @@
 
 (deftest simplify-regex
   (testing "truthy"
-    (are [e] (s/valid? ::eq/equation (f/simplify-equation e))
-      (eq/<= (t/cat-t [(t/value-t '?x33) (t/not-t (t/value-t '?x33))]) (t/cat-t ['?t2 '?t3]))
-      (eq/<= (t/cat-t [(t/value-t '?x33) (t/not-t ['value '?x33])]) (t/cat-t ['?t2 '?t3 '?t4]))
-      (eq/<= (t/cat-t [(t/value-t '?x33)]) (t/cat-t ['?t2 '?t3 '?t4])))
+    ;; (are [e] (s/valid? ::eq/equation (f/simplify-equation e))
+    ;;   (eq/<= (t/cat-t [(t/value-t '?x33) (t/not-t (t/value-t '?x33))]) (t/cat-t ['?t2 '?t3]))
+    ;;   (eq/<= (t/cat-t [(t/value-t '?x33) (t/not-t ['value '?x33])]) (t/cat-t ['?t2 '?t3 '?t4]))
+    ;;   (eq/<= (t/cat-t [(t/value-t '?x33)]) (t/cat-t ['?t2 '?t3 '?t4])))
 
     (are [in out] (= out (f/simplify-equation in))
       (eq/<= (t/cat-t ['?a0]) (t/cat-t ['?b1])) (eq/<= '?a0 '?b1)

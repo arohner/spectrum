@@ -758,7 +758,7 @@
     (let [[f i-invoke-args] (t/type-values t)
           ret-eqs (get-eq-invoke-t f i-invoke-args ret-t)]
       ret-eqs)
-    (eq/eq ret-t t)))
+    (eq/<= ret-t t)))
 
 (s/fdef get-eq-invoke-fn-t :args (s/cat :f t/fn-t? :i ::t/type :r ::t/type) :ret ::eq/equation)
 (defn get-eq-invoke-fn-t
@@ -911,6 +911,7 @@
 
 (s/fdef get-equation-java-call :ret ::eq/equation)
 (defn get-equation-java-call [context a path]
+  {:post [(do (println "get-eq-java:" %) true)]}
   (let [a* (get-in a path)
         {:keys [class method instance]} a*]
     (if (and class method)
@@ -1325,60 +1326,69 @@
    (when (and (not (c/accept-nil? x)) (nil? y))
      (eq/false-e))))
 
+(defmulti re-pairs
+  "Given a regex, return pairs of the first value that could be
+  consumed, and the remaining regex. Return [x nil] to indicate the
+  last value"
+  #'t/type-tag)
+
+(defmethod re-pairs #'t/cat-t? [cat-x]
+  (let [[x & xr] (t/cat-types cat-x)]
+    (when x
+      (if (t/regex? x)
+        (->> (re-pairs x)
+             (map (fn [[x* x*r]]
+                    (when x*
+                      [x* (if (seq xr)
+                            (t/cat-t [x*r xr])
+                            x*r)])))
+             (filter identity))
+        [[x (when (seq xr) (t/cat-t xr))]]))))
+
+(defmethod re-pairs #'t/seq-of? [seq-x]
+  (let [x (t/type-value seq-x)]
+    [[x seq-x] [x nil]]))
+
+(defmethod re-pairs #'t/alt-t? [alt-x]
+  (map (fn [t]
+         [t nil]) (t/type-values alt-x)))
+
 (s/fdef simplify-regex :args (s/cat :eqf ifn? :x any? :y any?) :ret ::eq/equation)
-;; (defn simplify-regex [eq-f x y]
-;;   {:pre [(do (println "simplify-re" x "re?" (t/regex? x) y "re?" (t/regex? y) "pre") true)]
-;;    :post [(do (println "simplify-re" x y "=>" %) true)]
-;;    }
-;;   (or
-;;    (simplify-1 x y)
-;;    (->> (combo/cartesian-product (c/re-will-accept x) (c/re-will-accept y))
-;;         (map (fn [[xv yv]]
-;;                {:pre [(do (println "xv yv" xv yv) true)]
-;;                 :post [(do (println "xv yv" xv yv "=>" %) true)]}
-;;                (or
-;;                 (simplify-1 xv yv)
-;;                 (let [new-x (c/re-accept x yv)
-;;                       new-y (c/re-accept y yv)]
-;;                   (println "new-x:" new-x "new-y" new-y)
-;;                   (or
-;;                    (when (or (and (seq new-x) (seq new-y))
-;;                              (= #{} new-x new-y)
-;;                              (and (or (contains? new-x nil) (= #{} new-x)) (or (some c/accept-nil? new-y)))
-;;                              (and (or (some c/accept-nil? new-x)) (or (contains? new-y nil) (= #{} new-y))))
-;;                      (eq/and-e [(eq-f xv yv)
-;;                                 (->> (combo/cartesian-product new-x new-y)
-;;                                      ((fn [x]
-;;                                         (println "cart" x)
-;;                                         x))
-;;                                      (map (fn [[new-x* new-y*]]
-;;                                             ;; {:post [(do (println "new-x* new-y*" new-x* new-y* "=>" %) true)]}
-;;                                             (simplify-regex eq-f new-x* new-y*)))
-;;                                      (eq/or-e))]))
-;;                    (eq/false-e))))))
-;;         (eq/or-e))))
+(defn simplify-regex [eq-f x y]
+  {;; :pre [(do (println "simplify-re" x "re?" (t/regex? x) y "re?" (t/regex? y) "pre") true)]
+   ;; :post [(do (println "simplify-re" x y "=>" %) true)]
+   }
+  (let [xs (seq (when x (re-pairs x)))
+        ys (seq (when y (re-pairs y)))]
+    (cond
+      (and (nil? xs) (c/accept-nil? y)) (eq/true-e)
+      (and (c/accept-nil? x) (nil? ys)) (eq/true-e)
+      (and (nil? xs) (nil? ys)) (eq/true-e)
+      (and xs ys) (eq/or-e (->> (combo/cartesian-product xs ys)
+                                (map (fn [[[x1 xr] [y1 yr]]]
+                                       (eq/and-e [(if (c/unify x1 y1)
+                                                    (eq-f x1 y1)
+                                                    (eq/false-e)) (simplify-regex eq-f xr yr)])))))
+      :else (eq/false-e))))
 
-;; (defmethod simplify-equation :eq [e]
-;;   (let [[_ x y] e]
-;;     (if (and (t/regex? x) (t/regex? y))
-;;       (simplify-regex eq/eq x y)
-;;       e)
-;;     ))
+(defmethod simplify-equation :eq [e]
+  (let [[_ x y] e]
+    (if (and (t/regex? x) (t/regex? y))
+      (simplify-regex eq/eq x y)
+      e)))
 
-;; (defmethod simplify-equation :<= [e]
-;;   (let [[_ x y] e]
-;;     e
-;;     (if (and (t/regex? x) (t/regex? y))
-;;       (simplify-regex eq/<= x y)
-;;       e)
-;;     ))
+(defmethod simplify-equation :<= [e]
+  (let [[_ x y] e]
+    (if (and (t/regex? x) (t/regex? y))
+      (simplify-regex eq/<= x y)
+      e)
+    ))
 
-;; (defmethod simplify-equation :>= [e]
-;;   (let [[_ x y] e]
-;;     (if (and (t/regex? x) (t/regex? y))
-;;       (simplify-regex eq/>= x y)
-;;       e)
-;;     ))
+(defmethod simplify-equation :>= [e]
+  (let [[_ x y] e]
+    (if (and (t/regex? x) (t/regex? y))
+      (simplify-regex eq/>= x y)
+      e)))
 
 (defn solve-eq-dispatch [substs e]
   (nth e 0))
@@ -1401,7 +1411,7 @@
              state))
          state)) state eqs)))
 
-(defmethod solve-equation* :ore [state e]
+(defn solve-ore [state e]
   {:post [(do (when (:fail %) (println "solve failed:" e)) true)
           (do (println (first e) "=>" (not (:fail %))) true)
           (validate! ::state %)]}
@@ -1419,6 +1429,9 @@
         (->> successful (mapcat :substs) ((fn [substs] (assoc state :substs substs))))
         (assoc state :fail e)))
     state))
+
+(defmethod solve-equation* :ore [state e]
+  (solve-ore state e))
 
 (defmethod solve-equation* :imp [state e]
   {:post [(do (when (:fail %) (println "solve failed:" e)) true)
@@ -1728,7 +1741,7 @@
     (println "expected" l (if-let [form (::form l-meta)] form "") "=>" (c/resolve-type r subst))
 
     (when existing-l
-      (println "could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" r "->" existing-r "subst:" subst)
+      (println "debug-failed: could not unify eq" eq (if-let [form (::form l-meta)] form "") "at" (::loc l-meta) "with existing l:" existing-l "existing-r:" r "->" existing-r "subst:" subst)
       (prn "form:" l r [subst]))
 
     (doseq [lv (t/get-lvars eq)]

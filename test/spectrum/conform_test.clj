@@ -46,7 +46,7 @@
       '?a #'int? [{'?a #'int?}]
       ;; or
       (t/or-t ['?a '?b]) '?a '[{}]
-      (t/or-t ['?a '?b]) '?x [{'?x (t/or-t ['?a '?b])}]
+      (t/or-t ['?a '?b]) '?x [{'?x '?a} {'?x '?b}]
       (t/or-t [#'int?]) '?x [{'?x #'int?}]
 
       (t/or-t ['?a '?b]) #'int? [{'?a (t/or-t [#'int? '?a])
@@ -340,7 +340,7 @@
       (c/unify (t/or-t [a c]) b)
       true)))
 
-(defspec or-right-positive 1000
+(defspec or-right-positive 500
   (prop/for-all [a (s/gen (s/spec ::t/type))
                  b (s/gen (s/spec ::t/type))
                  c (s/gen (s/spec ::t/type))]

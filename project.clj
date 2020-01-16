@@ -19,7 +19,7 @@
                                 (set! *print-length* 20))}}}
   :deploy-repositories [["releases" {:url "https://clojars.org/repo"
                                      :creds :gpg}]]
-  :jvm-opts ["-Xmx1024m"
+  :jvm-opts ["-Xmx3g"
              "-XX:-OmitStackTraceInFastThrow"
              "-XX:+UseConcMarkSweepGC"
              "-Dfile.encoding=UTF-8"

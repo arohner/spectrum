@@ -223,3 +223,9 @@
   `(let [ret# ~x]
      (println (quote ~x) "=>" ret#)
      ret#))
+
+(defn map-intersect
+  "Same idea as clojure.set/intersection, but returns a map where all k/v pairs are the same"
+  [& ms]
+
+  )

@@ -566,8 +566,12 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 (defn merge-fns [fns]
   (when (seq fns)
     (->> fns
-         (map second)
-         (apply merge)
+         (mapcat second)
+         (reduce (fn [m [k v]]
+                   (if (find m k)
+                     (update m k (fn [v-old]
+                                   (or-t [v-old v])))
+                     (assoc m k v))) {})
          (fn-t))))
 
 (defn ? [x]

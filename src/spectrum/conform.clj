@@ -100,7 +100,7 @@
     (free-t? y subst) [(assoc-subst subst y x)]
     :else (do (assert false (print-str "unify-any-logic:" x y subst)) [subst])))
 
-(s/fdef unify-any-logic :args (s/cat :x any? :y any? :substs ::substs) :ret ::substs)
+;; (s/fdef unify-any-logic :args (s/cat :x any? :y any? :substs ::substs) :ret ::substs)
 (defn unify-any-logic [x y substs]
   (some->> substs
            (mapcat (fn [s]
@@ -328,6 +328,7 @@
          (map (fn [s]
                 (let [relevant-keys (get-relevant-keys [x y] s)
                       k [x y (select-keys s relevant-keys)]]
+                  ;; (println "with-temp k" k)
                   (assert *unify-temp-cache*)
                   (if-let [[_ cached] (find @*unify-temp-cache* k)]
                     (if (and (pending? cached) (not (realized? cached)))
@@ -341,7 +342,9 @@
                                      (merge s c)))
                              (#(with-meta % {::cache-hit 1
                                              ::cache-total 1})))
-                        nil))
+                        (do
+                          ;; (println "with-temp" x y "cache hit nil")
+                          nil)))
                     (let [_ (swap! *unify-temp-cache* assoc k (promise))
                           ret (unify-f x y [s])
                           ret (when ret
@@ -364,6 +367,33 @@
                        (doall)
                        (#(with-meta % {::cache-hit cache-hit
                                        ::cache-total cache-total})))))))))
+
+(def ^:dynamic *in-progress* #{})
+(defn with-non-reentrant [unify-f]
+  (fn [x y substs]
+    (->> substs
+         (mapcat (fn [s]
+                   ;; (println "with-nre" x y s)
+                   (if (contains? *in-progress* [x y s])
+                     (do
+                       ;; (println "reentrant:" x y (map (fn [k] (take 2 k)) *in-progress*))
+                       ;; (assert false)
+                       nil)
+                     (binding [*in-progress* (conj *in-progress* [x y s])]
+                       (unify-f x y [s])))))
+         (filter identity)
+         seq)))
+
+(defn with-lru-cache [unify-f]
+  (let [memo (clojure.core.memoize/lru unify-f :lru/threshold 100000)]
+    (fn [x y substs]
+      ;; (println "lru unify" x y)
+      ;; (println "cache-size" (-> memo meta :clojure.core.memoize/cache deref .cache count))
+      (->> substs
+           (mapcat (fn [s]
+                     (memo x y [s])))
+           (filter identity)
+           seq))))
 
 (def ^:dynamic *cache-hit-stats* nil)
 
@@ -426,13 +456,15 @@
               ret (unify-f x y substs)
               ending @*unify-call-count*
               call-count (- ending starting)]
-          (when (> call-count 10)
-            (println "with-call-count:" x y call-count))
+          ;; (when (> call-count 100)
+          ;;   (println "with-call-count:" x y call-count))
           ret))
       (let [counter (atom 1)]
         (binding [*unify-call-count* counter]
           (let [ret (unify-f x y substs)]
-            (println "with-call-count:" @counter)
+            ;; (when (> @counter 1000)
+            ;;   (println "with-call-count:" @counter x y ;; substs
+            ;;            ))
             ret))))))
 
 (defn with-no-infinite [unify-f]
@@ -660,8 +692,6 @@
   ;; {:post [(validate! ::substs %)]}
   (let [cls (t/type-value x)
         val (t/type-value v)]
-    (when-not (class? cls)
-      (println "unify-terms:" x v))
     (assert (class? cls))
     (or
      (when (t/logic? cls)
@@ -973,53 +1003,63 @@
   (and (t/tagged? x)
        (not (t/regex? x))
        (not (t/or-t? x))
-       (not (t/and-t? x))))
+       (not (t/and-t? x))
+       (not (t/spec-t? x))))
 
 (s/fdef unify-terms :ret (s/nilable ::substs))
 (defn unify-terms [x y substs]
   (let [match (match* x y)
         i (fn [x] (fn [y] (t/instance-t? x y)))
         _ nil
+        not-f complement
         matching-unify-f
-        (filter
-         identity
-         [(match [nil? nil?] unify-truthy)
-          (match (fn [x y]
-                   (and (t/regex? x) (t/regex? y)
-                        (not (and (t/seq-of? x) (t/seq-of? y))))) unify-dx-dx)
-          (match [nil? accept-nil?] unify-truthy)
-          (match [accept-nil? nil?] unify-truthy)
-          (match [_ nil?] unify-falsey)
-          (match [t/or-t? t/or-t?] unify-any-or)
-          (match [t/or-t? _] unify-or-any)
-          (match [_ t/or-t?] unify-any-or)
-          ;; (match [t/and-t? t/and-t?] unify-and-and)
-          (match [t/and-t? _] unify-and-any)
-          (match [_ t/and-t?] unify-any-and)
-          (match [t/not-t? t/not-t?] unify-not-not)
-          (match [t/spec-t? t/spec-t?] unify-spec-spec)
-          (match [t/spec-t? t/value-t?] unify-spec-value)
-          (match [_ t/spec-t?] unify-any-spec)
-          (match [t/not-t? _] unify-not-any)
-          (match [t/value-t? t/value-t?] unify-value-value)
-          (match [t/class-t? t/value-t?] unify-class-value)
-          (match [t/value-t? _] unify-value-any)
-          (match [_ t/value-t?] unify-any-value)
-          (match [t/fn-t? t/fn-t?] unify-fn-fn)
-          (match [t/class-t? t/class-t?] unify-class-class)
-          (match [t/class-t? _] unify-class-any)
-          (match [t/logic? t/logic?] unify-logic-logic)
-          (match [t/logic? _] unify-logic-any)
-          (match [_ t/logic?] unify-any-logic)
-          (match [t/regex? t/value-t?] unify-dx-value)
-          (match [t/seq-of? t/logic?] unify-seqof-logic)
-          ;; (match [t/seq-of? t/seq-of?] unify-seqof-seqof)
-          (match [t/seqable-of? t/seqable-of?] unify-tagged-tagged-default)
-          (match [t/seq-of? t/seq-of?] unify-tagged-tagged-default)
-          (match [tagged-default? tagged-default?] unify-tagged-tagged-default)
-          (match [(i #'t/coll-of?) t/spec-t?] unify-collof-spec)
-          (match [_ _] unify-any-any)])]
-    ;; (println "matching:" x y matching-unify-f)
+        (or
+         (->>
+          [(or
+            (match [t/or-t? t/or-t?] unify-any-or)
+            (match [t/not-t? t/not-t?] unify-not-not)
+            (match [t/spec-t? t/spec-t?] unify-spec-spec)
+            (match [t/value-t? t/value-t?] unify-value-value)
+            (match [t/class-t? t/value-t?] unify-class-value)
+            (match [t/spec-t? t/value-t?] unify-spec-value)
+            (match [t/fn-t? t/fn-t?] unify-fn-fn)
+            (match [nil? nil?] unify-truthy)
+            (match (fn [x y]
+                     (and (t/regex? x) (t/regex? y)
+                          (not (and (t/seq-of? x) (t/seq-of? y))))) unify-dx-dx)
+            (match [nil? accept-nil?] unify-truthy)
+            (match [accept-nil? nil?] unify-truthy)
+            (match [t/class-t? t/class-t?] unify-class-class)
+            (match [t/logic? t/logic?] unify-logic-logic)
+            (match [t/regex? t/value-t?] unify-dx-value)
+            (match [t/seq-of? t/logic?] unify-seqof-logic)
+            (match [t/seqable-of? t/seqable-of?] unify-tagged-tagged-default)
+            (match [t/seq-of? t/seq-of?] unify-tagged-tagged-default))]
+          (filter identity)
+          seq)
+         (->>
+          [(match [_ nil?] unify-falsey)
+           (match [t/or-t? _] unify-or-any)
+           (match [_ t/or-t?] unify-any-or)
+           (match [t/and-t? _] unify-and-any)
+           (match [_ t/and-t?] unify-any-and)
+           (match [_ t/spec-t?] unify-any-spec)
+           (match [t/not-t? _] unify-not-any)
+           (match [t/value-t? _] unify-value-any)
+           (match [_ t/value-t?] unify-any-value)
+           (match [t/class-t? _] unify-class-any)
+           (match [t/logic? _] unify-logic-any)
+           (match [_ t/logic?] unify-any-logic)
+           (match [tagged-default? tagged-default?] unify-tagged-tagged-default)
+           (match [(i #'t/coll-of?) t/spec-t?] unify-collof-spec)]
+          (filter identity)
+          (distinct)
+          (seq))
+         [unify-any-any])]
+    ;; (println "matching:" matching-unify-f)
+    (assert (seq matching-unify-f))
+    ;; (when (> (count matching-unify-f) 1)
+    ;;   (println "matching:" x y matching-unify-f))
     (->>
      matching-unify-f
      (some (fn [f]
@@ -1047,16 +1087,18 @@
       ;; with-debug
       ;; with-larger-substs
       ;; with-no-infinite
-      with-temp-cache
-      with-cache-hit-stats
+      with-lru-cache
+      with-non-reentrant
+      ;; with-temp-cache
+      ;; with-cache-hit-stats
       with-perm-cache
-      with-ensure-temp-cache
+      ;; with-ensure-temp-cache
       ;; with-detect-loop
       ;; with-merge-substs
       with-distinct-substs
       ;; with-substs-limit
       ;; with-timing
-      ;; with-call-count
+      with-call-count
       ;; with-depth
       with-require-substs))
 
@@ -1252,4 +1294,4 @@
                       (boolean)))]
     ret))
 
-(instrument-ns)
+;; (instrument-ns)
