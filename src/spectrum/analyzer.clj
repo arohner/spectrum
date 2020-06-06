@@ -15,7 +15,8 @@
             [clojure.tools.reader :as reader]
             [clojure.tools.reader.reader-types :as readers]
             [clojure.java.io :as io]
-            [spectrum.util :refer [url? instrument-ns]])
+            [spectrum.data :as data]
+            [spectrum.util :refer [url? instrument-ns namespace?]])
   (:import (clojure.lang IObj RT Compiler Var)
            java.net.URL))
 
@@ -91,5 +92,22 @@
                              *file* filename]
                      (analyze-file- env res filename {})))
                  (get-in @env/*env* [::analyzed-clj path])))))
+
+(s/fdef ensure-analysis-ns :args (s/cat :ns namespace?))
+(defn ensure-analysis [ns]
+  (try
+    (when-not (data/analyzed-ns? ns)
+      (analyze-ns ns))
+    (catch Throwable t
+      (data/mark-ns-unanalyzed! ns)
+      (throw t))))
+
+(s/fdef ensure-analysis-var :args (s/cat :v var?))
+(defn ensure-analysis-var [v]
+  (ensure-analysis (.ns v)))
+
+(defn get-analysis-var [v]
+  (ensure-analysis-var v)
+  (data/get-var-analysis v))
 
 (instrument-ns)

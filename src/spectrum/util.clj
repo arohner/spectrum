@@ -224,8 +224,16 @@
      (println (quote ~x) "=>" ret#)
      ret#))
 
-(defn map-intersect
-  "Same idea as clojure.set/intersection, but returns a map where all k/v pairs are the same"
-  [& ms]
+(defmacro timeout!
+  "Execute body, throwing if it doesn't return by `timeout`, a java 8 duration"
+  [duration & body]
+  `(let [fut# (future ~@body)
+         ret# (deref fut# (.toMillis ~duration) ::fail)]
+     (if (= ret# ::fail)
+       (do
+         (.cancel fut# true)
+         (throw (ex-info (print-str "timeout while executing" (quote ~@body)) {})))
+       ret#)))
 
-  )
+(defn atom? [x]
+  (instance? clojure.lang.Atom x))

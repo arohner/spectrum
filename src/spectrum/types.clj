@@ -7,7 +7,7 @@
             [clojure.test.check.generators :as gen]
             [clojure.walk :as walk]
             [spectrum.java :as j]
-            [spectrum.util :refer [instrument-ns defn-memo]])
+            [spectrum.util :refer [instrument-ns defn-memo var-name]])
   (:import clojure.lang.Var))
 
 (declare alt-t)
@@ -105,8 +105,9 @@
     (rename replace-map form)))
 
 (defn predicate-symbol? [x]
-  (and (symbol? x)
-       (re-find #"\?$" (name x))))
+  (boolean
+   (and (symbol? x)
+        (re-find #"\?$" (name x)))))
 
 (defn ns-predicates
   "Return all var predicates in ns"
@@ -334,6 +335,26 @@
        (pos? (count t))
        (= name (nth t 0))))
 
+(defn predicate-var? [x]
+  (and (var? x)
+       (predicate-symbol? (var-name x))))
+
+(defmulti tagged-type-spec
+  "given a tagged type, return the corresponding spec"
+  type-tag)
+
+(defn type-spec
+  "Given a type, return the corresponding spec"
+  [t]
+  {:post [(do (when-not %
+                (println "no type spec for" %))
+              (println "type-spec" t "=>" (s/form %))
+              true)
+          %]}
+  (cond
+    (tagged? t) (tagged-type-spec t)
+    (predicate-var? t) (s/spec (deref t))))
+
 (defmacro defn-type-pred [name]
   (assert (predicate-symbol? name))
   `(do
@@ -416,6 +437,8 @@
 (defn-tagged-type map-of map-of?)
 
 (defn-tagged-type coll-of coll-of?)
+(defmethod tagged-type-spec #'coll-of? [t]
+  (s/coll-of (type-spec (type-value t))))
 
 (defn-tagged-type spec-t spec-t?)
 
@@ -918,9 +941,6 @@ Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
 
 (defmethod sort-ts-compare [#'any? #'any?] [x y]
   (compare (depth x) (depth y)))
-
-(defn var-name [v]
-  (str (.ns v) "/" (.sym v)))
 
 (defmethod sort-ts-compare [#'var? #'var?] [x y]
   (compare (var-name x) (var-name y)))

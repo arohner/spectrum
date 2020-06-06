@@ -1,4 +1,5 @@
 (ns spectrum.java
+  (:refer-clojure :exclude [get-method])
   (:require [clojure.spec.alpha :as s]
             [clojure.set :as set]
             [clojure.reflect :as reflect]
@@ -276,8 +277,8 @@
                            (= field (:name m)))))
            first))
 
-(s/fdef get-java-method :args (s/cat :cls class? :method symbol?) :ret (s/coll-of reflect-method?))
-(defn get-java-method
+(s/fdef get-method :args (s/cat :cls class? :method symbol?) :ret (s/coll-of reflect-method?))
+(defn get-method
   "Return all arities"
   [cls method]
   (some->> (reflect/reflect cls)

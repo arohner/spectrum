@@ -121,6 +121,7 @@
 (t/derive-type #'t/seqable-of? #'t/seq-of?)
 
 (t/derive-type #'coll? #'t/coll-of?)
+
 (t/derive-type #'vector? #'t/vector-of?)
 (t/derive-type #'map? #'t/map-of?)
 (t/derive-type #'t/seqable-of? #'t/coll-of?)
@@ -140,7 +141,7 @@
 (ann-instance-or? #'integer? [Long Integer Short Byte clojure.lang.BigInt BigInteger])
 (ann-instance-or? #'seqable? [clojure.lang.ISeq clojure.lang.Seqable Iterable CharSequence java.util.Map]) ;; TODO java array
 
-(ann-constructors LazySeq (t/fn-t {[(t/fn-t {[] (t/seq-of '?x)})] (t/seq-of '?x)}))
+(ann-constructors LazySeq (t/fn-t {[(t/fn-t {[] (t/spec-t (t/seq-of '?x))})] (t/spec-t (t/seq-of '?x))}))
 
 (ann #'list (t/fn-t {['?x] (t/and-t [(t/cat-t ['?x]) #'list?])
                      ['?x '?y] (t/and-t [(t/cat-t ['?x '?y]) #'list?])
@@ -165,11 +166,11 @@
 (ann #'first (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t ['?a+ #'nil?])
                       [(t/spec-t (t/seqable-of '?a+))] (t/or-t ['?a+ #'nil?])}))
 
-(ann #'next (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])
-                     [(t/spec-t (t/seqable-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])}))
+(ann #'next (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/spec-t (t/seq-of '?a+)) #'nil?])
+                     [(t/spec-t (t/seqable-of '?a+))] (t/or-t [(t/spec-t (t/seq-of '?a+)) #'nil?])}))
 
-(ann #'rest (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])
-                     [(t/spec-t (t/seqable-of '?a+))] (t/or-t [(t/seq-of '?a+) #'nil?])}))
+(ann #'rest (t/fn-t {[(t/spec-t (t/seq-of '?a+))] (t/or-t [(t/spec-t (t/seq-of '?a+)) #'nil?])
+                     [(t/spec-t (t/seqable-of '?a+))] (t/or-t [(t/spec-t (t/seq-of '?a+)) #'nil?])}))
 
 ;; TODO incomplete
 (ann #'apply (t/fn-t {['?f (t/spec-t (t/cat-t ['?a]))] (t/invoke-t '?f (t/cat-t ['?a]))
@@ -229,7 +230,7 @@
 (ann #'chunk-buffer (t/fn-t {[Integer-t] (chunk-buffer-t '?x+)}))
 (ann #'chunk (t/fn-t {[(chunk-buffer-t '?x+)] (chunk-t '?x+)}))
 (ann #'chunk-append (t/fn-t {[(chunk-buffer-t '?x+) '?x+] #'nil?}))
-(ann #'chunk-first (t/fn-t {[(chunked-seq-of '?x+)] (chunk-t '?x+)
+(ann #'chunk-first (t/fn-t {[(t/spec-t (chunked-seq-of '?x+))] (chunk-t '?x+)
                             [#'chunked-seq?] (chunk-t '?x+)}))
-(ann #'chunk-rest (t/fn-t {[(chunked-seq-of '?x+)] (t/or-t [(t/seq-of '?x+) #'nil?])}))
-(ann #'chunk-cons (t/fn-t {[(chunk-t '?x+) (t/seq-of '?y+)] (t/cat-t [(t/seq-of '?x+) (t/seq-of '?y+)])}))
+(ann #'chunk-rest (t/fn-t {[(t/spec-t (chunked-seq-of '?x+))] (t/or-t [(t/spec-t (t/seq-of '?x+)) #'nil?])}))
+(ann #'chunk-cons (t/fn-t {[(chunk-t '?x+) (t/seq-of '?y+)] (t/cat-t [(chunked-seq-of '?x+) (t/seq-of '?y+)])}))

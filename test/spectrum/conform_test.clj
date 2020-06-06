@@ -223,6 +223,7 @@
       (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?x))
       (t/spec-t (t/spec-t '?x)) (t/spec-t (t/spec-t '?y))
       (t/coll-of '?x) (t/spec-t (t/seq-of '?x))
+      (t/coll-of '?x) (t/spec-t (t/seq-of '?y))
       #'seqable? (t/spec-t (t/seq-of '?y))
 
       (t/cat-t [(t/spec-t (t/seq-of '?x))]) (t/cat-t ['?y])
@@ -365,3 +366,45 @@
              (t/and-t? (t/and-t [b c])))
       (c/unify a (t/and-t [b c]))
       true)))
+
+(def gen-type-spec-atoms
+  (gen/elements
+   [#'coll?
+    #'keyword?
+    #'map?
+    #'number?
+    #'ratio?
+    #'seq?
+    #'seqable?
+    #'set?
+    #'string?
+    #'true?
+    #'int?]))
+
+(def gen-coll-of (gen/fmap (fn [t]
+                             (t/coll-of t)) gen-type-spec-atoms))
+
+(def gen-seq-of (gen/fmap (fn [t]
+                            (t/seq-of t)) gen-type-spec-atoms))
+
+(def gen-map-of (gen/fmap (fn [[k v]]
+                            (t/map-of k v)) (gen/vector gen-type-spec-atoms 2)))
+
+(def gen-cat-t (gen/fmap (fn [ts]
+                           (t/cat-t ts)) (gen/vector gen-type-spec-atoms)))
+
+(def gen-type-specs (gen/one-of [gen-type-spec-atoms
+                                 gen-coll-of
+                                 gen-map-of
+                                 gen-seq-of
+                                 gen-cat-t]))
+
+(defspec types-match-specs 100
+  (prop/for-all [a gen-type-specs
+                 b gen-type-specs]
+    (let [as (t/type-spec a)
+          bs (t/type-spec b)
+          bt (gen/generate (s/gen bs))
+          s-valid? (s/valid? as bt)
+          unified? (boolean (c/unify a b))]
+      (= s-valid? unified?))))

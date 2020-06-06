@@ -691,6 +691,7 @@
 (defn get-type-for-invoke
   "Return the type for the thing being invoked at `[a path]`"
   [a path]
+  {:post [(do (println "get-type-for-invoke:" (:form (get-in a path)) "=>" %) true)]}
   (let [a* (get-in a path)
         v (get-in a (concat path [:fn :var]))]
     (or (when v
@@ -729,6 +730,7 @@
    (assert false)))
 
 (defmethod get-equation* :var [context a path]
+  {:post [(do (println "get-eq :var" (:form (get-in a path)) "=>" %) true)]}
   (let [a* (get-in a path)
         v (-> a* :var)
         t (get-type! context a path)]
@@ -753,12 +755,14 @@
   (let [ret (t/new-logic "ret")]
     (eq/eq f (t/fn-t {invoke-args ret-t}))))
 
-(defn maybe-replace-invoke-t [invoke-args ret-t t]
+(declare get-eq-invoke-fn-t)
+
+(defn maybe-replace-invoke-t [t]
   (if (t/invoke-t? t)
-    (let [[f i-invoke-args] (t/type-values t)
-          ret-eqs (get-eq-invoke-t f i-invoke-args ret-t)]
-      ret-eqs)
-    (eq/<= ret-t t)))
+    (let [[f args] (t/type-value t)]
+      (get-eq-invoke-fn-t ))
+    t
+    ))
 
 (s/fdef get-eq-invoke-fn-t :args (s/cat :f t/fn-t? :i ::t/type :r ::t/type) :ret ::eq/equation)
 (defn get-eq-invoke-fn-t
@@ -767,8 +771,12 @@
   (let [fn-map (-> f (nth 1) t/fn-t t/type-value)]
     (->> fn-map
          (mapv (fn [[f-args f-ret]]
-                 (eq/and-e [(eq/<= f-args invoke-args)
-                            (maybe-replace-invoke-t invoke-args f-ret ret-t)])))
+                 (let [ret-eqs (if (t/invoke-t? f-ret)
+                                 (let [[invoke-f invoke-args] (t/type-values f-ret)]
+                                   (get-eq-invoke-t invoke-f invoke-args ret-t))
+                                 (eq/<= ret-t f-ret))]
+                   (eq/and-e [(eq/<= f-args invoke-args)
+                              ret-eqs]))))
          eq/or-e)))
 
 (s/fdef get-eq-thunk-invoke :args (s/cat :t t/invoke-t? :ret-t ::t/type) :ret ::eq/equation)
@@ -792,8 +800,8 @@
 (defn get-eq-invoke-f
   "get-equation for invoking something at `path`"
   [context a path]
-  ;; {:post [(do (println "get-eq-invoke-f" (get-in a (conj path :form)) "=>" %) true)
-  ;;         (validate! ::eq/equation %)]}
+  {:post [(do (println "get-eq-invoke-f" (get-in a (conj path :form)) "=>" %) true)
+          (validate! ::eq/equation %)]}
   (let [a* (get-in a path)
         args (:args a*)
         invoke-args (t/cat-t (map-sequential-children get-type! context a path :args))
@@ -901,7 +909,7 @@
 (defn get-method-t
   "Return a fn-t for the java method; includes all arity overloads"
   [cls method]
-  ;; {:post [(do (println "get-method-t" cls method "=>" %) true)]}
+  {:post [(do (println "get-method-t" cls method "=>" %) true)]}
   (or
    (some-> (data/get-ann [cls method])
            (t/freshen))
@@ -1081,7 +1089,7 @@
 (defn get-constructor-t
   "Return an fn-t for this class constructor"
   [cls arity]
-  ;; {:post [(do (println "get-constructor:" cls arity "=>" %) true) (t/fresh-tagged? %)]}
+  {:post [(do (println "get-constructor:" cls arity "=>" %) true)]}
   (t/freshen
    (or (data/get-ann cls)
        (->> (j/get-java-constructors cls arity)
@@ -1397,7 +1405,6 @@
 
 (defmethod solve-equation* :ande [state e]
   {:post [(do (when (:fail %) (println "solve failed:" e)) true)
-          (do (println (first e) "=>" (not (:fail %))) true)
           (validate! ::state %)]}
   (let [eqs (-> e (eq/get-eqs) (sort-eqs))]
     (reduce
@@ -1456,7 +1463,8 @@
 (defmethod solve-equation* :eq [state e]
   {:post [(validate! ::state %)
           (do (when (:fail %) (println "solve failed:" e)) true)
-          (do (println (first e) "=>" (not (:fail %))) true)]}
+          ;; (do (println (first e) "=>" (not (:fail %))) true)
+          ]}
   (if (not (:fail state))
     (if-let [substs (seq (c/unify (nth e 1) (nth e 2) (:substs state)))]
       (assoc state :substs substs)

@@ -8,8 +8,9 @@
             [spectrum.data :as data]
             [spectrum.java :as j]
             [spectrum.types :as t]
-            [spectrum.util :refer [instrument-ns validate! defn-memo debug-multimethod-dispatch inspect]])
-  (:import [clojure.lang IPersistentCollection IPersistentMap IPersistentSet Sequential]))
+            [spectrum.util :refer [instrument-ns validate! defn-memo debug-multimethod-dispatch inspect timeout!]])
+  (:import [clojure.lang IPersistentCollection IPersistentMap IPersistentSet Sequential]
+           [java.time Duration]))
 
 ;; inspired by:
 ;; https://eli.thegreenplace.net/2018/unification/
@@ -518,6 +519,16 @@
       (let [ret (apply unify-f args)]
         (println "unify post" x y "=>" (boolean ret))
         ret))))
+
+(defn with-timeout [unify-f]
+  (fn [& args]
+    (let [[x y substs] args]
+      (try
+        (timeout! (Duration/ofSeconds 1) (apply unify-f args))
+        (catch Exception e
+          (def e-substs substs)
+          (println "timeout during unify" x y)
+          (throw e))))))
 
 (defn with-require-substs
   "It's easy to accidentally call the 2-arity unify from inside
@@ -1056,10 +1067,10 @@
           (distinct)
           (seq))
          [unify-any-any])]
-    ;; (println "matching:" matching-unify-f)
+    (println "matching:" x y matching-unify-f)
     (assert (seq matching-unify-f))
     ;; (when (> (count matching-unify-f) 1)
-    ;;   (println "matching:" x y matching-unify-f))
+    ;;   (println "matching multiple:" x y matching-unify-f))
     (->>
      matching-unify-f
      (some (fn [f]
@@ -1094,12 +1105,13 @@
       with-perm-cache
       ;; with-ensure-temp-cache
       ;; with-detect-loop
-      ;; with-merge-substs
+      with-merge-substs
       with-distinct-substs
       ;; with-substs-limit
       ;; with-timing
       with-call-count
       ;; with-depth
+      with-timeout
       with-require-substs))
 
 (defn debug-unify
