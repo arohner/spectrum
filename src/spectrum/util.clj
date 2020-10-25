@@ -98,7 +98,7 @@
        (instance? ~cls x#))
      (predicate-spec ~name)))
 
-(defn validate! [s args & [extra-data]]
+h(defn validate! [s args & [extra-data]]
   (or
    (s/valid? s args)
    (throw (ex-info (s/explain-str s args)
@@ -237,3 +237,9 @@
 
 (defn atom? [x]
   (instance? clojure.lang.Atom x))
+
+(defmacro ! [x]
+  `(do
+     (let [x# ~x]
+       (assert x#)
+       x#)))

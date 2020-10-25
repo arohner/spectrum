@@ -12,7 +12,9 @@
   :profiles
   {:dev {:dependencies [[org.clojure/tools.namespace "0.2.11"]
                         [orchestra "2018.08.19-1"]
-                        [arohner/repl-utils "0.1.0"]]
+                        [arohner/repl-utils "0.1.0"]
+                        [hashp "0.2.0"]]
+         :injections [(require 'hashp.core)]
          :repl-options {:init-ns spectrum.repl
                         :init (do
                                 (set! *print-level* 10)

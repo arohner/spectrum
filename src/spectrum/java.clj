@@ -265,7 +265,7 @@
       (.getResourceAsStream "clojure/lang/RT.class")
       (slurp)))
 
-(defn get-java-field
+(defn get-field
   [class field & [{:keys [static?]}]]
   (some->> (reflect/reflect class)
            :members
@@ -287,8 +287,8 @@
                       (and (reflect-method? m)
                            (= method (:name m)))))))
 
-(s/fdef get-java-constructors :args (s/cat :cls class? :arity pos-int?) :ret (s/coll-of reflect-constructor?))
-(defn get-java-constructors
+(s/fdef get-constructors :args (s/cat :cls class? :arity pos-int?) :ret (s/coll-of reflect-constructor?))
+(defn get-constructors
   "Return all constructors with arity n"
   [cls arity]
   (some->> (reflect/reflect cls)

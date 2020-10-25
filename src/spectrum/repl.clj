@@ -8,10 +8,8 @@
             [spectrum.compiler-test :as ct]
             [spectrum.data :as data]
             [spectrum.equations :as eq]
-            [spectrum.flow :as f]
-            [spectrum.types :as t]
-            [spectrum.flow-test :as ft]
-            [spectrum.ann-test :as at]))
+
+            ))
 
 ;; (c/load-data-readers)
 ;; (s/check-asserts true)

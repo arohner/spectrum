@@ -43,7 +43,7 @@
   "Annotate a java method. This replaces all arities, so t should
   accept all arities the method accepts (and reject signatures the method rejects!)"
   [cls method t]
-  (assert (seq (j/get-java-method cls method)))
+  (assert (seq (j/get-method cls method)))
   (data/ann [cls method] t))
 
 (defn ann-constructors
