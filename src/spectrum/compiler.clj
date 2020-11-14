@@ -22,6 +22,8 @@
   (tag [this]
     "Return a tag corresponding to the type of this instance. Must be
     something `valid-dispatch` knows how to handle")
+  (typecast [this tag]
+    "Cast this type to `:tag`")
   (truthy [this]
     "Return :true :false or :undecided if this type appears in the
     test of an `if`"))
@@ -40,6 +42,13 @@
   ;;   :variable)
   )
 
+(extend-protocol Type
+  clojure.lang.IFn
+  (tag [this]
+    :fn)
+  (truthy [this]
+    :true))
+
 (defn variable? [x]
   (core/instance? Variable x))
 
@@ -55,17 +64,17 @@
 (defn vref [id]
   (->VariableRef id))
 
-(defrecord Instance [class]
+(defrecord Java [class]
   Type
   (tag [this]
-    :instance))
+    :java))
 
-(defn instance? [x]
-  (core/instance? Instance x))
+(defn java? [x]
+  (core/instance? Java x))
 
-(s/fdef instance :args (s/cat :c class?) :ret instance?)
-(defn instance [cls]
-  (->Instance cls))
+(s/fdef java :args (s/cat :c class?) :ret java?)
+(defn java [cls]
+  (->Java cls))
 
 (defrecord Spec [s]
   Type
@@ -85,13 +94,13 @@
     :value))
 
 (defn value? [x]
-  (instance? Value x))
+  (core/instance? Value x))
 
 (defn value [x]
   (->Value x))
 
 (def ^:dynamic *env* {})
-(s/def ::ret any?)
+(s/def ::ret type?)
 (s/def ::vars (s/map-of var? fn?))
 (s/def ::vars (s/map-of symbol? fn?))
 
@@ -484,8 +493,8 @@
           :and valid-and-any
           :or valid-or-any
           :variable valid-variable-any
-          :class valid-class-any
-          :var-predicate valid-var-any)))))
+          :instance valid-class-any
+          :spec valid-var-any)))))
 
 (s/fdef valid? :args (s/cat :l type? :r type?) :ret boolean?)
 (defn valid? [l r]
@@ -804,18 +813,50 @@
   (fn [e]
     {:pre [(do (validate! ::env e) true)]
      :post [(do (validate! ::envs %) true)]}
-    [(assoc e ::ret (:val a))]))
+    [(assoc e ::ret (value (:val a)))]))
 
 (defmethod compile* :recur [a]
   (assert false))
 
-(defmethod compile* :new [a]
-  (let [class-f (compile (:class a))]
+(defn compile-constructor
+  "returns a spectrum function for invoking the constructor"
+  [constructor]
+  (let [constructor-args (map java/resolve-java-class (:parameter-types constructor))]
     (fn [e]
-      #p (:class a)
-      (->> (class-f e)
-           (map (fn [e]
-                  (assoc e ::ret (instance (::ret e)))))))))
+      (fn [& args]
+        (if (= (count constructor-args) (count args))
+          (reduce (fn [es [constructor-arg f-arg]]
+                    (map (fn [e]
+                           (if (not (:error e))
+                             (if (conform? constructor-arg f-arg)
+                               e
+                               (assoc e ::error (error (print-str "can't pass" f-arg "to" constructor-arg)))))) es))
+                  [e] (zipmap constructor-args args))
+          [(assoc e ::error (error (print-str "Invalid constructor arity: expected" (count constructor-args) "got" (count args))))])))))
+
+(defmethod compile* :new [a]
+  (let [class-f (compile (:class a))
+        args-fns (map compile (:args a))]
+    (fn [e]
+      (if (not (:error e))
+        (for [e (class-f e)
+              :let [cls (-> e ::ret)
+                    _ (assert (value? cls))
+                    cls (-> cls :v)
+                    _ (assert (class? cls))]
+              args (->> args-fns
+                        (map (fn [arg-f]
+                               (validate! ::envs (arg-f e))))
+                        (combo/cartesian-product)
+                        (distinct))
+              :let [constructors (java/get-constructors cls (count args))]]
+          (if (seq constructors)
+            (mapcat (fn [constructor]
+                      (-> (compile-constructor constructor)
+                          (.invoke e)
+                          (.invoke args))) constructors)
+            [(assoc e ::error (error "can't construct" a))]))
+        [e]))))
 
 (defn get-fn-method-by-arity
   "given an :fn analysis, return the :fn-method for arity n"
@@ -858,6 +899,9 @@
                      ret (apply f args)]
                  {:args args
                   :ret ret})))))
+
+(defn sat? [envs]
+  (every? (fn [e] (not (:error e))) envs))
 
 (instrument-ns)
 

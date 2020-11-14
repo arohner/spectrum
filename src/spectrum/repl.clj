@@ -1,5 +1,9 @@
 (ns spectrum.repl
-  (:require [clojure.math.combinatorics :as combo]
+  (:require [cats.builtin]
+            [cats.core :as m]
+            [cats.monad.either :as either]
+            [cats.monad.maybe :as maybe]
+            [clojure.math.combinatorics :as combo]
             [clojure.spec.alpha :as s]
             [clojure.spec.test.alpha :as stest]
             [clojure.tools.analyzer.jvm :as ana.jvm]
@@ -14,11 +18,11 @@
 ;; (c/load-data-readers)
 ;; (s/check-asserts true)
 
-(in-ns 'clojure.core)
+;; (in-ns 'clojure.core)
 
-(defmacro inspect [expr]
-  `(do
-     (let [in# (quote ~expr)
-         resp# (do ~expr)]
-       (printf "%s is %s\n" in# (with-out-str (print resp#)))
-       resp#)))
+;; (defmacro inspect [expr]
+;;   `(do
+;;      (let [in# (quote ~expr)
+;;          resp# (do ~expr)]
+;;        (printf "%s is %s\n" in# (with-out-str (print resp#)))
+;;        resp#)))

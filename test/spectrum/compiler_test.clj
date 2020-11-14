@@ -173,3 +173,10 @@
           rets (f {})]
       (and (fn? f)
            (validate! (s/coll-of ::c/env) rets)))))
+
+(deftest constructors
+  (let [e c/*env*]
+    (-> ((c/compile '(fn [x] (String. x))) e)
+        first
+        (.invoke (c/java String))))
+  )

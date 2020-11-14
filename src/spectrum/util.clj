@@ -98,13 +98,14 @@
        (instance? ~cls x#))
      (predicate-spec ~name)))
 
-h(defn validate! [s args & [extra-data]]
+(defn validate! [s value & [extra-data]]
   (or
-   (s/valid? s args)
-   (throw (ex-info (s/explain-str s args)
+   (when (s/valid? s value)
+     value)
+   (throw (ex-info (s/explain-str s value)
                    {:spec s
-                    :args args
-                    :data (merge extra-data (s/explain-data s args))}))))
+                    :value value
+                    :data (merge extra-data (s/explain-data s value))}))))
 
 (defn multimethod-dispatch-values
   "Returns the seq of allowed dispatch values in the multimethod"
