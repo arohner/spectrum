@@ -6,6 +6,7 @@
             [clojure.test.check.generators :as gen]
             [clojure.test.check.clojure-test :refer [defspec]]
             [spectrum.compiler :as c]
+            [spectrum.java :as java]
             [spectrum.util :refer [validate!]]))
 
 (def gen-pred (gen/elements
@@ -152,6 +153,21 @@
                :variadic? variadic?
                :atom atom}) (gen/elements fn-args)))
 
+(def gen-meta (s/gen (s/map-of any? any?)))
+
+(def the-test-ns (create-ns 'spectrum.compiler-test-data))
+
+(defn gen-def [{:keys [depth] :as args}]
+  (gen/fmap (fn [[name meta init]]
+              {:op :def
+               :name name
+               :var (intern the-test-ns name)
+               :init init
+               :meta meta
+               }) (gen/tuple gen-name gen-meta (if (pos? depth)
+                                                           (gen-analysis (update args :depth dec))
+                                                           (gen/return nil)))))
+
 (defn gen-analysis [{:keys [depth locals fn-args] :as gen-args}]
   (let [forms (concat
                [gen-const]
@@ -160,23 +176,36 @@
                (when (seq fn-args)
                  [(gen-fn-arg-local gen-args)])
                (when (pos? depth)
-                 #p depth
-                 #p gen-args
                  (let [gen-args (update gen-args :depth dec)]
                    [(gen-let gen-args)
-                    (gen-do gen-args)])))]
+                    (gen-do gen-args)
+                    (gen-def gen-args)])))]
     (gen/one-of forms)))
 
 (defspec compiler-works
   (prop/for-all [a (gen-analysis {:depth 2})]
     (let [f (c/compile* a)
-          rets (f {})]
+          rets (f (c/new-env))]
       (and (fn? f)
-           (validate! (s/coll-of ::c/env) rets)))))
+           (validate! ::c/envs rets)))))
+
+(deftest things-work
+  (let [rets (c/test-invoke #'integer? [(c/fresh "t")])]
+    (is (= 7 (count rets)))
+    ))
 
 (deftest constructors
-  (let [e c/*env*]
-    (-> ((c/compile '(fn [x] (String. x))) e)
-        first
-        (.invoke (c/java String))))
-  )
+  (is (-> (java/get-constructors String 1)
+       last
+       c/compile-constructor
+       (.invoke c/*env*)
+       (.invoke String)
+       ::c/error
+       not))
+
+  (is (-> (java/get-constructors String 1)
+       last
+       c/compile-constructor
+       (.invoke c/*env*)
+       (.invoke Integer)
+       ::c/error)))

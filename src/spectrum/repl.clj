@@ -1,9 +1,5 @@
 (ns spectrum.repl
-  (:require [cats.builtin]
-            [cats.core :as m]
-            [cats.monad.either :as either]
-            [cats.monad.maybe :as maybe]
-            [clojure.math.combinatorics :as combo]
+  (:require [clojure.math.combinatorics :as combo]
             [clojure.spec.alpha :as s]
             [clojure.spec.test.alpha :as stest]
             [clojure.tools.analyzer.jvm :as ana.jvm]

@@ -1,5 +1,5 @@
 (ns spectrum.compiler
-  (:refer-clojure :exclude [ancestors compile descendants type instance?])
+  (:refer-clojure :exclude [ancestors compile descendants type cast])
   (:require [clojure.core :as core]
             [clojure.math.combinatorics :as combo]
             [clojure.test.check.generators :as gen]
@@ -11,7 +11,7 @@
             [spectrum.analyzer :as analyzer]
             [spectrum.data :as data]
             [spectrum.java :as java]
-            [spectrum.util :refer [instrument-ns validate! namespace? atom? !]])
+            [spectrum.util :refer [instrument-ns validate! namespace? atom?]])
   (:import [clojure.lang Symbol Keyword Var IPersistentMap]))
 
 (def types-hierarchy (atom (make-hierarchy)))
@@ -19,101 +19,145 @@
 (def type-counter (atom 0))
 
 (defprotocol Type
-  (tag [this]
-    "Return a tag corresponding to the type of this instance. Must be
-    something `valid-dispatch` knows how to handle")
-  (typecast [this tag]
-    "Cast this type to `:tag`")
-  (truthy [this]
+  (type [this]
+    "Returns")
+  (cast* [this type]
+    "Cast this type to `:type, one of #{:java :spec :regex :value}`")
+  (truthy* [this]
     "Return :true :false or :undecided if this type appears in the
-    test of an `if`"))
+    test of an `if`")
+  (invokeable* [this]
+    "true if this can be invoked")
+  (valid* [this right]))
 
 (defn type? [x]
   (satisfies? Type x))
 
-(defprotocol InvokeType
-  "Represents invokable things"
-  :extend-via-metadata true
-  (form [this]
-    "Return a map of input types to output types"))
+(s/def ::type type?)
+
+(defn ! [x]
+  (assert (identity x))
+  x)
+
+(defn first! [x]
+  (assert (seq x) (print-str "expected seq, got" (class x)))
+  (assert (= 1 (count x)))
+  (first x))
+
+(s/fdef cast :args (s/cat :t type? :k keyword?) :ret type?)
+(defn cast [t tag]
+  (cast* t tag))
+
+(s/fdef truthy args (s/cat :t type?) :ret #{:true :false :undecided})
+(defn truthy [t]
+  (truthy* t))
 
 (defrecord Variable [name id constraints]
-  ;; (tag [this]
-  ;;   :variable)
-  )
+  Type
+  (type [this]
+    :variable)
+  (truthy* [this]
+    (let [instance->val (get-in this [constraints :instance?])]
+      instance->val
+      (assert false "TODO"))))
 
 (extend-protocol Type
   clojure.lang.IFn
   (tag [this]
     :fn)
-  (truthy [this]
+  (truthy* [this]
     :true))
 
 (defn variable? [x]
-  (core/instance? Variable x))
+  (instance? Variable x))
 
-(defrecord VariableRef [id]
+(defn get-variable! [env vid]
+  {:post [(do (when-not % (println "couldn't find" vid) #p env) true) %]}
+  (get-in env [::variables vid]))
+
+(defrecord VariableRef [e id]
   Type
-  (tag [this]
-    :variable))
+  (type [this]
+    :variable)
+  (truthy* [this]
+    (truthy* (get-variable! e id)))
+  (invokeable* [this]
+    (assert false "TODO")
+    (invokeable* (get-variable! e id))))
 
-(defn vref? [x]
-  (core/instance? VariableRef x))
+(defn variable-ref? [x]
+  (instance? VariableRef x))
 
-(s/fdef vref :args (s/cat :i nat-int?) :ret vref?)
-(defn vref [id]
-  (->VariableRef id))
+(s/fdef variable-ref :args (s/cat :e ::env :i nat-int?) :ret variable-ref?)
+(defn variable-ref [e id]
+  (->VariableRef e id))
 
-(defrecord Java [class]
-  Type
-  (tag [this]
-    :java))
+(extend-protocol Type
+  java.lang.Class
+  (type [this]
+    :java)
+  (truthy* [this]
+    (assert false "TODO"))
+  (cast* [this type]
+    (case type
+      :java this
+      (assert false "TODO")))
+  (valid* [this r]
+    (isa? (cast r :java) this))
+  (invokeable* [this]
+    (instance? clojure.lang.IFn)))
 
 (defn java? [x]
-  (core/instance? Java x))
-
-(s/fdef java :args (s/cat :c class?) :ret java?)
-(defn java [cls]
-  (->Java cls))
+  (instance? Class x))
 
 (defrecord Spec [s]
   Type
-  (tag [this]
+  (type [this]
     :spec))
 
 (defn spec? [x]
-  (core/instance? Spec x))
+  (instance? Spec x))
 
 (s/fdef spec :args (s/cat :s s/spec?) :ret spec?)
 (defn spec [s]
   (->Spec s))
 
-(defrecord Value [v]
+(defrecord Value [value]
   Type
-  (tag [this]
-    :value))
+  (type [this]
+    :value)
+  (truthy* [this]
+    (case (-> value boolean)
+      true :true
+      false :false)))
 
 (defn value? [x]
-  (core/instance? Value x))
+  (instance? Value x))
 
 (defn value [x]
   (->Value x))
 
-(def ^:dynamic *env* {})
+(defn deref? [x]
+  (instance? clojure.lang.IDeref x))
+
 (s/def ::ret type?)
-(s/def ::vars (s/map-of var? fn?))
-(s/def ::vars (s/map-of symbol? fn?))
+(s/def ::vars (s/map-of var? deref?))
 
 (s/def ::variables (s/map-of integer? variable?))
-(s/def ::locals (s/map-of symbol? type?))
+(s/def ::locals (s/map-of symbol? ::type))
 
-(s/def ::env (s/keys :opt [::vars ::variables ::locals ::ret]))
+(def vars (atom {}))
+
+(s/def ::env (s/keys :req [::variables ::locals ::ret]))
 
 (s/def ::envs (s/coll-of ::env))
 
-(defn get-variable! [env vid]
-  {:post [%]}
-  (get-in env [:variables vid]))
+(defn new-env []
+  {::variables {}
+   ::locals {}
+   ::ret (value nil)})
+
+(def ^:dynamic *env* (new-env))
 
 (defn fresh
   ([name]
@@ -128,8 +172,10 @@
 
 (s/fdef constrain-variable-instance :args (s/cat :e ::env :v nat-int? :c class? :val boolean?) :ret ::env)
 (defn constrain-variable-instance [env vid c val]
-  (assert (get-in env [:variables vid]))
-  (assoc-in env [:variables (:id vref) :contraints :instance? c] val))
+  (let [vref (get-in env [::variables vid])]
+    (assert vref)
+    (assert (:id vref)))
+  (assoc-in env [::variables vid :contraints :instance? c] val))
 
 (defrecord Env [bindings ret])
 
@@ -145,62 +191,17 @@
   (and (var? x)
        (-> x .sym predicate-symbol?)))
 
-(defn ancestors [t]
-  (core/ancestors @types-hierarchy t))
-
-(defn sorted-ancestors
-  "Returns ancestors of t, sorted such that later entries are either peers or descendants of earlier entries"
-  [t])
-
-(defn descendants [t]
-  (core/descendants @types-hierarchy t))
-
-;; (defn derive-type
-;;   "clojure.core/derive, but patched to allow types.
-
-;; Note arguments are reversed from clojure.core/derive, to resemble (valid? x y)"
-;;   ([h parent type]
-;;    (assert (not= type parent) (format "derive-type: can't derive %s -> %s" parent type))
-;;    (assert h)
-;;    (assert (type? parent))
-;;    (assert (type? type))
-;;    (let [tp (:parents h)
-;;          td (:descendants h)
-;;          ta (:ancestors h)
-;;          tf (fn [m source sources target targets]
-;;               (reduce (fn [ret k]
-;;                         (assoc ret k
-;;                                (reduce conj (get targets k #{}) (cons target (targets target)))))
-;;                       m (cons source (sources source))))]
-;;      (when-not tp
-;;        (println "derive-type:" parent type "no parents"))
-;;      (assert tp)
-;;      (assert ta)
-;;      (assert td)
-;;      (assert tf)
-;;      (when-not (contains? (tp type) parent)
-;;        (when (contains? (ta type) parent)
-;;          (throw (Exception. (print-str type "already has" parent "as ancestor"))))
-;;        (when (contains? (ta parent) type)
-;;          (throw (Exception. (print-str "Cyclic derivation:" parent "has" type "as ancestor"))))
-;;        {:parents (assoc (:parents h) type (conj (get tp type #{}) parent))
-;;         :ancestors (tf (:ancestors h) type td parent ta)
-;;         :descendants (tf (:descendants h) parent ta type td)})))
-;;   ([parent type]
-;;    ;; (ensure-type-any parent)
-;;    ;; (ensure-type-any type)
-;;    (let [ret (derive-type @types-hierarchy parent type)]
-;;      (when ret
-;;        (reset! types-hierarchy ret)))))
-
-(defrecord ErrorT [msg]
+(defrecord ErrorT [msg data]
   Type)
 
 (defn error? [x]
   (instance? ErrorT x))
 
-(defn error [msg]
-  (ErrorT. msg))
+(defn error [msg & [data]]
+  (ErrorT. msg data))
+
+(defn a-loc [a]
+  (select-keys (:env a) [:file :line :column]))
 
 (defn ns-predicates
   "Return all var predicates in ns"
@@ -255,26 +256,19 @@
 
 (extend-protocol Type
   Var
-  (tag [this]
+  (type [this]
     :var-predicate)
-  (spec [this]
-    (s/with-gen (s/spec (deref this))
-      (fn []
-        (get-pred-gen this)))))
-
-(def class-gen
-  "Map of class to spec generator"
-  {Boolean (gen/elements [true false])
-   Object (gen/elements [(Object.) (Object.) (Object.)])
-   Integer (gen/fmap (fn [i]
-                       (Integer. i)) (s/gen (s/int-in Integer/MIN_VALUE Integer/MAX_VALUE)))
-
-   Long (gen/fmap (fn [i]
-                    (Long. i)) (s/gen (s/int-in Long/MIN_VALUE Long/MAX_VALUE)))
-   Keyword (s/gen keyword?)
-   String (s/gen string?)})
-
-(defn solve-contraints [cs])
+  (truthy* [this]
+    #p this
+    (case this
+      #'any? :undecided
+      (#'false? #'nil?) :false
+      :true))
+  (cast* [this tag]
+    (println "cast" this "to" tag)
+    (assert false))
+  (invokeable* [this]
+    (instance? clojure.lang.IFn (deref this))))
 
 (defn walk-a-rec
   "Given an analysis a, recursively call (f a path) on all of a's
@@ -351,156 +345,11 @@
 (defn variable? [x]
   (core/instance? Variable x))
 
-(deftype Cat [ts]
-  Type
-  (tag [this]
-    :regex))
-
-(defn cat-t [ts]
-  (->Cat ts))
-
-(deftype Or [ts]
-  Type
-  (tag [this]
-    :or))
-
-(defmethod print-method Or [this ^java.io.Writer w]
-  (.write w "#spectrum.compiler/Or ")
-  (print-method (.ts this) w))
-
-(defn or? [x]
-  (core/instance? Or x))
-
-(s/fdef or-consolidate :args (s/cat :ts (s/coll-of type?)))
-(defn or-consolidate [ts]
-  (let [ors (filter or? ts)
-        non-ors (remove or? ts)]
-    (set/union (set non-ors) (set (mapcat #(.ts %) ors)))))
-
-(s/fdef or-t :args (s/cat :ts (s/coll-of type?)) :ret type?)
-(defn or-t [ts]
-  (let [ts (or-consolidate ts)]
-    (case (count ts)
-      1 (first ts)
-      0 (error "")
-      (->Or ts))))
-
-(deftype And [ts]
-  Type
-  (tag [this]
-    :and))
-
-(deftype Amb [ts]
-  Type
-  (tag [this]
-    :amb))
-
-(defn and-t [& ts]
-  (->And (set ts)))
-
-(defn amb-t [& ts]
-  (->Amb (distinct ts)))
-
 (declare valid?)
-
-(defn valid-and-and [l r]
-  (assert false "TODO"))
-
-(defn valid-and-or [l r]
-  (assert false "TODO"))
-
-(defn valid-or-and [l r]
-  (assert false "TODO"))
-
-(defn valid-or-or [l r]
-  (assert false "TODO"))
-
-(defn valid-or-any [l r]
-  (assert false "TODO"))
-
-(defn valid-variable-variable [l r]
-  (assert false "TODO"))
-
-(defn valid-variable-any [l r]
-  (assert false "TODO"))
-
-(defn valid-and-any [l r]
-  (assert false "TODO"))
-
-(defn valid-any-and [l r]
-  (some (fn [r*]
-          (valid? l r*)) (.ts r)))
-
-(defn valid-any-or [l r]
-  (every? (fn [r*]
-            (valid? l r*)) (.ts r)))
-
-(defn valid-variable-variable [l r]
-  (swap! (.constraints l) conj [:< l r])
-  (swap! (.constraints r) conj [:< l r]))
-
-(defn valid-any-variable [l r]
-  (assert (not (variable? l)))
-  (swap! (.constraints r) conj [:< l r]))
-
-(defn valid-variable-any [l r]
-  (assert (not (variable? r)))
-  (swap! (.constraints l) conj [:< l r]))
-
-(defn valid-variable-variable [l r]
-  (swap! (.constraints l) conj [:< l r]))
-
-(defn valid-var-any [l r]
-  (or (= l #'any?)
-      (= l r)
-      (contains? (ancestors r) l)))
-
-(defn valid-class-any [l r]
-  (->> r
-       ancestors
-       (filter (fn [t]
-                 (= :class t)))
-       (some (fn [t]
-               (valid? l t)))))
-
-(defn valid-class-class [l r]
-  (isa? r l))
-
-(defn different-ancestors [t]
-  (->> (ancestors t)
-       (filter (fn [t*]
-                 (not= (tag t) (tag t*))))))
-
-(defn valid-regex-regex [l r]
-  (assert false "TODO"))
-
-(defn valid-dispatch [l r]
-  {:post [(do (println "valid-dispatch:" l r "=>" %) true)]}
-  (let [tl (tag l)
-        tr (tag r)]
-    (case [tl tr]
-      [:or :and] valid-or-and
-      [:or :or] valid-or-or
-      [:and :and] valid-and-and
-      [:variable :variable] valid-variable-variable
-      [:class :class] valid-class-class
-      [:regex :regex] valid-regex-regex
-      (case tr
-        :or valid-any-or
-        :and valid-any-and
-        :variable valid-any-variable
-        (case tl
-          :and valid-and-any
-          :or valid-or-any
-          :variable valid-variable-any
-          :instance valid-class-any
-          :spec valid-var-any)))))
 
 (s/fdef valid? :args (s/cat :l type? :r type?) :ret boolean?)
 (defn valid? [l r]
-  (boolean
-   (some (fn [r*]
-           ((valid-dispatch l r*) l r*)) (lazy-cat [r] (different-ancestors r)))))
+  (valid* l r))
 
 (defn analyze-form
   "Analyze a form.
@@ -536,18 +385,21 @@
 
 (defn tracer [f]
   (fn [e]
-    (println "calling" (-> f meta :op))
+    (println "calling" (-> f meta (select-keys [:op :var])))
+    (validate! ::env e)
     (let [rets (f e)]
-      (validate! ::envs rets)
-      (println (-> f meta :op) "ret" (count rets))
+      (validate! ::envs rets (meta f))
+      ;; (println (-> f meta :op) "returning" (count rets) "envs")
       rets)))
 
+(def compile-memo (memoize compile*))
+
 (defn compile [analysis]
-  (println "compile:" (:op analysis))
-  (let [ret (compile* analysis)]
+  (println "compile:" (:op analysis) (:form analysis))
+  (let [ret (compile-memo analysis)]
     (assert (fn? ret))
     (-> ret
-        (with-meta (select-keys analysis [:op]))
+        (with-meta (select-keys analysis [:op :var]))
         (tracer))))
 
 (defn foldl [f coll]
@@ -561,7 +413,7 @@
   [c]
   (cond
     (java/primitive? c) c
-    :else (or-t [c #'nil?])))
+    :else (assert false "TODO")))
 
 (defn get-java-fn
   "Find and return the type fn that validates a call to this class/method/instance"
@@ -569,28 +421,49 @@
   ;; (println "get-java-fn:" class method instance)
   (let [method-arities (java/get-method class method)]
     (fn [& invoke-args]
+      #p [:invoke class method :with invoke-args]
       (->> method-arities
            (filter (fn [ar]
                      (if instance
                        (not (contains? (:flags ar) :static))
                        (contains? (:flags ar) :static))))
+           (filter (fn [ar]
+
+                     ))
            (map (fn [ar]
                   ;; TODO verify args here
                   ;; when (valid? (cat-t (:parameter-types ar)) (cat-t invoke-args))
-                  (method-class->t (java/resolve-java-class (:return-type ar)))))
+                  (java/resolve-java-class (:return-type ar))))
            (filter identity)
            ((fn [rets]
               (if (seq rets)
-                (or-t rets)
+                (do
+                  #p [class method instance rets]
+                 (assert false "TODO"))
                 (error "no arity of " class method "matches" invoke-args))))))))
 
+(def ^:dynamic *compiling*
+  "var -> promise"
+  {})
+
+(defn deref-var [v]
+  (let [v (get @vars v)]
+    (assert v)
+    (assert (realized? v))
+    @v))
+
 (defmethod compile* :def [a]
-  (let [init-f (compile (:init a))
-        v (:var a)]
-    (fn [e]
-      [(-> e
-           (assoc-in [:vars v] init-f)
-           (assoc ::ret v))])))
+  (fn [e]
+    (let [v (:var a)
+          init-f (promise)]
+      (assert (var? v))
+      (if (:init a)
+        (when (not (get *compiling* v))
+          (binding [*compiling* (assoc *compiling* v init-f)]
+            (deliver init-f (compile (:init a)))))
+        (deliver init-f (fn [e] [(assoc e ::error (error "unbound var" (select-keys a [:var])))])))
+      (swap! vars assoc v init-f)
+      [(assoc e ::ret v)])))
 
 (defn valid-method?
   "true if this :fn-method analysis can be called with `args`"
@@ -600,9 +473,12 @@
     (or (= (count args) (count params))
         (and (:variadic? method) (>= (count args) (count params))))))
 
+(s/fdef bind-params :args (s/cat :e ::env :p (s/coll-of any?) :args (s/coll-of ::type)) :ret ::env)
 (defn bind-params
   "Given a call to :fn-method with :params, update `e` to bind args to locals"
   [e params args]
+  #p params
+  #p args
   (let [p (first params)
         a (if (:variadic? p)
             (rest args)
@@ -610,10 +486,9 @@
     (if (and p a)
       (let [vid (:id a)
             e (if (variable? a)
-                (-> e
-                    (assoc-in [:variables vid] a)
-                    (assoc-in [:locals (:name p)] (vref vid)))
-                (assoc-in e [:locals (:name p)] a))]
+                (let [e (assoc-in e [::variables vid] a)]
+                  (assoc-in e [::locals (:name p)] (variable-ref e vid)))
+                (assoc-in e [::locals (:name p)] a))]
         (if (next params)
           (recur e (rest params) (rest args))
           e))
@@ -625,6 +500,7 @@
         body-f (compile (:body a))]
     (fn [e]
       [(assoc e ::ret (fn [args]
+                        {:post [(validate! ::envs %)]}
                         (-> e
                             (bind-params params args)
                             (body-f))))])))
@@ -634,13 +510,15 @@
   (let [method-table (zipmap (:methods a) (map compile (:methods a)))]
     (fn [e]
       [(assoc e ::ret (fn [args]
+                        {:post [(validate! ::envs %)]}
                         (let [methods (->> (filter (fn [[method f]]
                                                      (valid-method? method args)) method-table))]
                           (if (seq methods)
                             (mapcat (fn [[method f]]
                                       (println "running method" (count (:arity method)))
-                                      (map (fn [e]
-                                             (-> e ::ret (.invoke args))) (f e)))
+                                      (mapcat (fn [e]
+                                                {:post [(validate! ::envs %)]}
+                                                ((::ret e) args)) (f e)))
                                     methods)
                             (throw (ex-info "invoke fn no valid method"))))))])))
 
@@ -650,17 +528,17 @@
       (if (:init a)
         (->> (init-f e)
              (mapv (fn [e]
-                     (assoc-in e [:locals (:name a)] (::ret e)))))
+                     (assoc-in e [::locals (:name a)] (::ret e)))))
         [(let [[e vid] (assoc-fresh e (:name a))]
-           (assoc-in e [:locals (:name a)] (vref vid)))]))))
+           (assoc-in e [::locals (:name a)] (variable-ref e vid)))]))))
 
 (defmethod compile* :local [a]
   (fn [e]
     (validate! ::env e)
     (let [{:keys [name atom]} a]
       (assert name)
-      (let [val (get-in e [:locals (:name a)])]
-        (assert (find (:locals e) (:name a)) (print-str "couldn't find" (:name a) "in" e))
+      (let [val (get-in e [::locals (:name a)])]
+        (assert (find (::locals e) (:name a)) (print-str "couldn't find" (:name a) "in" e))
         [(assoc e ::ret val)]))))
 
 (defmethod compile* :with-meta [a]
@@ -679,46 +557,41 @@
            (reduce (fn [es f]
                      (mapcat f es)) [e])))))
 
-(s/fdef variable-isa? :args (s/cat :e ::env :c class? :v vref?) :ret (s/coll-of ::env))
+(s/fdef variable-isa? :args (s/cat :e ::env :c class? :v variable-ref?) :ret ::envs)
 (defn variable-isa?
   "Truthy if variable has been constrained to (instance? c), or a descendant"
   [e c vref]
+  ;; {:post [(do (println "variable-isa?" c vref "=>" (map ::ret %)) true)]}
   (let [vid (:id vref)
         v (get-variable! e vid)]
     (->> (get-in v [:constraints :instance?])
          (filter (fn [[cls val]]
                    (or (when (and val (isa? cls c))
-                         [cls val])
+                         [cls (value val)])
                        (when (and (not val) (= cls c))
-                         [cls val]))))
+                         [cls (value val)]))))
          (filter identity)
          first
          ((fn [[cls val]]
             (if cls
-              (assoc e ::ret val)
+              [(assoc e ::ret (value val))]
               (map (fn [val]
                      (-> e
-                         (assoc ::ret val)
-                         (constrain-variable-instance vid c val)))  [true false])))))))
-
-(defn instance-check? [class t]
-  (cond
-    (variable? t) (variable-isa? class t)
-    (instance? t) (isa? (:class t) class)
-    :else (assert false (print-str "instance-check:" class t))))
+                         (constrain-variable-instance vid c val)
+                         (assoc ::ret (value val))))  [true false])))))))
 
 (defmethod compile* :instance? [a]
   (let [{:keys [class target]} a]
     (let [target-f (compile (:target a))]
       (fn [e]
-        {:post [(validate! (s/coll-of ::env) %)]}
+        {:post [(validate! ::envs %)]}
         (->> (target-f e)
              (mapcat (fn [e]
                        (let [t (::ret e)]
                          (cond
                            ;; TODO finish variable constraints
-                           (vref? t) (variable-isa? e class t)
-                           (instance? t) [(assoc e ::ret (isa? (:class t) class))]
+                           (variable-ref? t) (variable-isa? e class t)
+                           (instance? t) [(assoc e ::ret (value (isa? (:class t) class)))]
                            :else (assert false (print-str "instance-check:" class t)))))))))))
 
 (defmethod compile* :static-call [a]
@@ -747,46 +620,73 @@
 
 (defmethod compile* :the-var [a]
   (fn [e]
-    (let [v (get-in e [:vars (:va a)])]
+    (let [v (get @vars (:var a))]
       (assert v)
       [(assoc e ::ret v)])))
 
-(s/fdef compile-var :args (s/cat :v var?))
-(defn compile-var [v]
+(s/fdef compile-var :args (s/cat :e ::env :v var?))
+(defn compile-var [e v]
+  {:pre [(do (println "compile-var pre" v ) true)]
+   :post [(do (println "compile-var:" v) true) (get @vars v)]}
   (ensure-analysis-var v)
   (let [{:keys [a path]} (data/get-var-analysis v)]
     (assert a (pr-str "couldn't find analysis for" v))
-    (let [es ((compile a) *env*)
-          _ (assert (= 1 (count es)) (print-str "expected 1, got" (count es)))
-          e (first es)]
+    #p (:op a)
+    (let [es ((compile a) e)
+          e (first! es)]
+      (validate! ::env e))))
 
-      (validate! ::env e)
-      (alter-var-root #'*env* (constantly e)))))
+(s/fdef ensure-var-compilation :args (s/cat :e ::env :v var?))
+(defn ensure-var-compilation [e v]
+  (or (when (get @vars v)
+        e)
+      (compile-var e v)))
 
-(s/fdef ensure-var-compilation :args (s/cat :v var?))
-(defn ensure-var-compilation [v]
-  (or (get-in *env* [:vars v])
-      (compile-var v)))
+(defn get-var
+  [v]
+  (let [var-promise (get @vars v)]
+    (assert var-promise)
+    (assert (realized? var-promise))
+    @var-promise))
 
-(defn get-var [v]
-  (get-in *env* [:vars v]))
+(s/fdef invokeable? :args (s/cat :t type?) :ret boolean?)
+(defn invokeable? [t]
+  (invokeable* t))
+
+(defn invoke [e f args]
+  (cond
+    (var? f) (-> ((get-var f) e) first! ::ret (.invoke args))
+    :else (assert false)))
+
+(defn evaluate
+  "Given a seq of envs and a seq of compiled env fns, evaluate"
+  [es fs]
+  )
 
 (defmethod compile* :invoke [a]
-  (fn [e]
-    (println "invoke!")
-    [e])
-  ;; (let [arg-fns (map (fn [a]
-  ;;                      (compile* a)) (:args a))]
-  ;;   (case (:op (:fn a))
-  ;;     :var (let [v (-> a :fn :var)]
-  ;;            (ensure-var-compilation v)
-  ;;            (fn [e]
-  ;;              (let [f (get-in env [:vars v])
-  ;;                    _ (assert f (pr-str "couldn't find compilation for" v))]
-  ;;                (->> (combo/cartesian-product (map (fn [a-f] (a-f e)) arg-fns))
-  ;;                     (map (fn [args]
-  ;;                            (assoc e ::ret (apply f e args))))))))))
-  )
+  (assert (every? :op (:args a)))
+  (let [f-fn (compile (:fn a))
+        arg-fns (map compile (:args a))]
+    (fn [e]
+      (println ":invoke" (:fn a) (:op (:fn a)))
+      (let [es-s (reduce (fn [es-s f]
+                           {:post [(validate! (s/coll-of ::envs) %)]}
+                           (assert (ifn? f))
+                           (conj (vec es-s) (mapcat (fn [e]
+                                                      (if (not (::error e))
+                                                        (f e)
+                                                        [e])) (last es-s)))) [(f-fn e)] arg-fns)]
+
+        (assert (= (count es-s)) (inc (count (:args a))))
+        (validate! (s/coll-of ::envs) es-s)
+        (->> (apply combo/cartesian-product es-s)
+             (mapcat (fn [es]
+                       (assert (= (count es) (inc (count (:args a))) ))
+                       (let [[f & args] (map ::ret es)
+                             e (last es)]
+                         (if (invokeable? f)
+                           (invoke e f args)
+                           [(assoc e ::error (error (print-str "can't invoke" f)))])))))))))
 
 (defmethod compile* :let [a]
   (println "compile :let" (:form a))
@@ -802,12 +702,13 @@
         then-f (compile (:then a))
         else-f (compile (:else a))]
     (fn [e]
-      {:post [ (validate! (s/coll-of ::env) %)]}
+      {:post [(validate! (s/coll-of ::env) %)]}
       (->> (test-f e)
            (mapcat (fn [e]
-                     (if (::ret e)
-                       (then-f e)
-                       (else-f e))))))))
+                     (case (truthy (::ret e))
+                       :true (then-f e)
+                       :false (else-f e)
+                       :undecided (concat (then-f e) (else-f e)))))))))
 
 (defmethod compile* :const [a]
   (fn [e]
@@ -816,7 +717,13 @@
     [(assoc e ::ret (value (:val a)))]))
 
 (defmethod compile* :recur [a]
-  (assert false))
+  (fn [e]
+    [e]))
+
+(defmethod compile* :var [a]
+  (fn [e]
+    [(-> (ensure-var-compilation e (:var a))
+         (assoc ::ret (:var a)))]))
 
 (defn compile-constructor
   "returns a spectrum function for invoking the constructor"
@@ -825,13 +732,17 @@
     (fn [e]
       (fn [& args]
         (if (= (count constructor-args) (count args))
-          (reduce (fn [es [constructor-arg f-arg]]
-                    (map (fn [e]
-                           (if (not (:error e))
-                             (if (conform? constructor-arg f-arg)
-                               e
-                               (assoc e ::error (error (print-str "can't pass" f-arg "to" constructor-arg)))))) es))
-                  [e] (zipmap constructor-args args))
+          (->
+           (reduce (fn [e [constructor-arg arg]]
+                     (if (not (:error e))
+                       (if (valid? #p constructor-arg #p arg)
+                         e
+                         (assoc e ::error (error (print-str "can't pass" arg "to" constructor-arg))))
+                       e)) e (zipmap constructor-args args))
+           ((fn [e]
+              (if (not (:error e))
+                (assoc e ::ret (-> constructor :name java/resolve-java-class))
+                e))))
           [(assoc e ::error (error (print-str "Invalid constructor arity: expected" (count constructor-args) "got" (count args))))])))))
 
 (defmethod compile* :new [a]
@@ -842,8 +753,7 @@
         (for [e (class-f e)
               :let [cls (-> e ::ret)
                     _ (assert (value? cls))
-                    cls (-> cls :v)
-                    _ (assert (class? cls))]
+                    cls (-> cls :value)]
               args (->> args-fns
                         (map (fn [arg-f]
                                (validate! ::envs (arg-f e))))
@@ -857,6 +767,15 @@
                           (.invoke args))) constructors)
             [(assoc e ::error (error "can't construct" a))]))
         [e]))))
+
+(defmethod compile* :throw [a]
+  (let [ex-f (compile (:exception a))]
+    (fn [e]
+      (->> (ex-f e)
+           (map (fn [e]
+                  (if (valid? Throwable (::ret e))
+                    e
+                    (assoc e ::error (error "can't throw non-throwable" (::ret e))))))))))
 
 (defn get-fn-method-by-arity
   "given an :fn analysis, return the :fn-method for arity n"
@@ -877,17 +796,20 @@
 (defn test-invoke
   "returns the result of invoking var with args"
   [v args]
-  (ensure-var-compilation v)
-  (assert *env*)
-  (if-let [f (get-in *env* [:vars v])]
-    (let [es (f *env*) ;; deref var
-          _ (assert (= 1 (count es)))
-          e (first es)]
-      (-> e
-          ::ret
-          (.invoke args)))
+  (let [e *env*
+        e (ensure-var-compilation *env* v)]
+    (alter-var-root #'*env* (constantly e))
+    (binding [*env* e]
+      (if-let [f (get-var v)]
+        (let [es (f *env*) ;; init-f
+              ]
+          (-> es
+              first!
+              ::ret
+              (.invoke args)))
 
-    (throw (ex-info (print-str "couldn't find var" v) *env*))))
+        (throw (ex-info (print-str "couldn't find var" v) *env*)))))
+  )
 
 (defn check-compiled-fn
   "Takes a compiled fn, and checks it"
